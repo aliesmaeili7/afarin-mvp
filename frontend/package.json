@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "html-to-image": "^1.11.13",
     "next": "^16.3.0",
     "react": "^19.2.8",
@@ -24,6 +25,7 @@
     "@types/react-dom": "^19.2.4",
     "eslint": "^10.8.1",
     "eslint-config-next": "^16.3.0",
+    "playwright": "^1.62.1",
     "postcss": "^8.5.26",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",

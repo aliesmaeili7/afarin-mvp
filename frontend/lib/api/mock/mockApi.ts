@@ -21,8 +21,8 @@ import {
   type BrandInput,
   type CreateCampaignInput,
   type ProductInput,
-  type SignInInput,
-  type SignUpInput,
+  type EmailCodeRequest,
+  type EmailCodeVerification,
   type UpdateCampaignInput,
 } from "@/lib/api/types";
 import { backgroundsForStyle } from "@/lib/content/backgrounds";
@@ -335,6 +335,74 @@ function materializeCampaign(
   campaign.status = failureMode === "partial" ? "partial_failed" : "ready";
   campaign.updated_at = nowIso();
   return campaign.status;
+}
+
+function isEmail(value: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value.trim().toLowerCase());
+}
+
+/**
+ * Creates or reuses a local profile and transfers the anonymous campaign to it,
+ * standing in for what Supabase Auth plus POST /api/session/adopt do for real.
+ */
+function createMockSession(rawEmail: string): Session {
+  const email = rawEmail.trim().toLowerCase();
+
+  return mutateDb((db) => {
+    const existing = db.profiles.find((profile) => profile.email === email);
+    const profile = existing ?? {
+      id: newId("usr"),
+      user_id: newId("usr"),
+      display_name: email.split("@")[0],
+      email,
+      locale: "fa",
+      credit_balance_cached: 0,
+      free_campaigns_remaining: 1,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    if (!existing) db.profiles.push(profile);
+
+    const session: Session = {
+      user: {
+        id: profile.id,
+        email: profile.email,
+        display_name: profile.display_name,
+        locale: profile.locale,
+        free_campaigns_remaining: profile.free_campaigns_remaining,
+      },
+      access_token: newId("mocktoken"),
+    };
+    db.session = session;
+
+    // The anonymous campaign becomes owned by the new account (spec §11).
+    db.campaigns.forEach((campaign) => {
+      if (campaign.anonymous_session_id === db.anonymous_session_id) {
+        campaign.user_id = profile.id;
+        campaign.anonymous_session_id = null;
+        const product = productOf(db, campaign);
+        if (product) product.user_id = profile.id;
+        const brand = brandOf(db, campaign);
+        if (brand && !brand.user_id) brand.user_id = profile.id;
+      }
+    });
+
+    // Hand the seeded sample to the first account so the dashboard has
+    // something to explore immediately.
+    if (db.sample_unclaimed) {
+      db.sample_unclaimed = false;
+      const sample = db.campaigns.find((item) => item.id === SAMPLE_CAMPAIGN_ID);
+      if (sample) {
+        sample.user_id = profile.id;
+        const product = productOf(db, sample);
+        if (product) product.user_id = profile.id;
+      }
+      const sampleBrand = db.brands.find((item) => item.id === SAMPLE_BRAND_ID);
+      if (sampleBrand) sampleBrand.user_id = profile.id;
+    }
+
+    return session;
+  });
 }
 
 function ensureMaterialized(db: MockDbShape, campaign: Campaign): void {
@@ -961,72 +1029,35 @@ export const mockApi: AfarinApi = {
     });
   },
 
-  async signUp(input: SignUpInput): Promise<Session> {
+  async requestEmailCode(input: EmailCodeRequest): Promise<void> {
     await delay(LATENCY.auth);
-    const email = input.email.trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    if (!isEmail(input.email)) {
       throw new ApiError("validation_error", "ایمیل معتبر وارد کن.");
     }
-
-    return mutateDb((db) => {
-      const existing = db.profiles.find((profile) => profile.email === email);
-      const profile = existing ?? {
-        id: newId("usr"),
-        user_id: newId("usr"),
-        display_name: input.display_name?.trim() || email.split("@")[0],
-        email,
-        locale: "fa",
-        credit_balance_cached: 0,
-        free_campaigns_remaining: 1,
-        created_at: nowIso(),
-        updated_at: nowIso(),
-      };
-      if (!existing) db.profiles.push(profile);
-
-      const session: Session = {
-        user: {
-          id: profile.id,
-          email: profile.email,
-          display_name: profile.display_name,
-          locale: profile.locale,
-          free_campaigns_remaining: profile.free_campaigns_remaining,
-        },
-        access_token: newId("mocktoken"),
-      };
-      db.session = session;
-
-      // The anonymous campaign becomes owned by the new account (spec §11).
-      db.campaigns.forEach((campaign) => {
-        if (campaign.anonymous_session_id === db.anonymous_session_id) {
-          campaign.user_id = profile.id;
-          campaign.anonymous_session_id = null;
-          const product = productOf(db, campaign);
-          if (product) product.user_id = profile.id;
-          const brand = brandOf(db, campaign);
-          if (brand && !brand.user_id) brand.user_id = profile.id;
-        }
-      });
-
-      // Hand the seeded sample to the first account so the dashboard has
-      // something to explore immediately.
-      if (db.sample_unclaimed) {
-        db.sample_unclaimed = false;
-        const sample = db.campaigns.find((item) => item.id === SAMPLE_CAMPAIGN_ID);
-        if (sample) {
-          sample.user_id = profile.id;
-          const product = productOf(db, sample);
-          if (product) product.user_id = profile.id;
-        }
-        const sampleBrand = db.brands.find((item) => item.id === SAMPLE_BRAND_ID);
-        if (sampleBrand) sampleBrand.user_id = profile.id;
-      }
-
-      return session;
-    });
+    // No mail is sent in mock mode; verifyEmailCode accepts any six digits.
   },
 
-  async signIn(input: SignInInput): Promise<Session> {
-    return mockApi.signUp({ email: input.email });
+  async verifyEmailCode(input: EmailCodeVerification): Promise<Session> {
+    await delay(LATENCY.auth);
+    if (!/^\d{6}$/.test(input.code.trim())) {
+      throw new ApiError("validation_error", "کد ۶ رقمی رو کامل وارد کن.");
+    }
+    return createMockSession(input.email);
+  },
+
+  async signInWithGoogle(): Promise<void> {
+    await delay(LATENCY.auth);
+    // Mock mode has no OAuth provider, so this signs in directly under a
+    // stand-in address rather than pretending to leave the app.
+    createMockSession("user@gmail.com");
+  },
+
+  async adoptAnonymousWork(): Promise<Session> {
+    const session = readDb().session;
+    if (!session) {
+      throw new ApiError("unauthorized", "برای ساخت کمپین اول باید وارد بشی.");
+    }
+    return session;
   },
 
   async signOut(): Promise<void> {
@@ -1049,5 +1080,16 @@ export const mockApi: AfarinApi = {
       return imageStore.getImageUrl(storagePath);
     }
     return storagePath;
+  },
+
+  async resolveAssetUrls(
+    storagePaths: string[],
+  ): Promise<Record<string, string | null>> {
+    const entries = await Promise.all(
+      storagePaths.map(
+        async (path) => [path, await mockApi.resolveAssetUrl(path)] as const,
+      ),
+    );
+    return Object.fromEntries(entries);
   },
 };

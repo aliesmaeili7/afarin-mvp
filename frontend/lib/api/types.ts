@@ -81,20 +81,39 @@ export interface AfarinApi {
   updateBrand(brandId: string, patch: BrandInput): Promise<Brand>;
 
   /**
-   * Auth. Phase 1 is a local mock; Phase 2 delegates to Supabase Auth.
-   * Signing up also transfers any campaign owned by the current anonymous
-   * session to the new account (spec §11).
+   * Auth, delegated to Supabase.
+   *
+   * Email sign-in is two calls because a real provider has to actually deliver
+   * the code: `requestEmailCode` sends it, `verifyEmailCode` exchanges it for a
+   * session. Phase 1's single `signUp` could not express the wait. This is the
+   * one place Phase 2 changes the UX, and only by one screen.
+   *
+   * Completing either flow also transfers whatever the visitor built while
+   * anonymous to the new account (spec §11).
    */
-  signUp(input: SignUpInput): Promise<Session>;
-  signIn(input: SignInInput): Promise<Session>;
+  requestEmailCode(input: EmailCodeRequest): Promise<void>;
+  verifyEmailCode(input: EmailCodeVerification): Promise<Session>;
+  /**
+   * Google leaves the app entirely, so this resolves only if the redirect
+   * cannot be started. Adoption happens at /auth/callback on the way back.
+   */
+  signInWithGoogle(input: GoogleSignInInput): Promise<void>;
+  /** Claims the anonymous campaign for whoever is signed in now. */
+  adoptAnonymousWork(): Promise<Session>;
   signOut(): Promise<void>;
   getSession(): Promise<Session | null>;
 
   /**
-   * Turns an opaque `storage_path` into something an <img> can display.
-   * Phase 2 replaces this with a signed URL from private storage (spec §27).
+   * Turns an opaque `storage_path` into something an <img> can display: a
+   * short-lived signed URL for private objects, a static path for the assets
+   * that ship with the app (spec §27).
    */
   resolveAssetUrl(storagePath: string | null): Promise<string | null>;
+  /**
+   * Batched form. A results page shows five assets at once, and one request per
+   * image would visibly stagger the reveal.
+   */
+  resolveAssetUrls(storagePaths: string[]): Promise<Record<string, string | null>>;
 }
 
 export interface CreateCampaignInput {
@@ -136,14 +155,18 @@ export interface BrandInput {
   secondary_color?: string | null;
 }
 
-export interface SignUpInput {
+export interface EmailCodeRequest {
   email: string;
-  display_name?: string;
-  provider?: "email" | "google";
 }
 
-export interface SignInInput {
+export interface EmailCodeVerification {
   email: string;
+  code: string;
+}
+
+export interface GoogleSignInInput {
+  /** Absolute URL Supabase returns to once Google is done. */
+  redirect_to: string;
 }
 
 export type ApiErrorCode =

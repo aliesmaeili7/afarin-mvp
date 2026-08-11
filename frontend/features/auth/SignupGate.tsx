@@ -39,6 +39,12 @@ export function SignupGate() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // A real provider has to deliver the code before it can be checked, so email
+  // sign-in became two screens in Phase 2. Google still leaves the app.
+  const [step, setStep] = useState<"identify" | "code">("identify");
+  const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!sessionLoaded) void loadSession();
   }, [sessionLoaded, loadSession]);
@@ -62,24 +68,70 @@ export function SignupGate() {
     router.push(`/campaigns/${campaignId}`);
   }
 
-  async function handleSignUp(provider: "email" | "google") {
+  async function handleSendCode() {
     if (!detail) return;
 
-    const address =
-      provider === "google" ? "user@gmail.com" : email.trim().toLowerCase();
-
-    if (provider === "email" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
+    const address = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
       setEmailError("ایمیل معتبر وارد کن.");
       return;
     }
 
     setSubmitting(true);
-    track("signup_started", { provider });
+    track("signup_started", { provider: "email" });
     try {
-      const newSession = await api.signUp({ email: address, provider });
+      await api.requestEmailCode({ email: address });
+      setStep("code");
+    } catch (caught) {
+      toast(toPersianError(caught), "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleVerifyCode() {
+    if (!detail) return;
+
+    const entered = code.trim();
+    if (!/^\d{6}$/.test(entered)) {
+      setCodeError("کد ۶ رقمی رو کامل وارد کن.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const newSession = await api.verifyEmailCode({
+        email: email.trim().toLowerCase(),
+        code: entered,
+      });
       setSession(newSession);
-      track("signup_completed", { provider });
+      track("signup_completed", { provider: "email" });
       await startGeneration(detail.campaign.id);
+    } catch (caught) {
+      setCodeError(toPersianError(caught));
+      setSubmitting(false);
+    }
+  }
+
+  async function handleGoogle() {
+    if (!detail) return;
+
+    setSubmitting(true);
+    track("signup_started", { provider: "google" });
+    try {
+      // The campaign id survives the round trip through Google so the callback
+      // can resume generation instead of stranding the user on the dashboard.
+      const redirect = new URL("/auth/callback", window.location.origin);
+      redirect.searchParams.set("campaign", detail.campaign.id);
+      await api.signInWithGoogle({ redirect_to: redirect.toString() });
+
+      // Mock mode signs in without navigating away, so continue inline.
+      const current = await api.getSession();
+      if (current) {
+        setSession(current);
+        track("signup_completed", { provider: "google" });
+        await startGeneration(detail.campaign.id);
+      }
     } catch (caught) {
       toast(toPersianError(caught), "error");
       setSubmitting(false);
@@ -181,6 +233,55 @@ export function SignupGate() {
           >
             ساخت کمپین
           </Button>
+        ) : step === "code" ? (
+          <Card className="flex flex-col gap-4 p-5">
+            <div className="text-center">
+              <p className="text-sm font-bold text-ink-900">کد رو برات فرستادیم</p>
+              <p className="mt-1 text-sm leading-7 text-ink-500">
+                کد ۶ رقمی که به <span dir="ltr">{email}</span> ارسال شد رو وارد کن.
+              </p>
+            </div>
+
+            <TextField
+              label="کد تأیید"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              dir="ltr"
+              placeholder="۱۲۳۴۵۶"
+              value={code}
+              error={codeError}
+              className="text-center text-lg tracking-[0.5em]"
+              onChange={(event) => {
+                setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                setCodeError(null);
+              }}
+            />
+
+            <Button
+              size="lg"
+              fullWidth
+              loading={submitting}
+              onClick={handleVerifyCode}
+              iconStart={<SparkleIcon width={18} height={18} />}
+            >
+              تأیید و ساخت کمپین
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              fullWidth
+              disabled={submitting}
+              onClick={() => {
+                setStep("identify");
+                setCode("");
+                setCodeError(null);
+              }}
+            >
+              ایمیل رو اشتباه زدم
+            </Button>
+          </Card>
         ) : (
           <Card className="flex flex-col gap-4 p-5">
             <Button
@@ -188,7 +289,7 @@ export function SignupGate() {
               size="lg"
               fullWidth
               disabled={submitting}
-              onClick={() => handleSignUp("google")}
+              onClick={handleGoogle}
               iconStart={<GoogleIcon />}
             >
               ادامه با گوگل
@@ -217,7 +318,7 @@ export function SignupGate() {
               size="lg"
               fullWidth
               loading={submitting}
-              onClick={() => handleSignUp("email")}
+              onClick={handleSendCode}
               iconStart={<SparkleIcon width={18} height={18} />}
             >
               ثبت‌نام و ساخت کمپین

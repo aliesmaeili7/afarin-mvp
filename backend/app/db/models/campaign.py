@@ -1,0 +1,217 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.enums import (
+    ASSET_TYPES,
+    CAMPAIGN_OBJECTIVES,
+    CAMPAIGN_STATUSES,
+    COPY_TYPES,
+    JOB_STATUSES,
+    JOB_TYPES,
+    VISUAL_STYLES,
+)
+from app.db.base import (
+    Base,
+    created_timestamp,
+    enum_check,
+    json_column,
+    pk,
+    text_column,
+    updated_timestamp,
+    user_fk,
+)
+
+
+class Campaign(Base):
+    """
+    Spec §22 campaigns.
+
+    Exactly one owner at a time: an anonymous session before signup, a user
+    after adoption. The CHECK makes an orphaned campaign impossible.
+    """
+
+    __tablename__ = "campaigns"
+    __table_args__ = (
+        enum_check("campaigns", "objective", CAMPAIGN_OBJECTIVES, nullable=True),
+        enum_check("campaigns", "visual_style", VISUAL_STYLES, nullable=True),
+        enum_check("campaigns", "status", CAMPAIGN_STATUSES),
+        CheckConstraint(
+            "user_id is not null or anonymous_session_id is not null",
+            name="ck_campaigns_has_owner",
+        ),
+        Index("ix_campaigns_user_created", "user_id", text("created_at desc")),
+    )
+
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID | None] = user_fk()
+    anonymous_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("anonymous_sessions.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("brands.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    objective: Mapped[str | None] = text_column()
+    audience: Mapped[str | None] = text_column()
+    visual_style: Mapped[str | None] = text_column()
+    selected_concept_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, server_default=text("'draft'")
+    )
+    is_free_campaign: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    # Which round of concepts the seller is on, so a regenerate returns
+    # different Persian output. NULL until concepts are first requested, which
+    # is how the mock's `concept_rounds[id] ?? -1` distinguished "never run"
+    # from "round 0".
+    concept_round: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = created_timestamp()
+    updated_at: Mapped[datetime] = updated_timestamp()
+
+
+class CampaignConcept(Base):
+    """Spec §22 campaign_concepts."""
+
+    __tablename__ = "campaign_concepts"
+
+    id: Mapped[uuid.UUID] = pk()
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    concept_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title_fa: Mapped[str] = mapped_column(String, nullable=False)
+    headline_fa: Mapped[str] = mapped_column(String, nullable=False)
+    description_fa: Mapped[str] = mapped_column(String, nullable=False)
+    # Internal creative direction. Never rendered to the seller (spec §5.1, §23).
+    visual_direction: Mapped[str] = mapped_column(String, nullable=False)
+    background_prompt: Mapped[str] = mapped_column(String, nullable=False)
+    raw_json: Mapped[dict] = json_column("raw_json")
+    selected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = created_timestamp()
+
+
+class CampaignCopy(Base):
+    """Spec §22 campaign_copy."""
+
+    __tablename__ = "campaign_copy"
+    __table_args__ = (enum_check("campaign_copy", "copy_type", COPY_TYPES),)
+
+    id: Mapped[uuid.UUID] = pk()
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    copy_type: Mapped[str] = mapped_column(String, nullable=False)
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    metadata_json: Mapped[dict] = json_column("metadata_json")
+    created_at: Mapped[datetime] = created_timestamp()
+    updated_at: Mapped[datetime] = updated_timestamp()
+
+
+class CampaignAsset(Base):
+    """
+    Spec §22 campaign_assets.
+
+    `storage_path` stays null through Phase 2: the browser still composes each
+    ad from `metadata_json` (an AssetRenderSpec). Phase 4/5 fill the path in and
+    the renderer prefers it with no UI change.
+    """
+
+    __tablename__ = "campaign_assets"
+    __table_args__ = (enum_check("campaign_assets", "asset_type", ASSET_TYPES),)
+
+    id: Mapped[uuid.UUID] = pk()
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    asset_type: Mapped[str] = mapped_column(String, nullable=False)
+    storage_path: Mapped[str | None] = text_column()
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    template_id: Mapped[str | None] = text_column()
+    metadata_json: Mapped[dict] = json_column("metadata_json")
+    created_at: Mapped[datetime] = created_timestamp()
+
+
+class GenerationJob(Base):
+    """
+    Spec §22 generation_jobs.
+
+    Phase 2 runs no providers, so `provider`/`model`/cost columns stay null.
+    They exist because every expensive generation must be traceable to a job
+    (spec §31 rule 10) and Phase 4 fills them in.
+    """
+
+    __tablename__ = "generation_jobs"
+    __table_args__ = (
+        enum_check("generation_jobs", "status", JOB_STATUSES),
+        enum_check("generation_jobs", "job_type", JOB_TYPES),
+        # Repeated taps on «ساخت کمپین» must not launch several jobs (spec §27).
+        Index(
+            "uq_generation_jobs_active",
+            "campaign_id",
+            unique=True,
+            postgresql_where=text("status in ('queued', 'processing')"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = pk()
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID | None] = user_fk()
+    job_type: Mapped[str] = mapped_column(String, nullable=False)
+    provider: Mapped[str | None] = text_column()
+    model: Mapped[str | None] = text_column()
+    provider_job_id: Mapped[str | None] = text_column()
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    input_json: Mapped[dict] = json_column("input_json")
+    output_json: Mapped[dict] = json_column("output_json")
+    error_message: Mapped[str | None] = text_column()
+    created_at: Mapped[datetime] = created_timestamp()
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

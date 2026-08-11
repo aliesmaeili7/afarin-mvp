@@ -13,3 +13,17 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 coverage/
+
+# Python / backend
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Supabase CLI local stack
+supabase/.branches/
+supabase/.temp/
+
+# Screenshot written when scripts/verify-ui.mjs fails
+verify-ui-failure.png

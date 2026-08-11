@@ -1,0 +1,53 @@
+[project]
+name = "afarin-backend"
+version = "0.1.0"
+description = "Afarin FastAPI backend — persistence, auth and storage"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.118",
+    "uvicorn[standard]>=0.37",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "pyjwt[crypto]>=2.10",
+    "httpx>=0.28",
+    "pillow>=11.0",
+    "python-multipart>=0.0.20",
+    "psycopg[binary]>=3.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "ruff>=0.9",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# Persian fixture strings. A column limit tuned for ASCII identifiers only
+# mangles them, and the copy has to stay byte-identical to the Phase 1 mock.
+"app/content/concepts.py" = ["E501"]
+"app/content/copy.py" = ["E501"]
+# Alembic writes these; reformatting them obscures the diff against autogenerate.
+"migrations/versions/*.py" = ["E501"]
+# Assertions on Persian messages must stay byte-identical to the strings users see.
+"tests/*.py" = ["E501"]
+"scripts/verify_flow.py" = ["E501"]
+
+[tool.uv]
+package = false

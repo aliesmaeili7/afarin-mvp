@@ -1,0 +1,461 @@
+import uuid
+from datetime import UTC, datetime
+from typing import Annotated
+
+from fastapi import APIRouter, File, Request, Response, UploadFile
+from sqlalchemy import select
+
+from app.api.v1.session import ensure_anonymous_owner
+from app.content.backgrounds import backgrounds_for_style
+from app.core import messages
+from app.core.deps import PrincipalDep, SessionDep, SettingsDep
+from app.core.errors import invalid, not_found
+from app.db.models import (
+    Brand,
+    Campaign,
+    CampaignAsset,
+    CampaignCopy,
+    Product,
+    ProductImage,
+)
+from app.schemas.domain import (
+    CampaignAssetOut,
+    CampaignConceptOut,
+    CampaignCopyOut,
+    CampaignDetailOut,
+    CampaignOut,
+    CampaignSummaryOut,
+    ProductImageOut,
+    ProductOut,
+)
+from app.schemas.requests import (
+    AssetTextIn,
+    CreateCampaignIn,
+    ProductIn,
+    UpdateCampaignIn,
+    UpdateCopyIn,
+)
+from app.services.campaigns import materialize as materializer
+from app.services.campaigns import queries, summaries
+from app.services.campaigns.ownership import get_owned_campaign
+from app.services.storage import (
+    StorageRef,
+    get_storage,
+    parse,
+    product_image_key,
+    validate_upload,
+)
+from app.services.storage.paths import SAMPLE_IMAGE_PATH
+
+router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
+
+
+@router.post("", response_model=CampaignOut)
+async def create_campaign(
+    body: CreateCampaignIn,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    principal: PrincipalDep,
+    settings: SettingsDep,
+) -> Campaign:
+    owner = await ensure_anonymous_owner(
+        request, response, session, principal, settings
+    )
+
+    campaign = Campaign(
+        user_id=owner.user_id,
+        anonymous_session_id=owner.anonymous_session_id,
+        brand_id=body.brand_id,
+        status="draft",
+        is_free_campaign=True,
+    )
+    session.add(campaign)
+    await session.flush()
+    return campaign
+
+
+@router.get("", response_model=list[CampaignSummaryOut])
+async def list_campaigns(
+    session: SessionDep, principal: PrincipalDep
+) -> list[CampaignSummaryOut]:
+    if principal.is_authenticated:
+        condition = Campaign.user_id == principal.user_id
+    elif principal.anonymous_session_id is not None:
+        condition = Campaign.anonymous_session_id == principal.anonymous_session_id
+    else:
+        return []
+
+    campaigns = list(
+        await session.scalars(
+            select(Campaign).where(condition).order_by(Campaign.created_at.desc())
+        )
+    )
+
+    result: list[CampaignSummaryOut] = []
+    for campaign in campaigns:
+        # The seeded sample has no assets until someone looks at it, and the
+        # card needs the feed ad to preview.
+        await summaries.ensure_materialized(session, campaign)
+        result.append(await summaries.summarize(session, campaign))
+    return result
+
+
+@router.get("/{campaign_id}", response_model=CampaignDetailOut)
+async def get_campaign(
+    campaign_id: uuid.UUID, session: SessionDep, principal: PrincipalDep
+) -> CampaignDetailOut:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    await summaries.ensure_materialized(session, campaign)
+
+    return CampaignDetailOut(
+        campaign=CampaignOut.model_validate(campaign),
+        product=await queries.product_of(session, campaign),
+        product_images=await queries.images_of(session, campaign),
+        concepts=await queries.concepts_of(session, campaign.id),
+        copies=await queries.copies_of(session, campaign.id),
+        assets=await queries.assets_of(session, campaign.id),
+        brand=await queries.brand_of(session, campaign),
+    )
+
+
+@router.patch("/{campaign_id}", response_model=CampaignOut)
+async def update_campaign(
+    campaign_id: uuid.UUID,
+    body: UpdateCampaignIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> Campaign:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    provided = body.model_fields_set
+
+    if "objective" in provided:
+        campaign.objective = body.objective
+    if "audience" in provided:
+        campaign.audience = body.audience
+    if "visual_style" in provided:
+        campaign.visual_style = body.visual_style
+    if "brand_id" in provided:
+        campaign.brand_id = body.brand_id
+
+    if (
+        campaign.status == "draft"
+        and campaign.product_id
+        and campaign.objective
+        and campaign.visual_style
+    ):
+        campaign.status = "brief_complete"
+
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return campaign
+
+
+@router.post("/{campaign_id}/product", response_model=ProductOut)
+async def save_product(
+    campaign_id: uuid.UUID,
+    body: ProductIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> Product:
+    if not body.name or not body.name.strip():
+        raise invalid(messages.PRODUCT_NAME_REQUIRED)
+
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    product = await _ensure_product(session, campaign)
+
+    product.name = body.name.strip()
+    product.description = (body.description or "").strip() or None
+    product.price_text = (body.price_text or "").strip() or None
+    product.main_benefit = (body.main_benefit or "").strip() or None
+    product.updated_at = datetime.now(UTC)
+
+    brand_name = (body.brand_name or "").strip()
+    if brand_name:
+        await _attach_brand(session, campaign, product, brand_name, principal.user_id)
+
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return product
+
+
+@router.post("/{campaign_id}/images", response_model=list[ProductImageOut])
+async def upload_product_images(
+    campaign_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+    settings: SettingsDep,
+    files: Annotated[list[UploadFile] | None, File()] = None,
+) -> list[ProductImage]:
+    if not files:
+        return []
+
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    product = await _ensure_product(session, campaign)
+
+    existing = await queries.images_of(session, campaign)
+    if len(existing) + len(files) > settings.max_product_images:
+        raise invalid(messages.TOO_MANY_IMAGES)
+
+    storage = get_storage()
+    created: list[ProductImage] = []
+
+    for index, upload in enumerate(files):
+        content = await upload.read()
+        extension = validate_upload(
+            content, upload.content_type or "", settings.max_upload_bytes
+        )
+
+        image = ProductImage(
+            product_id=product.id,
+            storage_path="",
+            is_primary=not existing and index == 0,
+        )
+        session.add(image)
+        await session.flush()
+
+        # Keyed by campaign, not owner, so adoption never has to move bytes.
+        ref = StorageRef(
+            bucket=settings.bucket_product_images,
+            key=product_image_key(campaign.id, image.id, extension),
+        )
+        await storage.upload(ref, content, upload.content_type or "image/webp")
+        image.storage_path = ref.to_path()
+        created.append(image)
+
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return created
+
+
+@router.delete("/{campaign_id}/images/{image_id}", status_code=204)
+async def delete_product_image(
+    campaign_id: uuid.UUID,
+    image_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> None:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+
+    image = await session.scalar(
+        select(ProductImage).where(ProductImage.id == image_id)
+    )
+    if image is None or (
+        campaign.product_id is not None and image.product_id != campaign.product_id
+    ):
+        raise not_found(messages.IMAGE_NOT_FOUND)
+
+    storage_path = image.storage_path
+    was_primary = image.is_primary
+    await session.delete(image)
+    await session.flush()
+
+    if was_primary:
+        remaining = await queries.images_of(session, campaign)
+        if remaining:
+            remaining[0].is_primary = True
+
+    ref = parse(storage_path)
+    if ref is not None:
+        await get_storage().remove(ref)
+
+    await session.flush()
+
+
+@router.post("/{campaign_id}/images/sample", response_model=list[ProductImageOut])
+async def use_sample_product(
+    campaign_id: uuid.UUID, session: SessionDep, principal: PrincipalDep
+) -> list[ProductImage]:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    product = await _ensure_product(session, campaign)
+
+    for image in await queries.images_of(session, campaign):
+        ref = parse(image.storage_path)
+        if ref is not None:
+            await get_storage().remove(ref)
+        await session.delete(image)
+    await session.flush()
+
+    image = ProductImage(
+        product_id=product.id, storage_path=SAMPLE_IMAGE_PATH, is_primary=True
+    )
+    session.add(image)
+
+    # Prefill the brief so the demo path shows a complete example.
+    product.name = product.name or "زعفران ممتاز"
+    product.description = product.description or "زعفران یک گرمی مناسب هدیه"
+    product.price_text = product.price_text or "۳۹۹ هزار تومان"
+    product.main_benefit = product.main_benefit or "بسته‌بندی هدیه و کیفیت صادراتی"
+    product.updated_at = datetime.now(UTC)
+
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return [image]
+
+
+@router.post(
+    "/{campaign_id}/concepts/generate", response_model=list[CampaignConceptOut]
+)
+async def generate_concepts(
+    campaign_id: uuid.UUID, session: SessionDep, principal: PrincipalDep
+):
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+
+    if not campaign.objective or not campaign.visual_style:
+        raise invalid(messages.BRIEF_INCOMPLETE)
+
+    campaign.concept_round = (
+        0 if campaign.concept_round is None else campaign.concept_round + 1
+    )
+    ctx = await queries.build_copy_context(session, campaign)
+    created = await materializer.write_concepts(session, campaign, ctx)
+
+    campaign.selected_concept_id = None
+    campaign.status = "concepts_ready"
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return created
+
+
+@router.post("/{campaign_id}/concepts/{concept_id}/select", response_model=CampaignOut)
+async def select_concept(
+    campaign_id: uuid.UUID,
+    concept_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> Campaign:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+
+    concepts = await queries.concepts_of(session, campaign.id)
+    if not any(concept.id == concept_id for concept in concepts):
+        raise not_found(messages.CONCEPT_NOT_FOUND)
+
+    for concept in concepts:
+        concept.selected = concept.id == concept_id
+
+    campaign.selected_concept_id = concept_id
+    campaign.status = "concept_selected"
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return campaign
+
+
+@router.patch("/{campaign_id}/copy/{copy_id}", response_model=CampaignCopyOut)
+async def update_copy(
+    campaign_id: uuid.UUID,
+    copy_id: uuid.UUID,
+    body: UpdateCopyIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> CampaignCopy:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+
+    copy = await session.scalar(
+        select(CampaignCopy).where(
+            CampaignCopy.id == copy_id, CampaignCopy.campaign_id == campaign.id
+        )
+    )
+    if copy is None:
+        raise not_found(messages.COPY_NOT_FOUND)
+
+    copy.content = body.content
+    copy.updated_at = datetime.now(UTC)
+    await session.flush()
+    return copy
+
+
+@router.post(
+    "/{campaign_id}/assets/{asset_id}/regenerate",
+    response_model=CampaignAssetOut,
+)
+async def regenerate_asset(
+    campaign_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> CampaignAsset:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    asset = await _owned_asset(session, campaign.id, asset_id)
+
+    spec = dict(asset.metadata_json or {})
+    options = backgrounds_for_style(campaign.visual_style)
+    try:
+        current = options.index(spec.get("background_id", ""))
+    except ValueError:
+        current = -1
+    spec["background_id"] = options[(current + 1) % len(options)]
+    spec["failed"] = False
+    asset.metadata_json = spec
+
+    # Retrying the failed asset repairs the campaign as a whole.
+    if campaign.status == "partial_failed":
+        remaining = await queries.assets_of(session, campaign.id)
+        if not any((item.metadata_json or {}).get("failed") for item in remaining):
+            campaign.status = "ready"
+
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return asset
+
+
+@router.patch("/{campaign_id}/assets/{asset_id}", response_model=CampaignAssetOut)
+async def update_asset_text(
+    campaign_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    body: AssetTextIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> CampaignAsset:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    asset = await _owned_asset(session, campaign.id, asset_id)
+
+    patch = body.model_dump(exclude_unset=True)
+    asset.metadata_json = {**(asset.metadata_json or {}), **patch}
+
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return asset
+
+
+async def _owned_asset(session, campaign_id: uuid.UUID, asset_id: uuid.UUID):
+    asset = await session.scalar(
+        select(CampaignAsset).where(
+            CampaignAsset.id == asset_id, CampaignAsset.campaign_id == campaign_id
+        )
+    )
+    if asset is None:
+        raise not_found(messages.ASSET_NOT_FOUND)
+    return asset
+
+
+async def _ensure_product(session, campaign: Campaign) -> Product:
+    product = await queries.product_of(session, campaign)
+    if product is not None:
+        return product
+
+    product = Product(user_id=campaign.user_id, brand_id=campaign.brand_id, name="")
+    session.add(product)
+    await session.flush()
+    campaign.product_id = product.id
+    return product
+
+
+async def _attach_brand(
+    session, campaign: Campaign, product: Product, brand_name: str, user_id
+) -> None:
+    """Reuses a brand of the same name so the Brand Kit gathers no duplicates."""
+    existing = await session.scalar(
+        select(Brand).where(
+            Brand.name == brand_name,
+            (Brand.user_id == user_id) | (Brand.id == campaign.brand_id),
+        )
+    )
+    if existing is None:
+        existing = Brand(
+            user_id=user_id, name=brand_name, visual_style=campaign.visual_style
+        )
+        session.add(existing)
+        await session.flush()
+
+    campaign.brand_id = existing.id
+    product.brand_id = existing.id

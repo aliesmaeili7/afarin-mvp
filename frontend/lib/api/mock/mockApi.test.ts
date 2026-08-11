@@ -65,7 +65,7 @@ describe("mock campaign journey", () => {
       ApiError,
     );
 
-    const session = await mockApi.signUp({ email: "shop@example.com" });
+    const session = await mockApi.verifyEmailCode({ email: "shop@example.com", code: "123456" });
     expect(session.user.email).toBe("shop@example.com");
 
     const started = await mockApi.startGeneration(campaignId);
@@ -121,7 +121,7 @@ describe("mock campaign journey", () => {
     const campaignId = await completeBrief();
     const concepts = await mockApi.generateConcepts(campaignId);
     await mockApi.selectConcept(campaignId, concepts[0].id);
-    await mockApi.signUp({ email: "repeat@example.com" });
+    await mockApi.verifyEmailCode({ email: "repeat@example.com", code: "123456" });
 
     const first = await mockApi.startGeneration(campaignId);
     const second = await mockApi.startGeneration(campaignId);
@@ -146,7 +146,7 @@ describe("mock campaign journey", () => {
     const campaignId = await completeBrief();
     const concepts = await mockApi.generateConcepts(campaignId);
     await mockApi.selectConcept(campaignId, concepts[0].id);
-    await mockApi.signUp({ email: "thumb@example.com" });
+    await mockApi.verifyEmailCode({ email: "thumb@example.com", code: "123456" });
 
     const [beforeGeneration] = await mockApi.listCampaigns();
     expect(beforeGeneration.thumbnail_spec).toBeNull();
@@ -173,9 +173,9 @@ describe("mock campaign journey", () => {
     const campaignId = await completeBrief();
     const concepts = await mockApi.generateConcepts(campaignId);
     await mockApi.selectConcept(campaignId, concepts[0].id);
-    await mockApi.signUp({ email: "owner@example.com" });
+    await mockApi.verifyEmailCode({ email: "owner@example.com", code: "123456" });
     await mockApi.signOut();
-    await mockApi.signUp({ email: "stranger@example.com" });
+    await mockApi.verifyEmailCode({ email: "stranger@example.com", code: "123456" });
 
     await expect(mockApi.getCampaign(campaignId)).rejects.toMatchObject({
       code: "unauthorized",

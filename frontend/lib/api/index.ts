@@ -1,17 +1,21 @@
 import type { AfarinApi } from "./types";
+import { httpApi } from "./http/httpApi";
 import { mockApi } from "./mock/mockApi";
 
 /**
  * Single entry point for all data access.
  *
- * Phase 1 ships only the mock implementation. Phase 2 adds an HTTP client that
- * talks to FastAPI and selects it here via NEXT_PUBLIC_API_MODE — no component,
- * hook or feature module changes.
+ * Both implementations satisfy the same interface, so the switch happens here
+ * and nowhere else: no component, hook or feature module knows which one it is
+ * talking to. `mock` keeps Phase 1 runnable with no backend at all, which is
+ * what makes the migration reversible.
  */
 const apiMode = process.env.NEXT_PUBLIC_API_MODE ?? "mock";
 
 function createApi(): AfarinApi {
   switch (apiMode) {
+    case "http":
+      return httpApi;
     case "mock":
     default:
       return mockApi;
