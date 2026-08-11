@@ -1643,6 +1643,16 @@ Implement:
 
 Do not integrate image generation yet.
 
+### Open question — authentication method
+
+Section 11 specifies Google and email as the signup options, and Phase 1
+implements exactly that.
+
+Before wiring real authentication, decide whether this is right for the target
+market. Iranian Instagram sellers typically cannot reach Google sign-in without
+a VPN, and phone/SMS is the login method they are used to. If phone/OTP is
+chosen instead, section 11 and the Phase 1 signup gate both need updating.
+
 ---
 
 ## Phase 3 — Real campaign reasoning

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500" fill="none">
+  <defs>
+    <linearGradient id="bottle" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#ffe9f1" stop-opacity="0.95" />
+      <stop offset="0.4" stop-color="#f3b8ce" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#c4708f" stop-opacity="0.95" />
+    </linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8e3b0" />
+      <stop offset="0.5" stop-color="#d4ac5c" />
+      <stop offset="1" stop-color="#9c7226" />
+    </linearGradient>
+  </defs>
+
+  <ellipse cx="200" cy="466" rx="104" ry="17" fill="#000" opacity="0.16" />
+
+  <rect x="176" y="46" width="48" height="46" rx="8" fill="url(#cap)" />
+  <rect x="186" y="88" width="28" height="26" rx="4" fill="#b98f3f" />
+
+  <path d="M124 150c0-20 16-36 36-36h80c20 0 36 16 36 36v238c0 32-26 58-58 58h-36c-32 0-58-26-58-58V150z" fill="url(#bottle)" stroke="#d79bb4" stroke-width="3" />
+
+  <rect x="152" y="212" width="96" height="120" rx="10" fill="#ffffff" opacity="0.55" />
+  <rect x="170" y="244" width="60" height="8" rx="4" fill="#a8577a" opacity="0.7" />
+  <rect x="182" y="266" width="36" height="6" rx="3" fill="#a8577a" opacity="0.45" />
+  <circle cx="200" cy="300" r="13" fill="none" stroke="#a8577a" stroke-width="2.5" opacity="0.6" />
+
+  <path d="M146 156h16v250c0 20 10 36 26 44h-8c-32 0-58-26-58-58V174c0-10 10-18 24-18z" fill="#ffffff" opacity="0.45" />
+</svg>

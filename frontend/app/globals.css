@@ -1,0 +1,186 @@
+@import "tailwindcss";
+
+/* Self-hosted Persian typeface. Declared manually (rather than via next/font)
+   so the same same-origin @font-face rules can be inlined by html-to-image
+   when exporting campaign assets to PNG. */
+@font-face {
+  font-family: "Vazirmatn";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/vazirmatn-arabic-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74,
+    U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF,
+    U+1EE00-1EEBB, U+1EEF0-1EEF1;
+}
+
+@font-face {
+  font-family: "Vazirmatn";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/vazirmatn-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@theme {
+  --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink-50: #f7f6fa;
+  --color-ink-100: #efedf4;
+  --color-ink-200: #ddd9e6;
+  --color-ink-300: #bdb6cd;
+  --color-ink-400: #928aa6;
+  --color-ink-500: #6c6382;
+  --color-ink-600: #4f4763;
+  --color-ink-700: #3a3349;
+  --color-ink-800: #262035;
+  --color-ink-900: #17121f;
+
+  --color-brand-50: #f5f1ff;
+  --color-brand-100: #ece4ff;
+  --color-brand-200: #dccdff;
+  --color-brand-300: #c3a7ff;
+  --color-brand-400: #a476fc;
+  --color-brand-500: #8b4df5;
+  --color-brand-600: #7c3aed;
+  --color-brand-700: #6825d1;
+  --color-brand-800: #5620ab;
+  --color-brand-900: #481d8a;
+
+  --color-coral-100: #ffe9e5;
+  --color-coral-300: #ffb3a6;
+  --color-coral-500: #fb7263;
+  --color-coral-600: #e8503f;
+
+  --color-gold-100: #fdf3dd;
+  --color-gold-300: #f2d491;
+  --color-gold-500: #e9b44c;
+  --color-gold-600: #cf9526;
+
+  --color-mint-100: #dff7ee;
+  --color-mint-500: #2fb98a;
+  --color-mint-600: #1f9c72;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+
+  --shadow-soft: 0 1px 2px rgb(23 18 31 / 0.04), 0 8px 24px -12px rgb(23 18 31 / 0.12);
+  --shadow-lift: 0 2px 4px rgb(23 18 31 / 0.05), 0 24px 48px -24px rgb(23 18 31 / 0.28);
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-float: float 7s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-ink-50);
+    color: var(--color-ink-900);
+    font-family: var(--font-sans);
+    /* Persian text needs a little more line height to breathe. */
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    line-height: 1.55;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+
+  /* Latin fragments (emails, handles, URLs) stay LTR but keep hugging the
+     visual start of the field in an RTL form. */
+  [dir="rtl"] input[type="email"],
+  [dir="rtl"] input[type="url"],
+  [dir="rtl"] input[dir="ltr"] {
+    direction: ltr;
+    text-align: right;
+  }
+
+  button,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
+    border-radius: 0.35rem;
+  }
+
+  ::selection {
+    background: var(--color-brand-200);
+  }
+}
+
+@utility pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+@utility pt-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+/* Hides scrollbars on horizontal snap rails without disabling scrolling. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility text-gradient {
+  background: linear-gradient(
+    120deg,
+    var(--color-brand-600),
+    var(--color-coral-500) 55%,
+    var(--color-gold-500)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
