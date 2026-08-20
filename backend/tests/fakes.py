@@ -22,12 +22,18 @@ class FakeLlmClient:
     async def complete_json(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict],
         schema_name: str,
         schema: dict,
+        model: str | None = None,
     ) -> CompletionResult:
         self.calls.append(
-            {"messages": messages, "schema_name": schema_name, "schema": schema}
+            {
+                "messages": messages,
+                "schema_name": schema_name,
+                "schema": schema,
+                "model": model,
+            }
         )
         if self.error is not None:
             raise self.error
@@ -129,13 +135,26 @@ class FakeImageProvider:
             item = self.results.pop(0)
             if isinstance(item, BaseException):
                 raise item
+            if request.n > 1 and not item.contents:
+                frames = tuple(
+                    _tiny_jpeg(len(self.calls) + index) for index in range(request.n)
+                )
+                return ImageResult(
+                    content=frames[0],
+                    contents=frames,
+                    media_type=item.media_type,
+                    usage=item.usage,
+                )
             return item
+        count = max(1, request.n)
+        frames = tuple(_tiny_jpeg(len(self.calls) + index) for index in range(count))
         return ImageResult(
-            content=_tiny_jpeg(len(self.calls)),
+            content=frames[0],
+            contents=frames,
             media_type="image/jpeg",
             usage=ImageUsage(
                 latency_ms=4,
-                cost_usd=Decimal("0.04"),
+                cost_usd=Decimal("0.04") * count,
                 model=self.model,
             ),
         )

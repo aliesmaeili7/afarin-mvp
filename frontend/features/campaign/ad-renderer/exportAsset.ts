@@ -1,17 +1,13 @@
 import { toPng } from "html-to-image";
+import { AD_FONTS } from "./fonts";
 
 /**
  * PNG export of a composed ad.
  *
- * Persian text is the fragile part of DOM-to-image conversion, so the font is
- * inlined as a data URL and the capture waits for both `document.fonts.ready`
- * and every <img> in the subtree before rasterising.
+ * Persian text is the fragile part of DOM-to-image conversion, so every catalog
+ * face is inlined as a data URL and the capture waits for both
+ * `document.fonts.ready` and every <img> in the subtree before rasterising.
  */
-
-const FONT_FILES = [
-  "/fonts/vazirmatn-arabic-wght-normal.woff2",
-  "/fonts/vazirmatn-latin-wght-normal.woff2",
-];
 
 let fontEmbedCssPromise: Promise<string> | null = null;
 
@@ -26,25 +22,31 @@ async function toBase64(response: Response): Promise<string> {
   return btoa(binary);
 }
 
+function mimeFor(format: "woff2" | "truetype"): string {
+  return format === "truetype" ? "font/ttf" : "font/woff2";
+}
+
 export function getFontEmbedCss(): Promise<string> {
   fontEmbedCssPromise ??= (async () => {
     const faces = await Promise.all(
-      FONT_FILES.map(async (path) => {
-        const response = await fetch(path);
-        if (!response.ok) return "";
-        const base64 = await toBase64(response);
-        return [
-          "@font-face {",
-          '  font-family: "Vazirmatn";',
-          "  font-style: normal;",
-          "  font-weight: 100 900;",
-          "  font-display: block;",
-          `  src: url(data:font/woff2;base64,${base64}) format("woff2");`,
-          "}",
-        ].join("\n");
-      }),
+      AD_FONTS.flatMap((font) =>
+        font.faces.map(async (face) => {
+          const response = await fetch(face.path);
+          if (!response.ok) return "";
+          const base64 = await toBase64(response);
+          return [
+            "@font-face {",
+            `  font-family: "${font.family}";`,
+            "  font-style: normal;",
+            `  font-weight: ${face.weight};`,
+            "  font-display: block;",
+            `  src: url(data:${mimeFor(face.format)};base64,${base64}) format("${face.format}");`,
+            "}",
+          ].join("\n");
+        }),
+      ),
     );
-    return faces.join("\n");
+    return faces.filter(Boolean).join("\n");
   })();
 
   return fontEmbedCssPromise;

@@ -21,7 +21,7 @@ import type {
  */
 
 const STORAGE_KEY = "afarin.mock_db";
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 export interface MockGenerationJob {
   id: string;
@@ -51,6 +51,9 @@ export interface MockDbShape {
   generation_jobs: MockGenerationJob[];
   /** How many times concepts have been requested per campaign. */
   concept_rounds: Record<string, number>;
+  /** Email → password. Missing for OTP-only accounts until they set one. */
+  account_passwords: Record<string, string>;
+  pending_password_reset: string | null;
 }
 
 export function newId(prefix: string): string {
@@ -82,6 +85,8 @@ function emptyDb(): MockDbShape {
     campaign_assets: [],
     generation_jobs: [],
     concept_rounds: {},
+    account_passwords: {},
+    pending_password_reset: null,
   };
 }
 

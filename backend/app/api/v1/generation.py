@@ -14,6 +14,7 @@ from app.core.errors import ApiError, invalid
 from app.db.models import Campaign, CampaignCopy, GenerationJob
 from app.providers.image import get_image_provider
 from app.schemas.domain import CampaignStatusOut
+from app.services.campaigns import creative as creative_visuals
 from app.services.campaigns import jobs as job_records
 from app.services.campaigns import materialize as materializer
 from app.services.campaigns import queries
@@ -23,7 +24,7 @@ from app.services.campaigns.stages import compute_progress
 
 router = APIRouter(prefix="/api/campaigns", tags=["generation"])
 
-_TERMINAL = ("ready", "partial_failed", "failed")
+_TERMINAL = ("ready", "partial_failed", "failed", "candidates_ready")
 _VISUAL_JOBS = ("campaign_generation", "image_generation")
 
 
@@ -55,8 +56,12 @@ async def start_generation(
 
     if campaign.selected_concept_id is None:
         raise invalid(messages.CONCEPT_REQUIRED)
+    if (campaign.visual_creation_mode or "accurate") == "creative":
+        recipe = campaign.visual_recipe_json or {}
+        if not recipe.get("style_id") or not recipe.get("template_id"):
+            raise invalid(messages.VISUAL_RECIPE_REQUIRED)
 
-    if campaign.status in ("ready", "partial_failed"):
+    if campaign.status in ("ready", "partial_failed", "candidates_ready"):
         return _status(campaign, None, 100, None)
 
     active = await _active_visual_job(session, campaign.id)
@@ -221,15 +226,32 @@ async def _run_images(
 
     provider_name = get_image_provider().name
     try:
-        final_status, usage, failures = await visualizer.attach_visuals(
-            session, campaign
-        )
+        if (campaign.visual_creation_mode or "accurate") == "creative":
+            source = str((campaign.visual_recipe_json or {}).get("source") or "custom")
+            await creative_visuals.generate_candidates(
+                session, campaign, locked or job, source=source
+            )
+            usage = None
+            failures: list[dict] = []
+            final_status = campaign.status
+        else:
+            final_status, usage, failures = await visualizer.attach_visuals(
+                session, campaign
+            )
     except Exception as error:
         if locked is not None:
             job_records.mark_image_failed(locked, error, provider=provider_name)
-        campaign.status = "partial_failed"
+        if isinstance(error, ApiError) and error.message_fa in (
+            messages.INPUT_QUALITY_NEEDS_FIX,
+            messages.CREATIVE_ATTEMPTS_EXHAUSTED,
+            messages.VISUAL_RECIPE_REQUIRED,
+        ):
+            campaign.status = "concept_selected"
+        else:
+            campaign.status = "partial_failed"
+            if (campaign.visual_creation_mode or "accurate") != "creative":
+                await _mark_finals_failed(session, campaign.id)
         campaign.updated_at = datetime.now(UTC)
-        await _mark_finals_failed(session, campaign.id)
         await session.flush()
         message = (
             error.message_fa
@@ -241,7 +263,14 @@ async def _run_images(
 
     image_output = {"image_errors": failures} if failures else None
     if locked is not None:
-        if final_status == "partial_failed":
+        if (campaign.visual_creation_mode or "accurate") == "creative":
+            output = dict(locked.input_json or {})
+            if image_output:
+                output.update(image_output)
+            job_records.mark_image_succeeded(
+                locked, usage, provider=provider_name, output=output
+            )
+        elif final_status == "partial_failed":
             job_records.mark_image_failed(
                 locked,
                 RuntimeError("one or more scenes failed"),

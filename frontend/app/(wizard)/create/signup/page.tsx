@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { SignupGate } from "@/features/auth/SignupGate";
+import { localeMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = { title: "ساخت حساب رایگان" };
+export const generateMetadata = () => localeMetadata("meta.signup");
 
 export default function Page() {
   return <SignupGate />;

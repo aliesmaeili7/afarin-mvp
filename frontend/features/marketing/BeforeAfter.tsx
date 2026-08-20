@@ -3,6 +3,7 @@
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { useResolvedAssetUrl } from "@/features/campaign/ad-renderer/useResolvedAssetUrl";
 import { ArrowForwardIcon } from "@/components/ui/icons";
+import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { LandingExample } from "@/lib/content/landingExamples";
 
 /**
@@ -11,19 +12,20 @@ import type { LandingExample } from "@/lib/content/landingExamples";
  */
 export function BeforeAfter({ example }: { example: LandingExample }) {
   const rawUrl = useResolvedAssetUrl(example.product_image_path);
+  const { t } = useI18n();
 
   return (
     <div className="flex items-center gap-2 sm:gap-4">
       <figure className="flex-1">
-        <div className="relative aspect-4/5 overflow-hidden rounded-3xl border border-ink-200 bg-white">
+        <div className="relative aspect-4/5 overflow-hidden rounded-3xl border border-border bg-surface">
           <span className="absolute top-3 start-3 z-10 rounded-full bg-ink-900/70 px-2.5 py-1 text-[0.65rem] font-semibold text-white">
-            عکس معمولی
+            {t("landing.beforeLabel")}
           </span>
           {rawUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={rawUrl}
-              alt="عکس معمولی محصول"
+              alt={t("landing.beforeAlt")}
               className="h-full w-full object-contain p-6"
             />
           ) : null}
@@ -37,7 +39,7 @@ export function BeforeAfter({ example }: { example: LandingExample }) {
       <figure className="flex-[1.25]">
         <div className="relative overflow-hidden rounded-3xl shadow-lift">
           <span className="absolute top-3 start-3 z-10 rounded-full bg-brand-600 px-2.5 py-1 text-[0.65rem] font-semibold text-white">
-            تبلیغ آماده
+            {t("landing.afterLabel")}
           </span>
           <AdCanvas spec={example.spec} width={1080} height={1350} />
         </div>

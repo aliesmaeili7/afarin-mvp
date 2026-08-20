@@ -7,11 +7,12 @@ import type {
 } from "react";
 import { useId } from "react";
 import { cn } from "./cn";
+import { useI18n } from "@/lib/i18n/PreferencesProvider";
 
 const CONTROL_CLASSES =
-  "w-full rounded-2xl border border-ink-200 bg-white px-4 py-3 text-[0.95rem] text-ink-900 " +
-  "placeholder:text-ink-300 transition-colors focus:border-brand-400 focus:outline-none " +
-  "focus:ring-4 focus:ring-brand-100 disabled:bg-ink-50";
+  "w-full rounded-2xl border border-border bg-surface px-4 py-3 text-[0.95rem] text-foreground " +
+  "placeholder:text-ink-400 transition-colors focus:border-brand-400 focus:outline-none " +
+  "focus:ring-4 focus:ring-brand-100 disabled:bg-background";
 
 function Label({
   htmlFor,
@@ -22,14 +23,15 @@ function Label({
   children: ReactNode;
   optional?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <label
       htmlFor={htmlFor}
-      className="flex items-center gap-2 text-sm font-semibold text-ink-800"
+      className="flex items-center gap-2 text-sm font-semibold text-foreground"
     >
       {children}
       {optional ? (
-        <span className="text-xs font-normal text-ink-400">(اختیاری)</span>
+        <span className="text-xs font-normal text-muted">({t("common.optional")})</span>
       ) : null}
     </label>
   );
@@ -40,7 +42,7 @@ function Hint({ hint, error }: { hint?: ReactNode; error?: string | null }) {
     return <p className="text-xs font-medium text-coral-600">{error}</p>;
   }
   if (!hint) return null;
-  return <p className="text-xs leading-6 text-ink-400">{hint}</p>;
+  return <p className="text-xs leading-6 text-muted">{hint}</p>;
 }
 
 export interface TextFieldProps
@@ -132,7 +134,7 @@ export function SuggestionChips({
   onSelect,
   activeItem,
 }: {
-  items: readonly string[];
+  items: readonly { value: string; label: string }[];
   onSelect: (value: string) => void;
   activeItem?: string | null;
 }) {
@@ -140,17 +142,17 @@ export function SuggestionChips({
     <div className="flex flex-wrap gap-2">
       {items.map((item) => (
         <button
-          key={item}
+          key={item.value}
           type="button"
-          onClick={() => onSelect(item)}
+          onClick={() => onSelect(item.value)}
           className={cn(
             "flex h-11 items-center rounded-full border px-3.5 text-sm transition-colors sm:h-9",
-            activeItem === item
+            activeItem === item.value
               ? "border-brand-400 bg-brand-50 text-brand-700"
-              : "border-ink-200 bg-white text-ink-600 hover:border-brand-300 hover:text-brand-700",
+              : "border-border bg-surface text-muted hover:border-brand-300 hover:text-brand-700",
           )}
         >
-          {item}
+          {item.label}
         </button>
       ))}
     </div>

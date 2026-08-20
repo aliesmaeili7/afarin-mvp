@@ -88,6 +88,7 @@ export function AssetExportProvider({ children }: { children: ReactNode }) {
             spec={request.spec}
             width={request.width}
             height={request.height}
+            mode="export"
           />
         ) : null}
       </div>

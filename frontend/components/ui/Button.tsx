@@ -1,17 +1,20 @@
+"use client";
+
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "./cn";
+import { useI18n } from "@/lib/i18n/PreferencesProvider";
 
 type Variant = "primary" | "secondary" | "outline" | "ghost" | "subtle";
 type Size = "sm" | "md" | "lg";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-brand-600 text-white shadow-soft hover:bg-brand-700 active:bg-brand-800 disabled:bg-ink-200 disabled:text-ink-400 disabled:shadow-none",
+    "bg-primary text-primary-foreground shadow-soft hover:bg-brand-700 active:bg-brand-800 disabled:bg-ink-200 disabled:text-muted disabled:shadow-none",
   secondary:
-    "bg-ink-900 text-white shadow-soft hover:bg-ink-800 active:bg-ink-900 disabled:bg-ink-200 disabled:text-ink-400 disabled:shadow-none",
+    "bg-foreground text-background shadow-soft hover:opacity-90 disabled:bg-ink-200 disabled:text-muted disabled:shadow-none disabled:opacity-100",
   outline:
-    "border border-ink-200 bg-white text-ink-800 hover:border-brand-300 hover:bg-brand-50 disabled:text-ink-300",
-  ghost: "text-ink-600 hover:bg-ink-100 hover:text-ink-900 disabled:text-ink-300",
+    "border border-border bg-surface text-foreground hover:border-brand-300 hover:bg-brand-50 disabled:text-muted",
+  ghost: "text-muted hover:bg-ink-100 hover:text-foreground disabled:text-muted",
   subtle:
     "bg-brand-50 text-brand-700 hover:bg-brand-100 active:bg-brand-200 disabled:text-brand-300",
 };
@@ -68,6 +71,7 @@ export function Button({
 }
 
 export function Spinner({ className }: { className?: string }) {
+  const { t } = useI18n();
   return (
     <span
       className={cn(
@@ -75,7 +79,7 @@ export function Spinner({ className }: { className?: string }) {
         className,
       )}
       role="status"
-      aria-label="در حال بارگذاری"
+      aria-label={t("common.loading")}
     />
   );
 }

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { api, toPersianError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { ChoiceCard } from "@/components/ui/ChoiceCard";
 import { Skeleton } from "@/components/ui/Feedback";
@@ -15,6 +15,8 @@ import {
 } from "@/lib/content/objectives";
 import { normalizePersian } from "@/lib/format/persian";
 import { useHydratedForm } from "@/lib/hooks/useHydratedForm";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
+import type { TranslationKey } from "@/lib/i18n/t";
 import type { CampaignObjective } from "@/types/domain";
 import { useDraftCampaign } from "../useDraftCampaign";
 import { useWizardGuard } from "../useWizardGuard";
@@ -24,6 +26,8 @@ import { WIZARD_STEPS } from "../wizardSteps";
 export function ObjectiveStep() {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
   const { detail, campaignId, loading } = useDraftCampaign();
   const blocked = useWizardGuard(3, detail, loading, campaignId);
 
@@ -48,7 +52,7 @@ export function ObjectiveStep() {
 
   function handleSuggestAudience() {
     if (!objective) {
-      toast("اول هدف تبلیغ رو انتخاب کن.", "info");
+      toast(t("wizard.pickObjectiveFirst"), "info");
       return;
     }
     setAudience(SUGGESTED_AUDIENCE[objective]);
@@ -64,7 +68,7 @@ export function ObjectiveStep() {
       });
       router.push("/create/style");
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
     } finally {
       setSaving(false);
     }
@@ -74,8 +78,8 @@ export function ObjectiveStep() {
     <WizardShell
       step={WIZARD_STEPS[2]}
       backHref="/create/product"
-      heading="از این تبلیغ چه نتیجه‌ای می‌خوای؟"
-      description="یکی رو انتخاب کن تا لحن و پیام تبلیغ رو متناسبش بنویسیم."
+      heading={t("wizard.objectiveTitle")}
+      description={t("wizard.objectiveDescription")}
       footer={
         <Button
           fullWidth
@@ -84,7 +88,7 @@ export function ObjectiveStep() {
           disabled={!objective}
           onClick={handleContinue}
         >
-          ادامه
+          {t("common.continue")}
         </Button>
       }
     >
@@ -96,8 +100,6 @@ export function ObjectiveStep() {
         </div>
       ) : (
         <div className="flex flex-col gap-8">
-          {/* Two columns even on the narrowest phone, so the audience question
-              below stays visible without scrolling. */}
           <div className="grid grid-cols-2 gap-3">
             {OBJECTIVES.map((option) => (
               <ChoiceCard
@@ -109,34 +111,39 @@ export function ObjectiveStep() {
                     <span className="text-lg leading-none" aria-hidden="true">
                       {option.emoji}
                     </span>
-                    {option.label_fa}
+                    {t(`campaign.objective.${option.value}.label` as TranslationKey)}
                   </span>
                 }
-                description={option.description_fa}
+                description={t(
+                  `campaign.objective.${option.value}.description` as TranslationKey,
+                )}
               />
             ))}
           </div>
 
           <section className="flex flex-col gap-4">
             <div>
-              <h2 className="text-lg font-bold text-ink-900">
-                این محصول بیشتر برای چه کسیه؟
+              <h2 className="text-lg font-bold text-foreground">
+                {t("wizard.audienceTitle")}
               </h2>
-              <p className="mt-1 text-sm leading-7 text-ink-500">
-                لازم نیست دقیق باشه؛ یکی از پیشنهادها رو بزن یا خودت بنویس.
+              <p className="mt-1 text-sm leading-7 text-muted">
+                {t("wizard.audienceHint")}
               </p>
             </div>
 
             <TextField
-              label="مخاطب هدف"
+              label={t("wizard.audienceLabel")}
               optional
-              placeholder="مثلاً خانم‌های ۲۰ تا ۳۵ سال"
+              placeholder={t("wizard.audiencePlaceholder")}
               value={audience}
               onChange={(event) => setAudience(event.target.value)}
             />
 
             <SuggestionChips
-              items={AUDIENCE_SUGGESTIONS}
+              items={AUDIENCE_SUGGESTIONS.map((item) => ({
+                value: item.value_fa,
+                label: t(`campaign.audience.${item.id}` as TranslationKey),
+              }))}
               activeItem={audience}
               onSelect={setAudience}
             />
@@ -146,7 +153,7 @@ export function ObjectiveStep() {
               onClick={handleSuggestAudience}
               className="-mx-2 flex h-11 items-center self-start rounded-xl px-2 text-sm font-semibold text-brand-700 underline-offset-4 hover:underline"
             >
-              مطمئن نیستم — خودت پیشنهاد بده
+              {t("wizard.audienceSuggest")}
             </button>
           </section>
         </div>

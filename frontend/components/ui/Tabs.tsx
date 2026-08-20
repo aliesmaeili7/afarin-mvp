@@ -31,8 +31,8 @@ export function Tabs<T extends string>({
           className={cn(
             "flex-1 whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors",
             value === item.value
-              ? "bg-white text-ink-900 shadow-soft"
-              : "text-ink-500 hover:text-ink-800",
+              ? "bg-surface text-foreground shadow-soft"
+              : "text-muted hover:text-foreground",
           )}
         >
           {item.label}

@@ -27,6 +27,7 @@ export type CampaignStatus =
   | "concept_selected"
   | "queued"
   | "generating"
+  | "candidates_ready"
   | "ready"
   | "partial_failed"
   | "failed";
@@ -50,7 +51,63 @@ export type AssetType =
   | "carousel_2"
   | "carousel_3";
 
-export type BrandAssetType = "logo" | "reference_image" | "product_reference";
+export type VisualCreationMode = "accurate" | "creative";
+
+export interface VisualRecipe {
+  style_id: string;
+  template_id: string;
+  source?: "smart" | "custom";
+  title_fa?: string;
+  description_fa?: string;
+  warning_fa?: string;
+  scene_direction?: string;
+  identity_constraints?: string[];
+  text_safe_area?: string;
+}
+
+export interface VisualCatalogEntry {
+  id: string;
+  label_fa: string;
+  description_fa: string;
+  preview_path: string;
+  default_text_safe_area?: string;
+  needs_person?: boolean;
+  allows_duplicate_products?: boolean;
+}
+
+export interface VisualCatalog {
+  styles: VisualCatalogEntry[];
+  templates: VisualCatalogEntry[];
+}
+
+export interface VisualCandidate {
+  id: string;
+  slot: number;
+  kind: string;
+  storage_path: string;
+  hard_failed: boolean;
+  hidden: boolean;
+  created_at: string;
+}
+
+export interface VisualAttempt {
+  id: string;
+  attempt_number: number;
+  source: string;
+  status: string;
+  auto_repair_used: boolean;
+  selected_candidate_id: string | null;
+  recipe_json: VisualRecipe;
+}
+
+export interface VisualPlanResponse {
+  input_quality: { status: "ok" | "needs_fix"; reasons: string[] };
+  product_type: string;
+  visual_identity: string[];
+  unsuitable_style_ids: string[];
+  unsuitable_template_ids: string[];
+  recipes: VisualRecipe[];
+}
 
 export interface Profile {
   id: string;
@@ -80,6 +137,8 @@ export interface Brand {
   created_at: string;
   updated_at: string;
 }
+
+export type BrandAssetType = "logo" | "reference_image" | "product_reference";
 
 export interface BrandAsset {
   id: string;
@@ -128,6 +187,9 @@ export interface Campaign {
   objective: CampaignObjective | null;
   audience: string | null;
   visual_style: VisualStyle | null;
+  visual_creation_mode?: VisualCreationMode | null;
+  visual_recipe_json?: VisualRecipe | Record<string, unknown>;
+  current_visual_attempt_id?: string | null;
   selected_concept_id: string | null;
   status: CampaignStatus;
   is_free_campaign: boolean;
@@ -169,12 +231,51 @@ export interface CampaignCopy {
   updated_at: string;
 }
 
+export type TextLayerRole =
+  | "headline"
+  | "subheadline"
+  | "cta"
+  | "price"
+  | "brand"
+  | "slide_label"
+  | "custom";
+
+export type TextLayerAlign = "right" | "center" | "left";
+export type TextLayerBackground = "none" | "pill" | "rect";
+export type TextLayerWeight = 400 | 700;
+
+/**
+ * One editable Persian type overlay. Positions are normalized 0–1 against the
+ * asset's own width/height so a 200px preview and a 1080px export match.
+ */
+export interface TextLayer {
+  id: string;
+  role: TextLayerRole;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  font_family: string;
+  font_size: number;
+  font_weight: TextLayerWeight;
+  color: string;
+  text_align: TextLayerAlign;
+  opacity: number;
+  background: TextLayerBackground;
+  background_color: string | null;
+  background_opacity: number;
+  shadow: boolean;
+}
+
 /**
  * Everything the renderer needs to compose one ad format.
  *
  * In Phase 1 `storage_path` is null and the browser composes the asset from
  * this spec. When the backend starts producing real PNGs it will fill
  * `storage_path` and the renderer will prefer it, with no UI changes.
+ *
+ * `text_layers` is optional presentation. Missing/null keeps the original flex
+ * template so old campaigns render unchanged.
  */
 export interface AssetRenderSpec {
   template_id: string;
@@ -191,10 +292,15 @@ export interface AssetRenderSpec {
    * cutout = rembg PNG; crop = seller-approved rectangle (rembg unavailable);
    * original = bundled sample. Never a silent full-screenshot fallback.
    */
-  product_source?: "cutout" | "crop" | "original";
+  product_source?: "cutout" | "crop" | "original" | "generated";
   slide_label_fa?: string | null;
   /** Set when this particular asset failed while the rest of the campaign succeeded. */
   failed?: boolean;
+  /**
+   * Free-positioned type. Absent = legacy flex layout. Null after reset.
+   * Each visual asset stores its own array so Feed/Story/Carousel stay independent.
+   */
+  text_layers?: TextLayer[] | null;
 }
 
 export interface CampaignAsset {
@@ -218,6 +324,8 @@ export interface CampaignDetail {
   copies: CampaignCopy[];
   assets: CampaignAsset[];
   brand: Brand | null;
+  visual_attempt?: VisualAttempt | null;
+  visual_candidates?: VisualCandidate[];
 }
 
 /** Compact shape for dashboard cards. */

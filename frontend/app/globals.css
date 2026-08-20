@@ -26,6 +26,79 @@
     U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+@font-face {
+  font-family: "Estedad";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/fonts/estedad-arabic-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Estedad";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/fonts/estedad-arabic-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Estedad";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/fonts/estedad-latin-400.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Estedad";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/fonts/estedad-latin-700.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Gandom";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("/fonts/gandom-regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Amiri";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/fonts/amiri-arabic-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Amiri";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/fonts/amiri-arabic-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Lalezar";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("/fonts/lalezar-arabic-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Lalezar";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("/fonts/lalezar-latin-400.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+FEFF, U+FFFD;
+}
+
 @theme {
   --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
 
@@ -39,6 +112,7 @@
   --color-ink-700: #3a3349;
   --color-ink-800: #262035;
   --color-ink-900: #17121f;
+  --color-ink-950: #0b0710;
 
   --color-brand-50: #f5f1ff;
   --color-brand-100: #ece4ff;
@@ -75,6 +149,55 @@
   --animate-fade-up: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-shimmer: shimmer 1.6s linear infinite;
   --animate-float: float 7s ease-in-out infinite;
+
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-danger: var(--danger);
+  --color-focus-ring: var(--focus-ring);
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f7f6fa;
+  --surface: #ffffff;
+  --surface-elevated: #ffffff;
+  --foreground: #17121f;
+  --muted: #6c6382;
+  --border: #ddd9e6;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --danger: #e8503f;
+  --focus-ring: #7c3aed;
+}
+
+.dark {
+  --background: #14111a;
+  --surface: #1c1824;
+  --surface-elevated: #262033;
+  --foreground: #f4f1fa;
+  --muted: #a89fb8;
+  --border: #3a3349;
+  --primary: #a476fc;
+  --primary-foreground: #17121f;
+  --danger: #fb7263;
+  --focus-ring: #c3a7ff;
+  --color-ink-50: #1a1622;
+  --color-ink-100: #262033;
+  --color-ink-200: #3a3349;
+  --color-brand-50: #2a1f45;
+  --color-brand-100: #3a2a5c;
+  --color-coral-100: #3d1f22;
+  --color-mint-100: #16352c;
+  --color-gold-100: #3a3018;
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.24), 0 8px 24px -12px rgb(0 0 0 / 0.45);
+  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.28), 0 24px 48px -24px rgb(0 0 0 / 0.55);
 }
 
 @keyframes fade-up {
@@ -114,13 +237,17 @@
   }
 
   body {
-    background-color: var(--color-ink-50);
-    color: var(--color-ink-900);
+    background-color: var(--background);
+    color: var(--foreground);
     font-family: var(--font-sans);
     /* Persian text needs a little more line height to breathe. */
     line-height: 1.8;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  html[lang="en"] body {
+    line-height: 1.65;
   }
 
   h1,
@@ -147,7 +274,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brand-600);
+    outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
     border-radius: 0.35rem;
   }

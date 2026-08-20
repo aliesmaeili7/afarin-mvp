@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { StyleStep } from "@/features/campaign/wizard/steps/StyleStep";
+import { localeMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = { title: "حس تبلیغ" };
+export const generateMetadata = () => localeMetadata("meta.wizardStyle");
 
 export default function Page() {
   return <StyleStep />;

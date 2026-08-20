@@ -1,14 +1,14 @@
 import { Suspense } from "react";
 import { AuthCallback } from "@/features/auth/AuthCallback";
+import { localeMetadata } from "@/lib/i18n/metadata";
 
-export const metadata = {
-  title: "در حال ورود…",
-};
+export const generateMetadata = () => localeMetadata("meta.authCallback");
 
 /**
- * Where Google sends the user back.
+ * Where Google (and a misdirected recovery link) sends the user back.
  *
- * Only reachable during OAuth; email sign-in never leaves the app.
+ * Password recovery itself lands on /auth/reset-password. If a hosted
+ * project still points recovery at this route, we forward it.
  */
 export default function AuthCallbackPage() {
   return (

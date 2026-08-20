@@ -86,12 +86,18 @@ def _inline_refs(node: Any, defs: dict[str, Any]) -> Any:
 
 def _require_closed_objects(node: Any) -> Any:
     if isinstance(node, dict):
-        cleaned = {key: _require_closed_objects(value) for key, value in node.items()}
+        cleaned = {
+            key: _require_closed_objects(value)
+            for key, value in node.items()
+            if key != "default"
+        }
         if cleaned.get("type") == "object":
             cleaned["additionalProperties"] = False
             cleaned.setdefault("properties", {})
-            if "required" not in cleaned:
-                cleaned["required"] = list(cleaned["properties"].keys())
+            # OpenAI/OpenRouter strict mode rejects defaults and requires every
+            # property listed. Pydantic omits fields with defaults from
+            # `required`, which 400s the visual planner.
+            cleaned["required"] = list(cleaned["properties"].keys())
         return cleaned
     if isinstance(node, list):
         return [_require_closed_objects(item) for item in node]

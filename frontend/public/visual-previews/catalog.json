@@ -1,0 +1,212 @@
+{
+  "styles": [
+    {
+      "id": "photoreal_commercial",
+      "label_fa": "عکاسی تجاری واقعی",
+      "description_fa": "نور استودیویی، بافت واقعی، حس فروشگاه آنلاین.",
+      "preview_path": "/visual-previews/styles/photoreal_commercial.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "fashion_editorial",
+      "label_fa": "ادیتوریال مد",
+      "description_fa": "ژست و ترکیب‌بندی مجله‌ای، نور سینمایی.",
+      "preview_path": "/visual-previews/styles/fashion_editorial.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "anime",
+      "label_fa": "انیمه",
+      "description_fa": "خط تمیز، رنگ‌های زنده، حس انیمیشن مدرن.",
+      "preview_path": "/visual-previews/styles/anime.jpg",
+      "default_text_safe_area": "top"
+    },
+    {
+      "id": "manga_illustrated",
+      "label_fa": "مانگا و تصویرسازی",
+      "description_fa": "جوهر، هاشور و حس صفحه کمیک.",
+      "preview_path": "/visual-previews/styles/manga_illustrated.jpg",
+      "default_text_safe_area": "top"
+    },
+    {
+      "id": "render_3d",
+      "label_fa": "رندر سه‌بعدی",
+      "description_fa": "سطح براق، نورپردازی نرم سه‌بعدی.",
+      "preview_path": "/visual-previews/styles/render_3d.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "clay",
+      "label_fa": "خمیری",
+      "description_fa": "بافت دست‌ساز و حجم نرم خمیر.",
+      "preview_path": "/visual-previews/styles/clay.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "collage",
+      "label_fa": "کلاژ",
+      "description_fa": "لایه‌های بریده، کاغذ و بافت چاپی.",
+      "preview_path": "/visual-previews/styles/collage.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "surreal",
+      "label_fa": "سوررئال",
+      "description_fa": "مقیاس غیرعادی و فضای رویایی.",
+      "preview_path": "/visual-previews/styles/surreal.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "cinematic",
+      "label_fa": "سینمایی",
+      "description_fa": "نور فیلم، عمق میدان و حس سکانس.",
+      "preview_path": "/visual-previews/styles/cinematic.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "retro",
+      "label_fa": "رترو",
+      "description_fa": "رنگ و بافت دهه‌های گذشته، بدون کپی اثر مشخص.",
+      "preview_path": "/visual-previews/styles/retro.jpg",
+      "default_text_safe_area": "top"
+    },
+    {
+      "id": "watercolor_illustration",
+      "label_fa": "آبرنگ",
+      "description_fa": "رنگ دانه، کاغذ مرطوب و حس نقاشی.",
+      "preview_path": "/visual-previews/styles/watercolor_illustration.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "neon",
+      "label_fa": "نئون",
+      "description_fa": "شب شهری، نور نئون و کنتراست بالا.",
+      "preview_path": "/visual-previews/styles/neon.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "persian_miniature_inspired",
+      "label_fa": "الهام از نگارگری",
+      "description_fa": "الگوی ایرانی، رنگ تخت و ترکیب تزئینی — نه کپی یک اثر.",
+      "preview_path": "/visual-previews/styles/persian_miniature_inspired.jpg",
+      "default_text_safe_area": "bottom"
+    },
+    {
+      "id": "vintage_iranian_poster",
+      "label_fa": "پوستر قدیمی ایرانی",
+      "description_fa": "ترکیب پوستر میان‌قرن، بافت چاپ سنگی — نه بازسازی یک پوستر معروف.",
+      "preview_path": "/visual-previews/styles/vintage_iranian_poster.jpg",
+      "default_text_safe_area": "top"
+    }
+  ],
+  "templates": [
+    {
+      "id": "hero_product",
+      "label_fa": "محصول قهرمان",
+      "description_fa": "محصول در مرکز، واضح و بزرگ.",
+      "preview_path": "/visual-previews/templates/hero_product.jpg",
+      "default_text_safe_area": "bottom",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "model_using",
+      "label_fa": "در حال استفاده",
+      "description_fa": "یک نفر محصول را پوشیده یا استفاده می‌کند.",
+      "preview_path": "/visual-previews/templates/model_using.jpg",
+      "default_text_safe_area": "bottom",
+      "needs_person": true,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "product_pedestal",
+      "label_fa": "روی پایه",
+      "description_fa": "محصول روی استند یا سطح نمایش.",
+      "preview_path": "/visual-previews/templates/product_pedestal.jpg",
+      "default_text_safe_area": "top",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "magazine_cover",
+      "label_fa": "جلد مجله",
+      "description_fa": "ترکیب جلد، با فضای خالی برای تیتر آفرین.",
+      "preview_path": "/visual-previews/templates/magazine_cover.jpg",
+      "default_text_safe_area": "top",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "giant_miniature_world",
+      "label_fa": "غول در شهر کوچک",
+      "description_fa": "محصول غول‌پیکر در یک دنیای مینیاتوری.",
+      "preview_path": "/visual-previews/templates/giant_miniature_world.jpg",
+      "default_text_safe_area": "bottom",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "cinematic_environment",
+      "label_fa": "فضای سینمایی",
+      "description_fa": "محصول داخل یک محیط فیلمی.",
+      "preview_path": "/visual-previews/templates/cinematic_environment.jpg",
+      "default_text_safe_area": "bottom",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "floating_product",
+      "label_fa": "محصول معلق",
+      "description_fa": "شناور در فضا، نور از اطراف.",
+      "preview_path": "/visual-previews/templates/floating_product.jpg",
+      "default_text_safe_area": "bottom",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "flat_lay",
+      "label_fa": "فلت‌لی",
+      "description_fa": "نمای از بالا، چیدمان مرتب.",
+      "preview_path": "/visual-previews/templates/flat_lay.jpg",
+      "default_text_safe_area": "bottom",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "character_poster",
+      "label_fa": "پوستر شخصیت",
+      "description_fa": "شخصیت یا مدل به‌عنوان پوستر کمپین.",
+      "preview_path": "/visual-previews/templates/character_poster.jpg",
+      "default_text_safe_area": "top",
+      "needs_person": true,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "illustrated_scene",
+      "label_fa": "صحنه تصویرسازی",
+      "description_fa": "محصول داخل یک صحنه کشیده‌شده.",
+      "preview_path": "/visual-previews/templates/illustrated_scene.jpg",
+      "default_text_safe_area": "bottom",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "product_with_props",
+      "label_fa": "با المان‌های مرتبط",
+      "description_fa": "محصول میان وسایل مرتبط با کاربردش.",
+      "preview_path": "/visual-previews/templates/product_with_props.jpg",
+      "default_text_safe_area": "bottom",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    },
+    {
+      "id": "surreal_scale",
+      "label_fa": "مقیاس غیرعادی",
+      "description_fa": "محصول خیلی بزرگ یا خیلی کوچک در فضا.",
+      "preview_path": "/visual-previews/templates/surreal_scale.jpg",
+      "default_text_safe_area": "bottom",
+      "needs_person": false,
+      "allows_duplicate_products": false
+    }
+  ]
+}

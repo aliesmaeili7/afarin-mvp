@@ -30,6 +30,7 @@ CAMPAIGN_STATUSES = (
     "concept_selected",
     "queued",
     "generating",
+    "candidates_ready",
     "ready",
     "partial_failed",
     "failed",
@@ -65,7 +66,24 @@ JOB_TYPES = (
     "concept_generation",
     "copy_rewrite",
     "image_generation",
+    "visual_planner",
+    "visual_quality_check",
 )
+
+VISUAL_CREATION_MODES = ("accurate", "creative")
+
+VISUAL_ATTEMPT_SOURCES = ("smart", "custom")
+
+VISUAL_ATTEMPT_STATUSES = (
+    "generating",
+    "awaiting_selection",
+    "selected",
+    "superseded",
+)
+
+VISUAL_CANDIDATE_KINDS = ("primary", "repair")
+
+IMAGE_OUTPUT_ROLES = ("candidate", "repair", "story_adaptation", "empty_scene")
 
 VISUAL_FINAL_TYPES = (
     "feed_final",

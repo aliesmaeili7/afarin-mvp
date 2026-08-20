@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { api, toPersianError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { TextField } from "@/components/ui/Field";
 import { SparkleIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { CampaignDetail } from "@/types/domain";
 
 /**
@@ -23,6 +24,8 @@ export function BrandKitPrompt({
   onSaved: () => void;
 }) {
   const { toast } = useToast();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
   const [name, setName] = useState(detail.brand?.name ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -30,7 +33,7 @@ export function BrandKitPrompt({
 
   async function handleSave() {
     if (!name.trim()) {
-      toast("اسم برند رو بنویس.", "error");
+      toast(t("errors.brandNameRequired"), "error");
       return;
     }
     setSaving(true);
@@ -52,9 +55,9 @@ export function BrandKitPrompt({
 
       track("brand_saved");
       onSaved();
-      toast("برندت ذخیره شد");
+      toast(t("brand.brandSaved"));
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
     } finally {
       setSaving(false);
     }
@@ -64,15 +67,13 @@ export function BrandKitPrompt({
     return (
       <Card className="flex flex-col gap-3 bg-brand-50/60 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-base font-bold text-ink-900">
-            برند «{savedBrand.name}» ذخیره شده
+          <h3 className="text-base font-bold text-foreground">
+            {t("brand.promptSavedTitle", { name: savedBrand.name })}
           </h3>
-          <p className="mt-1 text-sm leading-7 text-ink-500">
-            کمپین بعدی‌ات با همین اطلاعات سریع‌تر ساخته می‌شه.
-          </p>
+          <p className="mt-1 text-sm leading-7 text-muted">{t("brand.promptSavedBody")}</p>
         </div>
         <Link href={`/brands/${savedBrand.id}`} className="shrink-0">
-          <Button variant="outline">مشاهده برند</Button>
+          <Button variant="outline">{t("brand.viewBrand")}</Button>
         </Link>
       </Card>
     );
@@ -85,24 +86,20 @@ export function BrandKitPrompt({
           <SparkleIcon width={20} height={20} />
         </span>
         <div>
-          <h3 className="text-base font-bold text-ink-900">
-            این اطلاعات رو برای کمپین بعدی ذخیره کنیم؟
-          </h3>
-          <p className="mt-1 text-sm leading-7 text-ink-500">
-            دفعه بعد دیگه لازم نیست مخاطب و سبک تبلیغ رو دوباره وارد کنی.
-          </p>
+          <h3 className="text-base font-bold text-foreground">{t("brand.promptTitle")}</h3>
+          <p className="mt-1 text-sm leading-7 text-muted">{t("brand.promptBody")}</p>
         </div>
       </div>
 
       <TextField
-        label="اسم برند یا کسب‌وکار"
-        placeholder="مثلاً سحند"
+        label={t("wizard.productBrand")}
+        placeholder={t("wizard.productBrandPlaceholder")}
         value={name}
         onChange={(event) => setName(event.target.value)}
       />
 
       <Button loading={saving} onClick={handleSave}>
-        ذخیره برند
+        {t("brand.saveBrand")}
       </Button>
     </Card>
   );

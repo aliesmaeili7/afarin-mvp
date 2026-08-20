@@ -24,20 +24,20 @@ export function ChoiceCard({
       onClick={onSelect}
       aria-pressed={selected}
       className={cn(
-        "group relative flex w-full flex-col overflow-hidden rounded-3xl border bg-white text-start transition-all duration-150",
+        "group relative flex w-full flex-col overflow-hidden rounded-3xl border bg-surface text-start transition-all duration-150",
         "active:scale-[0.99]",
         selected
           ? "border-brand-500 shadow-lift ring-2 ring-brand-200"
-          : "border-ink-100 shadow-soft hover:border-brand-300",
+          : "border-border shadow-soft hover:border-brand-300",
         className,
       )}
     >
       {media}
       <span className="flex items-start gap-3 p-4">
         <span className="min-w-0 flex-1">
-          <span className="block text-base font-bold text-ink-900">{title}</span>
+          <span className="block text-base font-bold text-foreground">{title}</span>
           {description ? (
-            <span className="mt-1 block text-sm leading-6 text-ink-500">
+            <span className="mt-1 block text-sm leading-6 text-muted">
               {description}
             </span>
           ) : null}

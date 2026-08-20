@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { api, toPersianError } from "@/lib/api";
+import Link from "next/link";
+import { api } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ErrorState } from "@/components/ui/Feedback";
 import { DownloadIcon, EditIcon, RefreshIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { AssetRenderSpec, CampaignAsset } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { useAssetExport } from "@/features/campaign/ad-renderer/AssetExportProvider";
-import { EditTextSheet } from "./EditTextSheet";
 
 export function SectionHeading({
   title,
@@ -25,9 +26,9 @@ export function SectionHeading({
   return (
     <div className="mb-4 flex items-end justify-between gap-3">
       <div>
-        <h2 className="text-lg font-extrabold text-ink-900">{title}</h2>
+        <h2 className="text-lg font-extrabold text-foreground">{title}</h2>
         {description ? (
-          <p className="mt-1 text-sm leading-7 text-ink-500">{description}</p>
+          <p className="mt-1 text-sm leading-7 text-muted">{description}</p>
         ) : null}
       </div>
       {action}
@@ -53,8 +54,9 @@ export function AssetSection({
   onChanged: () => void;
 }) {
   const { toast } = useToast();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
   const { exportAsset, exporting } = useAssetExport();
-  const [editing, setEditing] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
 
   const spec = asset.metadata_json as AssetRenderSpec;
@@ -69,7 +71,7 @@ export function AssetSection({
       });
       track("asset_downloaded", { asset_type: asset.asset_type });
     } catch {
-      toast("دانلود انجام نشد. دوباره امتحان کن.", "error");
+      toast(t("result.downloadFailed"), "error");
     }
   }
 
@@ -79,9 +81,9 @@ export function AssetSection({
       await api.regenerateAsset(campaignId, asset.id);
       track("regeneration_requested", { asset_type: asset.asset_type });
       onChanged();
-      toast("یک نسخه تازه ساخته شد");
+      toast(t("result.regenerated"));
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
     } finally {
       setRegenerating(false);
     }
@@ -92,12 +94,16 @@ export function AssetSection({
       <section>
         <SectionHeading title={title} description={description} />
         <ErrorState
-          title="این بخش ساخته نشد"
-          description="بقیه کمپینت آماده‌ست. می‌تونی فقط همین بخش رو دوباره بسازی."
+          title={t("result.sectionFailed")}
+          description={
+            allowRegenerate ? t("result.sectionFailedRetry") : t("result.sectionFailedRest")
+          }
           action={
-            <Button loading={regenerating} onClick={handleRegenerate}>
-              ساخت دوباره
-            </Button>
+            allowRegenerate ? (
+              <Button loading={regenerating} onClick={handleRegenerate}>
+                {t("result.rebuild")}
+              </Button>
+            ) : null
           }
         />
       </section>
@@ -118,23 +124,27 @@ export function AssetSection({
             />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 border-t border-ink-100 p-3">
+        <div className="flex flex-wrap gap-2 border-t border-border p-3">
           <Button
             className="flex-1"
             loading={exporting}
             onClick={handleDownload}
             iconStart={<DownloadIcon width={18} height={18} />}
           >
-            دانلود
+            {t("common.download")}
           </Button>
-          <Button
-            variant="outline"
+          <Link
+            href={`/campaigns/${campaignId}/assets/${asset.id}/edit`}
             className="flex-1"
-            onClick={() => setEditing(true)}
-            iconStart={<EditIcon width={18} height={18} />}
           >
-            ویرایش متن
-          </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              iconStart={<EditIcon width={18} height={18} />}
+            >
+              {t("common.editText")}
+            </Button>
+          </Link>
           {allowRegenerate ? (
             <Button
               variant="ghost"
@@ -143,19 +153,11 @@ export function AssetSection({
               onClick={handleRegenerate}
               iconStart={<RefreshIcon width={18} height={18} />}
             >
-              نسخه جدید
+              {t("result.newVersion")}
             </Button>
           ) : null}
         </div>
       </Card>
-
-      <EditTextSheet
-        asset={asset}
-        campaignId={campaignId}
-        open={editing}
-        onClose={() => setEditing(false)}
-        onSaved={onChanged}
-      />
     </section>
   );
 }

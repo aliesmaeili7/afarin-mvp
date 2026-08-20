@@ -73,7 +73,12 @@ class Settings(BaseSettings):
     llm_max_retries: int = 2
     llm_http_referer: str = "http://localhost:3000"
     llm_app_title: str = "Afarin"
-    # Empty scenes only. The product never goes through this model.
+    # Empty = LLM_MODEL. Creative planner/quality vision stays env-configurable.
+    visual_planner_model: str = ""
+    # Until credits exist: initial creative generation + this many minus one
+    # user-requested «سه نسخه جدید» rounds.
+    max_creative_attempts_per_campaign: int = 3
+    # Empty scenes only in accurate mode. Creative mode may send references.
     image_model: str = "bytedance-seed/seedream-4.5"
     # Seedream 4.5 rejects 1K for 4:5 / 9:16 (under ~3.7MP). 2K is valid.
     image_resolution: str = "2K"
@@ -104,6 +109,10 @@ class Settings(BaseSettings):
     @property
     def jwt_issuer(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/auth/v1"
+
+    @property
+    def planner_model(self) -> str:
+        return self.visual_planner_model.strip() or self.llm_model
 
 
 @lru_cache

@@ -92,6 +92,15 @@ export function EditIcon(props: IconProps) {
   );
 }
 
+export function SettingsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3.5v1.6M12 18.9v1.6M4.9 6.4l1.1 1.1M18 17.5l1.1 1.1M3.5 12h1.6M18.9 12h1.6M4.9 17.6l1.1-1.1M18 6.5l1.1-1.1" />
+    </Icon>
+  );
+}
+
 export function SparkleIcon(props: IconProps) {
   return (
     <Icon {...props}>

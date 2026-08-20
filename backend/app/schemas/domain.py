@@ -9,7 +9,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, PlainSerializer
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
 
 
 def _iso_z(value: datetime) -> str:
@@ -81,6 +81,9 @@ class CampaignOut(Model):
     objective: str | None
     audience: str | None
     visual_style: str | None
+    visual_creation_mode: str | None = None
+    visual_recipe_json: dict[str, Any] = Field(default_factory=dict)
+    current_visual_attempt_id: OptionalId = None
     selected_concept_id: OptionalId
     status: str
     is_free_campaign: bool
@@ -124,6 +127,26 @@ class CampaignAssetOut(Model):
     created_at: Timestamp
 
 
+class VisualCandidateOut(Model):
+    id: Id
+    slot: int
+    kind: str
+    storage_path: str
+    hard_failed: bool
+    hidden: bool
+    created_at: Timestamp
+
+
+class VisualAttemptOut(Model):
+    id: Id
+    attempt_number: int
+    source: str
+    status: str
+    auto_repair_used: bool
+    selected_candidate_id: OptionalId
+    recipe_json: dict[str, Any]
+
+
 class CampaignDetailOut(Model):
     campaign: CampaignOut
     product: ProductOut | None
@@ -132,6 +155,8 @@ class CampaignDetailOut(Model):
     copies: list[CampaignCopyOut]
     assets: list[CampaignAssetOut]
     brand: BrandOut | None
+    visual_attempt: VisualAttemptOut | None = None
+    visual_candidates: list[VisualCandidateOut] = Field(default_factory=list)
 
 
 class CampaignSummaryOut(Model):

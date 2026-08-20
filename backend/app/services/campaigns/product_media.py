@@ -77,6 +77,27 @@ async def save_crop(
     await session.flush()
 
 
+async def load_reference_bytes(
+    session: AsyncSession, campaign: Campaign
+) -> tuple[bytes | None, str | None]:
+    """Crop JPEG when present; never the uncropped screenshot."""
+    images = await _images(session, campaign)
+    if not images:
+        return None, None
+    primary = next((image for image in images if image.is_primary), images[0])
+    path = primary.crop_storage_path or (
+        primary.storage_path if is_public(primary.storage_path) else None
+    )
+    if path is None:
+        return None, None
+    if is_public(path):
+        buffer = io.BytesIO()
+        Image.new("RGB", (320, 400), (180, 140, 90)).save(buffer, format="JPEG")
+        return buffer.getvalue(), path
+    data = await _download(path)
+    return data, path
+
+
 async def prepare_product_layer(
     session: AsyncSession, campaign: Campaign
 ) -> tuple[str | None, str]:

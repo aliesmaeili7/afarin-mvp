@@ -16,7 +16,20 @@ class UpdateCampaignIn(BaseModel):
     objective: str | None = None
     audience: str | None = None
     visual_style: str | None = None
+    visual_creation_mode: str | None = None
     brand_id: uuid.UUID | None = None
+
+
+class VisualRecipeIn(BaseModel):
+    style_id: str
+    template_id: str
+    source: str = "custom"
+    scene_direction: str = ""
+    identity_constraints: list[str] | None = None
+    title_fa: str | None = None
+    description_fa: str | None = None
+    warning_fa: str = ""
+    text_safe_area: str | None = None
 
 
 class ProductIn(BaseModel):
@@ -32,6 +45,8 @@ class AssetTextIn(BaseModel):
     subheadline_fa: str | None = None
     cta_fa: str | None = None
     price_text: str | None = None
+    # None clears a custom layout and restores the generated flex template.
+    text_layers: list[dict] | None = None
 
 
 class BrandIn(BaseModel):

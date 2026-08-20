@@ -6,6 +6,12 @@ from app.providers.llm import get_content_provider
 from app.providers.llm.base import ContentProvider, LlmUsage
 
 
+def apply_llm_usage(job: GenerationJob, usage: LlmUsage) -> None:
+    _write_llm_usage(job, usage)
+    if usage.model:
+        job.model = usage.model
+
+
 def apply_usage(job: GenerationJob, provider: ContentProvider | None = None) -> None:
     """Copy the last LLM call onto the job. Stub leaves tokens/cost null."""
     active = provider or get_content_provider()

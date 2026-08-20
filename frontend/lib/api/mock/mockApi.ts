@@ -14,6 +14,7 @@ import type {
   Product,
   ProductImage,
   Session,
+  VisualRecipe,
 } from "@/types/domain";
 import {
   ApiError,
@@ -24,12 +25,22 @@ import {
   type ProductInput,
   type EmailCodeRequest,
   type EmailCodeVerification,
+  type EmailPasswordCredentials,
+  type PasswordResetRequest,
   type RewriteIntent,
   type UpdateCampaignInput,
+  type UpdatePasswordInput,
 } from "@/lib/api/types";
 import { backgroundsForStyle } from "@/lib/content/backgrounds";
 import * as imageStore from "@/lib/storage/imageStore";
 import { FULL_CROP } from "@/features/campaign/wizard/cropMath";
+import {
+  applyRoleText,
+  parseTextLayers,
+  specWithLayers,
+  syncContentFieldsFromLayers,
+  TextLayerValidationError,
+} from "@/features/campaign/ad-renderer/textLayers";
 import {
   buildConcepts,
   buildSubheadline,
@@ -506,6 +517,9 @@ export const mockApi: AfarinApi = {
         objective: null,
         audience: null,
         visual_style: null,
+        visual_creation_mode: null,
+        visual_recipe_json: {},
+        current_visual_attempt_id: null,
         selected_concept_id: null,
         status: "draft",
         is_free_campaign: true,
@@ -538,6 +552,8 @@ export const mockApi: AfarinApi = {
           (asset) => asset.campaign_id === campaign.id,
         ),
         brand: brandOf(db, campaign),
+        visual_attempt: null,
+        visual_candidates: [],
       };
     });
   },
@@ -564,6 +580,12 @@ export const mockApi: AfarinApi = {
       if (patch.audience !== undefined) campaign.audience = patch.audience;
       if (patch.visual_style !== undefined) {
         campaign.visual_style = patch.visual_style;
+      }
+      if (patch.visual_creation_mode !== undefined) {
+        campaign.visual_creation_mode = patch.visual_creation_mode;
+        if (patch.visual_creation_mode === "accurate") {
+          campaign.visual_recipe_json = {};
+        }
       }
       if (patch.brand_id !== undefined) campaign.brand_id = patch.brand_id;
 
@@ -850,6 +872,88 @@ export const mockApi: AfarinApi = {
     });
   },
 
+  async getVisualCatalog() {
+    const response = await fetch("/visual-previews/catalog.json");
+    if (!response.ok) {
+      return { styles: [], templates: [] };
+    }
+    return response.json();
+  },
+
+  async planVisuals(campaignId: string) {
+    await delay(LATENCY.concepts);
+    const campaign = findCampaign(readDb(), campaignId);
+    assertOwnership(readDb(), campaign);
+    return {
+      input_quality: { status: "ok" as const, reasons: [] },
+      product_type: "product",
+      visual_identity: ["رنگ غالب محصول"],
+      unsuitable_style_ids: [],
+      unsuitable_template_ids: [],
+      recipes: [
+        {
+          style_id: "photoreal_commercial",
+          template_id: "hero_product",
+          source: "smart" as const,
+          title_fa: "واقعی و واضح",
+          description_fa: "محصول در مرکز، مناسب فروش.",
+        },
+        {
+          style_id: "anime",
+          template_id: "illustrated_scene",
+          source: "smart" as const,
+          title_fa: "تصویرسازی زنده",
+          description_fa: "همان محصول در یک صحنه رنگی.",
+        },
+        {
+          style_id: "surreal",
+          template_id: "giant_miniature_world",
+          source: "smart" as const,
+          title_fa: "ایده غیرمنتظره",
+          description_fa: "محصول غول‌پیکر در یک دنیای کوچک.",
+        },
+      ],
+    };
+  },
+
+  async saveVisualRecipe(campaignId: string, recipe: VisualRecipe) {
+    await delay(LATENCY.write);
+    return mutateDb((db) => {
+      const campaign = findCampaign(db, campaignId);
+      assertOwnership(db, campaign);
+      campaign.visual_creation_mode = "creative";
+      campaign.visual_recipe_json = recipe;
+      campaign.updated_at = nowIso();
+      return { ...campaign };
+    });
+  },
+
+  async selectVisualCandidate(campaignId: string, candidateId: string) {
+    await delay(LATENCY.write);
+    return mutateDb((db) => {
+      const campaign = findCampaign(db, campaignId);
+      assertOwnership(db, campaign);
+      campaign.status = "ready";
+      campaign.updated_at = nowIso();
+      void candidateId;
+      return { ...campaign };
+    });
+  },
+
+  async regenerateVisuals(campaignId: string) {
+    await delay(LATENCY.write);
+    const campaign = findCampaign(readDb(), campaignId);
+    assertOwnership(readDb(), campaign);
+    return {
+      campaign_id: campaignId,
+      status: "candidates_ready" as const,
+      stage: null,
+      percent: 100,
+      message_fa: null,
+      failed_asset_types: [],
+    };
+  },
+
   async startGeneration(campaignId: string): Promise<CampaignStatusResponse> {
     await delay(LATENCY.write);
     return mutateDb((db) => {
@@ -872,7 +976,11 @@ export const mockApi: AfarinApi = {
       if (active || campaign.status === "generating" || campaign.status === "queued") {
         return statusResponse(campaign, "planning", 1, "کمپینت توی صف ساخته…");
       }
-      if (campaign.status === "ready" || campaign.status === "partial_failed") {
+      if (
+        campaign.status === "ready" ||
+        campaign.status === "partial_failed" ||
+        campaign.status === "candidates_ready"
+      ) {
         return statusResponse(campaign, null, 100, null);
       }
 
@@ -1070,7 +1178,64 @@ export const mockApi: AfarinApi = {
       );
       if (!asset) throw new ApiError("not_found", "این تصویر پیدا نشد.");
 
-      asset.metadata_json = { ...(asset.metadata_json as AssetRenderSpec), ...patch };
+      let spec = { ...(asset.metadata_json as AssetRenderSpec) };
+      const { text_layers: nextLayers, ...copyPatch } = patch;
+      spec = { ...spec, ...copyPatch };
+      if (copyPatch.headline_fa !== undefined && spec.text_layers) {
+        spec = {
+          ...spec,
+          text_layers: applyRoleText(
+            spec.text_layers,
+            "headline",
+            copyPatch.headline_fa,
+          ),
+        };
+      }
+      if (copyPatch.cta_fa !== undefined && spec.text_layers) {
+        spec = {
+          ...spec,
+          text_layers: applyRoleText(spec.text_layers, "cta", copyPatch.cta_fa ?? ""),
+        };
+      }
+      if (copyPatch.subheadline_fa !== undefined && spec.text_layers) {
+        spec = {
+          ...spec,
+          text_layers: applyRoleText(
+            spec.text_layers,
+            "subheadline",
+            copyPatch.subheadline_fa ?? "",
+          ),
+        };
+      }
+      if (copyPatch.price_text !== undefined && spec.text_layers) {
+        spec = {
+          ...spec,
+          text_layers: applyRoleText(
+            spec.text_layers,
+            "price",
+            copyPatch.price_text ?? "",
+          ),
+        };
+      }
+      if ("text_layers" in patch) {
+        if (nextLayers === null) {
+          spec = specWithLayers(spec, null);
+        } else {
+          try {
+            const layers = parseTextLayers(nextLayers);
+            spec = syncContentFieldsFromLayers(specWithLayers(spec, layers), layers);
+          } catch (caught) {
+            if (caught instanceof TextLayerValidationError && caught.code === "too_many") {
+              throw new ApiError(
+                "validation_error",
+                "حداکثر ۱۰ متن می‌تونی به این تصویر اضافه کنی.",
+              );
+            }
+            throw new ApiError("validation_error", "این ویرایش متن معتبر نیست.");
+          }
+        }
+      }
+      asset.metadata_json = spec;
       campaign.updated_at = nowIso();
       return { ...asset };
     });
@@ -1097,8 +1262,14 @@ export const mockApi: AfarinApi = {
       const productName = product?.name ?? "محصول شما";
       if (intent === "new_headline") {
         spec.headline_fa = stubRewrite(intent, spec.headline_fa, "headline", productName);
+        if (spec.text_layers) {
+          spec.text_layers = applyRoleText(spec.text_layers, "headline", spec.headline_fa);
+        }
       } else {
         spec.cta_fa = stubRewrite(intent, spec.cta_fa ?? "", "cta", productName);
+        if (spec.text_layers) {
+          spec.text_layers = applyRoleText(spec.text_layers, "cta", spec.cta_fa ?? "");
+        }
         const ctaCopy = db.campaign_copy.find(
           (item) => item.campaign_id === campaign.id && item.copy_type === "cta",
         );
@@ -1182,6 +1353,77 @@ export const mockApi: AfarinApi = {
       });
       return { ...brand };
     });
+  },
+
+  async signInWithPassword(input: EmailPasswordCredentials): Promise<Session> {
+    await delay(LATENCY.auth);
+    if (!isEmail(input.email)) {
+      throw new ApiError("validation_error", "ایمیل معتبر وارد کن.");
+    }
+    if (input.password.length < 8) {
+      throw new ApiError("validation_error", "رمز باید حداقل ۸ حرف باشه.");
+    }
+    const email = input.email.trim().toLowerCase();
+    const db = readDb();
+    const stored = db.account_passwords[email];
+    if (stored !== input.password) {
+      throw new ApiError("validation_error", "ایمیل یا رمز درست نیست.");
+    }
+    return createMockSession(email);
+  },
+
+  async signUpWithPassword(input: EmailPasswordCredentials): Promise<Session> {
+    await delay(LATENCY.auth);
+    if (!isEmail(input.email)) {
+      throw new ApiError("validation_error", "ایمیل معتبر وارد کن.");
+    }
+    if (input.password.length < 8) {
+      throw new ApiError("validation_error", "رمز باید حداقل ۸ حرف باشه.");
+    }
+    const email = input.email.trim().toLowerCase();
+    mutateDb((db) => {
+      db.account_passwords[email] = input.password;
+    });
+    return createMockSession(email);
+  },
+
+  async requestPasswordReset(input: PasswordResetRequest): Promise<void> {
+    await delay(LATENCY.auth);
+    if (!isEmail(input.email)) {
+      throw new ApiError("validation_error", "ایمیل معتبر وارد کن.");
+    }
+    mutateDb((db) => {
+      db.pending_password_reset = input.email.trim().toLowerCase();
+    });
+  },
+
+  async ensurePasswordRecoverySession(): Promise<void> {
+    const db = readDb();
+    if (db.pending_password_reset || db.session) return;
+    throw new ApiError(
+      "unauthorized",
+      "این لینک معتبر نیست یا منقضی شده. دوباره درخواست بده.",
+    );
+  },
+
+  async updatePassword(input: UpdatePasswordInput): Promise<Session> {
+    await delay(LATENCY.auth);
+    if (input.password.length < 8) {
+      throw new ApiError("validation_error", "رمز باید حداقل ۸ حرف باشه.");
+    }
+    const db = readDb();
+    const email = db.pending_password_reset ?? db.session?.user.email ?? null;
+    if (!email) {
+      throw new ApiError(
+        "unauthorized",
+        "این لینک معتبر نیست یا منقضی شده. دوباره درخواست بده.",
+      );
+    }
+    mutateDb((state) => {
+      state.account_passwords[email] = input.password;
+      state.pending_password_reset = null;
+    });
+    return createMockSession(email);
   },
 
   async requestEmailCode(input: EmailCodeRequest): Promise<void> {

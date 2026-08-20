@@ -149,9 +149,11 @@ over:
 
 ### 5.2 Persian first
 
-The product UI is RTL and Persian by default.
+The product UI is Persian-first and RTL by default.
 
-English may be added later.
+Sellers may switch chrome to English (LTR) and appearance to system, light, or dark. Those preferences are cookies (`afarin_locale`, `afarin_theme`); routes stay the same — there is no `/fa` or `/en`.
+
+UI language is not campaign language. Generated copy, captions, planner recipe titles, and PNG exports stay Persian and are not recolored by app theme.
 
 Code, API schemas and database fields should remain in English.
 
@@ -548,7 +550,12 @@ Supporting text:
 Authentication options:
 
 * Google
-* email
+* email + password
+* email OTP, as an alternative
+* password recovery / first-time password setup for accounts that were created with OTP
+
+Existing OTP-only accounts must be able to set a password through
+**رمز عبور را فراموش کرده‌ام**. They are never told to sign up again.
 
 After signup, immediately continue campaign generation.
 
@@ -1548,25 +1555,26 @@ Store detailed errors for admin/debugging.
 
 # 28. RTL and Persian UX requirements
 
-Set:
+Default document:
 
 ```html
 dir="rtl"
 lang="fa"
 ```
 
-for Persian user-facing pages.
+English chrome uses `dir="ltr"` and `lang="en"` on the same routes. Ad canvases stay `dir="rtl"` so generated Persian type never inherits LTR.
 
 Requirements:
 
 * Persian-friendly font
-* correct RTL form layout
+* correct RTL form layout (and LTR when English chrome is on)
 * correct mixed Persian/English handling
-* Persian number display where appropriate
+* number and relative-date display follow UI locale in chrome only; prices inside ads stay as generated
 * proper ی/ي and ک/ك normalization where useful
 * preserve نیم‌فاصله
-* buttons and icons must make sense in RTL
+* buttons and icons must make sense in RTL and LTR
 * mobile forms must be comfortable with Persian keyboards
+* dark mode is chrome-only; exported ads keep spec colors
 
 ---
 
@@ -1684,6 +1692,13 @@ Implement:
 * generation job persistence
 * failure handling
 * generated background storage
+* **Phase 4B** two visual modes:
+  * `accurate` (دقیق): empty scene + preserved product pixels (2 image outputs)
+  * `creative` (خلاقانه): reference-image generation, 3 candidates + 1 Story adaptation (4 image outputs; at most 1 extra repair). Campaign cap: `MAX_CREATIVE_ATTEMPTS_PER_CAMPAIGN` (default 3).
+* Visual planner (multimodal LLM) and Visual Recipe catalog (style × template)
+* Candidate selection UI; Persian type remains AdCanvas, never in the image model
+
+Cost accounting counts **image outputs**, not HTTP requests.
 
 ---
 
@@ -1810,7 +1825,7 @@ Every credit movement must be traceable in `credit_ledger`.
 
 ### Rule 12
 
-UI must remain Persian-first and RTL.
+UI must remain Persian-first and RTL by default. Optional English chrome does not change generated campaign language.
 
 ### Rule 13
 

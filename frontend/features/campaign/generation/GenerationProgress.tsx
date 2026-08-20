@@ -8,8 +8,11 @@ import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/Stepper";
 import { CheckIcon } from "@/components/ui/icons";
 import { cn } from "@/components/ui/cn";
-import { toPersianDigits } from "@/lib/format/persian";
+import { formatPercent } from "@/lib/format/display";
 import { GENERATION_STAGES } from "@/lib/api/mock/generation";
+import { generationStageMessage } from "@/lib/i18n/errors";
+import { useI18n } from "@/lib/i18n/PreferencesProvider";
+import type { TranslationKey } from "@/lib/i18n/t";
 import type { CampaignStatusResponse } from "@/types/domain";
 
 const POLL_INTERVAL_MS = 1200;
@@ -27,6 +30,7 @@ export function GenerationProgress({
   campaignId: string;
   onFinished: () => void;
 }) {
+  const { t, locale } = useI18n();
   const [status, setStatus] = useState<CampaignStatusResponse | null>(null);
   const finishedRef = useRef(false);
 
@@ -43,11 +47,12 @@ export function GenerationProgress({
         const settled =
           next.status === "ready" ||
           next.status === "partial_failed" ||
-          next.status === "failed";
+          next.status === "failed" ||
+          next.status === "candidates_ready";
 
         if (settled && !finishedRef.current) {
           finishedRef.current = true;
-          if (next.status !== "failed") {
+          if (next.status === "ready" || next.status === "partial_failed") {
             track("campaign_completed", { campaign_id: campaignId });
           }
           // Let the bar visibly reach 100% before switching views.
@@ -73,7 +78,7 @@ export function GenerationProgress({
   const percent = status?.percent ?? 0;
 
   return (
-    <div className="min-h-dvh bg-ink-50">
+    <div className="min-h-dvh bg-background">
       <Container size="sm" className="flex min-h-dvh flex-col justify-center py-10">
         <div className="text-center">
           <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-gradient-to-bl from-brand-600 via-brand-500 to-coral-500 text-white shadow-lift">
@@ -81,22 +86,19 @@ export function GenerationProgress({
               ✨
             </span>
           </div>
-          <h1 className="mt-5 text-2xl font-extrabold text-ink-900">
-            داریم کمپینت رو می‌سازیم
+          <h1 className="mt-5 text-2xl font-extrabold text-foreground">
+            {t("generation.title")}
           </h1>
-          <p className="mt-2 text-sm leading-7 text-ink-500">
-            معمولاً کمتر از یک دقیقه طول می‌کشه. می‌تونی این صفحه رو ببندی؛ ساخت
-            کمپین ادامه پیدا می‌کنه.
-          </p>
+          <p className="mt-2 text-sm leading-7 text-muted">{t("generation.subtitle")}</p>
         </div>
 
         <Card className="mt-8 p-5">
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-sm font-semibold text-ink-700">
-              {status?.message_fa ?? "در حال آماده‌سازی…"}
+              {generationStageMessage(locale, status?.stage, status?.message_fa)}
             </span>
             <span className="text-sm font-bold tabular-nums text-brand-600">
-              ٪{toPersianDigits(percent)}
+              {formatPercent(percent, locale)}
             </span>
           </div>
           <div className="mt-3">
@@ -131,11 +133,11 @@ export function GenerationProgress({
                       done
                         ? "text-ink-400 line-through decoration-ink-300"
                         : current
-                          ? "font-semibold text-ink-900"
+                          ? "font-semibold text-foreground"
                           : "text-ink-400",
                     )}
                   >
-                    {stage.message_fa}
+                    {t(`generation.${stage.stage}` as TranslationKey)}
                   </span>
                 </li>
               );

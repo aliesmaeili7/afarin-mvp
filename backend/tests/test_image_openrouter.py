@@ -145,6 +145,27 @@ async def test_payload_omits_1k_when_discovery_fails() -> None:
     assert "output_format" not in recorded["body"]
 
 
+async def test_references_are_image_url_objects() -> None:
+    recorded: dict = {}
+    jpeg = b"\xff\xd8\xff" + b"x" * 12
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/images/models"):
+            return httpx.Response(200, json=_capabilities())
+        recorded["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": [{"b64_json": "aGVsbG8="}]})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = OpenRouterImageClient(_settings(), http=http)
+    await client.generate(
+        ImageRequest(prompt="hero", aspect_ratio="4:5", references=(jpeg,))
+    )
+    refs = recorded["body"]["input_references"]
+    assert isinstance(refs[0], dict)
+    assert refs[0]["type"] == "image_url"
+    assert refs[0]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
 async def test_campaign_job_records_openrouter_400(
     client: AsyncClient, storage
 ) -> None:

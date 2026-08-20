@@ -6,14 +6,17 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Container } from "./Container";
 import { Logo } from "./Logo";
+import { PreferencesTrigger } from "./PreferencesSheet";
 import { useSessionStore } from "@/features/auth/sessionStore";
 import { beginNewCampaign } from "@/features/campaign/wizard/useWizardStore";
-import { toPersianError } from "@/lib/api";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
 import { useToast } from "@/components/ui/Toast";
 
 export function SiteHeader({ showCta = true }: { showCta?: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
   const session = useSessionStore((state) => state.session);
   const loaded = useSessionStore((state) => state.loaded);
   const load = useSessionStore((state) => state.load);
@@ -31,7 +34,7 @@ export function SiteHeader({ showCta = true }: { showCta?: boolean }) {
       await beginNewCampaign();
       router.push("/create");
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
       setStarting(false);
     }
   }
@@ -42,13 +45,13 @@ export function SiteHeader({ showCta = true }: { showCta?: boolean }) {
       await signOut();
       router.push("/");
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
       setLeaving(false);
     }
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-ink-100/80 bg-ink-50/85 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
       <Container size="lg" className="flex h-16 items-center justify-between gap-3">
         <Logo />
         {showCta ? (
@@ -57,12 +60,12 @@ export function SiteHeader({ showCta = true }: { showCta?: boolean }) {
               <>
                 <Link
                   href="/dashboard"
-                  className="rounded-xl px-3 py-2 text-sm font-semibold text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-900"
+                  className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-muted transition-colors hover:bg-ink-100 hover:text-foreground sm:inline-flex"
                 >
-                  داشبورد
+                  {t("nav.dashboard")}
                 </Link>
                 <Button size="sm" loading={starting} onClick={() => void handleNewCampaign()}>
-                  کمپین جدید
+                  {t("nav.newCampaign")}
                 </Button>
                 <Button
                   size="sm"
@@ -70,23 +73,26 @@ export function SiteHeader({ showCta = true }: { showCta?: boolean }) {
                   loading={leaving}
                   onClick={() => void handleSignOut()}
                 >
-                  خروج
+                  {t("nav.signOut")}
                 </Button>
               </>
             ) : (
               <>
                 <Link href="/login">
                   <Button size="sm" variant="ghost">
-                    ورود
+                    {t("nav.login")}
                   </Button>
                 </Link>
                 <Link href="/create">
-                  <Button size="sm">ساخت کمپین رایگان</Button>
+                  <Button size="sm">{t("nav.freeCampaign")}</Button>
                 </Link>
               </>
             )}
+            <PreferencesTrigger />
           </nav>
-        ) : null}
+        ) : (
+          <PreferencesTrigger />
+        )}
       </Container>
     </header>
   );

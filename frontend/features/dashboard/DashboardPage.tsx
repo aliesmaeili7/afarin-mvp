@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, toPersianError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
 import { Container } from "@/components/layout/Container";
 import { SiteHeader } from "@/components/layout/SiteHeader";
@@ -12,29 +12,37 @@ import { Badge, Card } from "@/components/ui/Card";
 import { EmptyState, Skeleton } from "@/components/ui/Feedback";
 import { ImageIcon, PlusIcon, SparkleIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
-import { formatRelativeDay } from "@/lib/format/persian";
+import { formatRelativeDay } from "@/lib/format/display";
 import { useAsyncData } from "@/lib/hooks/useAsyncData";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
+import type { TranslationKey } from "@/lib/i18n/t";
 import type { Brand, CampaignStatus, CampaignSummary } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { useResolvedAssetUrl } from "@/features/campaign/ad-renderer/useResolvedAssetUrl";
 import { useSessionStore } from "@/features/auth/sessionStore";
 import { beginNewCampaign } from "@/features/campaign/wizard/useWizardStore";
 
-const STATUS_LABELS: Record<CampaignStatus, { label: string; tone: "neutral" | "brand" | "success" | "warning" | "danger" }> = {
-  draft: { label: "ناتمام", tone: "neutral" },
-  brief_complete: { label: "ناتمام", tone: "neutral" },
-  concepts_ready: { label: "انتخاب ایده", tone: "brand" },
-  concept_selected: { label: "آماده ساخت", tone: "brand" },
-  queued: { label: "در صف", tone: "warning" },
-  generating: { label: "در حال ساخت", tone: "warning" },
-  ready: { label: "آماده", tone: "success" },
-  partial_failed: { label: "ناقص", tone: "warning" },
-  failed: { label: "ناموفق", tone: "danger" },
+const STATUS_TONES: Record<
+  CampaignStatus,
+  "neutral" | "brand" | "success" | "warning" | "danger"
+> = {
+  draft: "neutral",
+  brief_complete: "neutral",
+  concepts_ready: "brand",
+  concept_selected: "brand",
+  candidates_ready: "brand",
+  queued: "warning",
+  generating: "warning",
+  ready: "success",
+  partial_failed: "warning",
+  failed: "danger",
 };
 
 export function DashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
 
   const session = useSessionStore((state) => state.session);
   const sessionLoaded = useSessionStore((state) => state.loaded);
@@ -70,14 +78,14 @@ export function DashboardPage() {
       track("campaign_repeated", { brand_id: brandId });
       router.push("/create");
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
       setCreating(null);
     }
   }
 
   if (!sessionLoaded) {
     return (
-      <div className="min-h-dvh bg-ink-50">
+      <div className="min-h-dvh bg-background">
         <SiteHeader />
         <Container size="lg" className="flex flex-col gap-4 py-8">
           <Skeleton className="h-10 w-1/3" />
@@ -90,16 +98,16 @@ export function DashboardPage() {
 
   if (!session) {
     return (
-      <div className="min-h-dvh bg-ink-50">
+      <div className="min-h-dvh bg-background">
         <SiteHeader />
         <Container size="sm" className="py-16">
           <EmptyState
             icon={<SparkleIcon />}
-            title="هنوز وارد نشدی"
-            description="با ساخت اولین کمپین، حساب رایگانت ساخته می‌شه و کمپین‌هات اینجا ذخیره می‌مونه."
+            title={t("dashboard.loggedOutTitle")}
+            description={t("dashboard.loggedOutDescription")}
             action={
               <Link href="/create">
-                <Button>ساخت کمپین رایگان</Button>
+                <Button>{t("nav.freeCampaign")}</Button>
               </Link>
             }
           />
@@ -109,7 +117,7 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-ink-50">
+    <div className="min-h-dvh bg-background">
       <SiteHeader />
 
       <Container size="lg" className="flex flex-col gap-10 py-8">
@@ -117,10 +125,8 @@ export function DashboardPage() {
           <div>
             {/* No greeting by name: the mock account only knows an email
                 address, and a Latin local-part reads badly in a Persian UI. */}
-            <h1 className="text-2xl font-extrabold text-ink-900">سلام 👋</h1>
-            <p className="mt-1 text-sm leading-7 text-ink-500">
-              کمپین بعدی‌ات رو بساز یا کمپین‌های قبلی رو ببین.
-            </p>
+            <h1 className="text-2xl font-extrabold text-foreground">{t("dashboard.hello")}</h1>
+            <p className="mt-1 text-sm leading-7 text-muted">{t("dashboard.subtitle")}</p>
           </div>
           <Button
             size="lg"
@@ -128,13 +134,13 @@ export function DashboardPage() {
             onClick={() => startCampaign(null)}
             iconStart={<PlusIcon width={18} height={18} />}
           >
-            کمپین جدید بساز
+            {t("dashboard.create")}
           </Button>
         </header>
 
         <section>
-          <h2 className="mb-4 text-lg font-extrabold text-ink-900">
-            کمپین‌های اخیر
+          <h2 className="mb-4 text-lg font-extrabold text-foreground">
+            {t("dashboard.recent")}
           </h2>
           {!sessionLoaded || campaigns.loading ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -145,10 +151,10 @@ export function DashboardPage() {
           ) : (campaigns.data ?? []).length === 0 ? (
             <EmptyState
               icon={<ImageIcon />}
-              title="هنوز کمپینی نساختی"
-              description="اولین کمپینت رایگانه."
+              title={t("dashboard.emptyTitle")}
+              description={t("dashboard.emptyDescription")}
               action={
-                <Button onClick={() => startCampaign(null)}>ساخت کمپین</Button>
+                <Button onClick={() => startCampaign(null)}>{t("dashboard.emptyAction")}</Button>
               }
             />
           ) : (
@@ -161,7 +167,7 @@ export function DashboardPage() {
         </section>
 
         <section>
-          <h2 className="mb-4 text-lg font-extrabold text-ink-900">برندهای من</h2>
+          <h2 className="mb-4 text-lg font-extrabold text-foreground">{t("dashboard.brands")}</h2>
           {!sessionLoaded || brands.loading ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Skeleton className="h-28" />
@@ -169,23 +175,23 @@ export function DashboardPage() {
             </div>
           ) : (brands.data ?? []).length === 0 ? (
             <EmptyState
-              title="هنوز برندی ذخیره نکردی"
-              description="بعد از ساخت اولین کمپین می‌تونی اطلاعات برندت رو ذخیره کنی."
+              title={t("dashboard.brandsEmptyTitle")}
+              description={t("dashboard.brandsEmptyDescription")}
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {(brands.data ?? []).map((brand) => (
                 <Card key={brand.id} className="flex flex-col gap-3 p-5">
                   <div>
-                    <h3 className="text-base font-bold text-ink-900">{brand.name}</h3>
-                    <p className="mt-1 line-clamp-2 text-sm leading-7 text-ink-500">
-                      {brand.description ?? "بدون توضیح"}
+                    <h3 className="text-base font-bold text-foreground">{brand.name}</h3>
+                    <p className="mt-1 line-clamp-2 text-sm leading-7 text-muted">
+                      {brand.description ?? t("common.noDescription")}
                     </p>
                   </div>
                   <div className="mt-auto flex gap-2">
                     <Link href={`/brands/${brand.id}`} className="flex-1">
                       <Button variant="outline" size="sm" fullWidth>
-                        ویرایش برند
+                        {t("dashboard.editBrand")}
                       </Button>
                     </Link>
                     <Button
@@ -194,7 +200,7 @@ export function DashboardPage() {
                       loading={creating === brand.id}
                       onClick={() => startCampaign(brand.id)}
                     >
-                      کمپین جدید
+                      {t("nav.newCampaign")}
                     </Button>
                   </div>
                 </Card>
@@ -208,11 +214,11 @@ export function DashboardPage() {
 }
 
 function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
+  const { t, locale } = useI18n();
   const photoUrl = useResolvedAssetUrl(
     campaign.thumbnail_spec ? null : campaign.thumbnail_path,
   );
-  const status = STATUS_LABELS[campaign.status];
-  const subtitle = [campaign.brand_name, formatRelativeDay(campaign.created_at)]
+  const subtitle = [campaign.brand_name, formatRelativeDay(campaign.created_at, locale)]
     .filter(Boolean)
     .join(" · ");
 
@@ -223,7 +229,6 @@ function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
           {campaign.thumbnail_spec ? (
             <AdCanvas
               spec={campaign.thumbnail_spec}
-              storagePath={campaign.thumbnail_path}
               width={1080}
               height={1350}
             />
@@ -243,14 +248,16 @@ function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-ink-900">
-              {campaign.product_name ?? "کمپین بدون نام"}
+            <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
+              {campaign.product_name ?? t("common.untitledCampaign")}
             </h3>
-            <Badge tone={status.tone}>{status.label}</Badge>
+            <Badge tone={STATUS_TONES[campaign.status]}>
+              {t(`campaign.status.${campaign.status}` as TranslationKey)}
+            </Badge>
           </div>
           <p className="mt-1 truncate text-xs text-ink-400">{subtitle}</p>
           <span className="mt-auto pt-2 text-sm font-semibold text-brand-700 underline-offset-4 group-hover:underline">
-            مشاهده
+            {t("common.view")}
           </span>
         </div>
       </Card>

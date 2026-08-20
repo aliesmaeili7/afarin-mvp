@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { api, toPersianError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
 import type { RewriteIntent } from "@/lib/api/types";
 import { Button } from "@/components/ui/Button";
@@ -11,15 +11,10 @@ import { Tabs } from "@/components/ui/Tabs";
 import { CopyIcon, EditIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
 import { useClipboard } from "@/lib/hooks/useClipboard";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { CampaignCopy, CopyType } from "@/types/domain";
 import { SectionHeading } from "./AssetSection";
 import { CAPTION_REWRITE_CHIPS, RewriteChips } from "./RewriteChips";
-
-const CAPTION_TABS: { value: CopyType; label: string }[] = [
-  { value: "caption_short", label: "کوتاه و مستقیم" },
-  { value: "caption_friendly", label: "صمیمی" },
-  { value: "caption_persuasive", label: "تبلیغاتی" },
-];
 
 export function CaptionsSection({
   campaignId,
@@ -31,6 +26,8 @@ export function CaptionsSection({
   onChanged: () => void;
 }) {
   const { toast } = useToast();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
   const copy = useClipboard();
 
   const [active, setActive] = useState<CopyType>("caption_short");
@@ -44,6 +41,12 @@ export function CaptionsSection({
 
   if (!current) return null;
 
+  const captionTabs: { value: CopyType; label: string }[] = [
+    { value: "caption_short", label: t("result.captionShort") },
+    { value: "caption_friendly", label: t("result.captionFriendly") },
+    { value: "caption_persuasive", label: t("result.captionPersuasive") },
+  ];
+
   async function handleSave() {
     if (!current) return;
     setSaving(true);
@@ -51,9 +54,9 @@ export function CaptionsSection({
       await api.updateCopy(campaignId, current.id, draft);
       onChanged();
       setEditing(false);
-      toast("کپشن ذخیره شد");
+      toast(t("result.captionSaved"));
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
     } finally {
       setSaving(false);
     }
@@ -66,9 +69,9 @@ export function CaptionsSection({
       const updated = await api.rewriteCopy(campaignId, current.id, intent);
       onChanged();
       setDraft(updated.content);
-      toast("متن جدید آماده شد");
+      toast(t("result.textReady"));
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
     } finally {
       setRewriting(false);
     }
@@ -77,11 +80,11 @@ export function CaptionsSection({
   return (
     <section>
       <SectionHeading
-        title="کپشن‌ها"
-        description="سه لحن مختلف؛ هرکدوم رو خواستی کپی یا ویرایش کن."
+        title={t("result.captionsTitle")}
+        description={t("result.captionsDescription")}
       />
 
-      <Tabs items={CAPTION_TABS} value={active} onChange={setActive} />
+      <Tabs items={captionTabs} value={active} onChange={setActive} />
 
       <Card className="mt-3 p-4">
         <p className="whitespace-pre-line text-[0.95rem] leading-8 text-ink-800">
@@ -91,7 +94,7 @@ export function CaptionsSection({
         {hashtags ? (
           <p
             dir="rtl"
-            className="mt-4 border-t border-ink-100 pt-3 text-sm leading-8 text-brand-700"
+            className="mt-4 border-t border-border pt-3 text-sm leading-8 text-brand-700"
           >
             {hashtags.content}
           </p>
@@ -112,12 +115,12 @@ export function CaptionsSection({
               const text = hashtags
                 ? `${current.content}\n\n${hashtags.content}`
                 : current.content;
-              void copy(text, "کپشن کپی شد");
+              void copy(text, t("result.captionCopied"));
               track("caption_copied", { copy_type: current.copy_type });
             }}
             iconStart={<CopyIcon width={18} height={18} />}
           >
-            کپی
+            {t("common.copy")}
           </Button>
           <Button
             variant="outline"
@@ -128,7 +131,7 @@ export function CaptionsSection({
             }}
             iconStart={<EditIcon width={18} height={18} />}
           >
-            ویرایش
+            {t("common.edit")}
           </Button>
         </div>
       </Card>
@@ -136,7 +139,7 @@ export function CaptionsSection({
       <Sheet
         open={editing}
         onClose={() => setEditing(false)}
-        title="ویرایش کپشن"
+        title={t("result.editCaption")}
         footer={
           <div className="flex gap-2">
             <Button
@@ -144,10 +147,10 @@ export function CaptionsSection({
               className="flex-1"
               onClick={() => setEditing(false)}
             >
-              انصراف
+              {t("common.cancel")}
             </Button>
             <Button className="flex-1" loading={saving} onClick={handleSave}>
-              ذخیره
+              {t("common.save")}
             </Button>
           </div>
         }
@@ -156,7 +159,7 @@ export function CaptionsSection({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={12}
-          className="w-full resize-none rounded-2xl border border-ink-200 bg-white p-4 text-[0.95rem] leading-8 text-ink-900 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-100"
+          className="w-full resize-none rounded-2xl border border-ink-200 bg-surface p-4 text-[0.95rem] leading-8 text-foreground focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-100"
         />
       </Sheet>
     </section>

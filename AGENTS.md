@@ -11,7 +11,7 @@ implementing a feature.
 
 ## Product principles
 
-- The UI is Persian-first and RTL.
+- The UI is Persian-first and RTL by default. Optional English chrome and dark mode do not change generated campaign copy or PNG exports.
 - Mobile-first design.
 - Focus on outcomes, not AI models.
 - Do not expose prompts, tokens, provider APIs or model names to normal users.

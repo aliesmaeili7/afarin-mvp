@@ -12,6 +12,11 @@ import type {
   Product,
   ProductImage,
   Session,
+  TextLayer,
+  VisualCatalog,
+  VisualCreationMode,
+  VisualPlanResponse,
+  VisualRecipe,
   VisualStyle,
 } from "@/types/domain";
 
@@ -58,6 +63,15 @@ export interface AfarinApi {
   // POST /api/campaigns/{id}/concepts/{concept_id}/select
   selectConcept(campaignId: string, conceptId: string): Promise<Campaign>;
 
+  getVisualCatalog(): Promise<VisualCatalog>;
+  planVisuals(campaignId: string): Promise<VisualPlanResponse>;
+  saveVisualRecipe(campaignId: string, recipe: VisualRecipe): Promise<Campaign>;
+  selectVisualCandidate(
+    campaignId: string,
+    candidateId: string,
+  ): Promise<Campaign>;
+  regenerateVisuals(campaignId: string): Promise<CampaignStatusResponse>;
+
   // POST /api/campaigns/{id}/generate
   startGeneration(campaignId: string): Promise<CampaignStatusResponse>;
   // GET /api/campaigns/{id}/status
@@ -102,14 +116,16 @@ export interface AfarinApi {
   /**
    * Auth, delegated to Supabase.
    *
-   * Email sign-in is two calls because a real provider has to actually deliver
-   * the code: `requestEmailCode` sends it, `verifyEmailCode` exchanges it for a
-   * session. Phase 1's single `signUp` could not express the wait. This is the
-   * one place Phase 2 changes the UX, and only by one screen.
-   *
-   * Completing either flow also transfers whatever the visitor built while
-   * anonymous to the new account (spec §11).
+   * Password is the default email path. OTP remains as a fallback when the
+   * seller cannot or does not want to set a password. Completing either flow
+   * also transfers whatever the visitor built while anonymous (spec §11).
    */
+  signInWithPassword(input: EmailPasswordCredentials): Promise<Session>;
+  signUpWithPassword(input: EmailPasswordCredentials): Promise<Session>;
+  requestPasswordReset(input: PasswordResetRequest): Promise<void>;
+  /** True once the recovery email has created an auth session. */
+  ensurePasswordRecoverySession(): Promise<void>;
+  updatePassword(input: UpdatePasswordInput): Promise<Session>;
   requestEmailCode(input: EmailCodeRequest): Promise<void>;
   verifyEmailCode(input: EmailCodeVerification): Promise<Session>;
   /**
@@ -143,6 +159,7 @@ export interface UpdateCampaignInput {
   objective?: CampaignObjective | null;
   audience?: string | null;
   visual_style?: VisualStyle | null;
+  visual_creation_mode?: VisualCreationMode | null;
   brand_id?: string | null;
 }
 
@@ -159,6 +176,8 @@ export interface AssetTextPatch {
   subheadline_fa?: string | null;
   cta_fa?: string | null;
   price_text?: string | null;
+  /** Null restores the generated flex layout. */
+  text_layers?: TextLayer[] | null;
 }
 
 export type RewriteIntent =
@@ -179,6 +198,21 @@ export interface BrandInput {
   visual_style?: VisualStyle | null;
   primary_color?: string | null;
   secondary_color?: string | null;
+}
+
+export interface EmailPasswordCredentials {
+  email: string;
+  password: string;
+}
+
+export interface PasswordResetRequest {
+  email: string;
+  /** Absolute URL the recovery email opens. Defaults to /auth/reset-password. */
+  redirect_to?: string;
+}
+
+export interface UpdatePasswordInput {
+  password: string;
 }
 
 export interface EmailCodeRequest {

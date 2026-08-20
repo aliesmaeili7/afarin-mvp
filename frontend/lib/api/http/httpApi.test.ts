@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSession = vi.fn(async () => ({ data: { session: null } }));
+const resetPasswordForEmail = vi.fn(async () => ({ error: null }));
+const updateUser = vi.fn(async () => ({ error: null }));
 
 vi.mock("@/lib/supabase/client", () => ({
-  getSupabaseClient: () => ({ auth: { getSession } }),
+  getSupabaseClient: () => ({
+    auth: { getSession, resetPasswordForEmail, updateUser },
+  }),
   getAccessToken: async () => null,
 }));
 
@@ -12,6 +16,9 @@ const fetchMock = vi.fn();
 beforeEach(async () => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
+  getSession.mockReset().mockResolvedValue({ data: { session: null } });
+  resetPasswordForEmail.mockReset().mockResolvedValue({ error: null });
+  updateUser.mockReset().mockResolvedValue({ error: null });
   vi.resetModules();
 });
 
@@ -168,6 +175,15 @@ describe("email sign-in", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects a short password before calling the provider", async () => {
+    const httpApi = await loadApi();
+
+    await expect(
+      httpApi.signInWithPassword({ email: "a@b.com", password: "short" }),
+    ).rejects.toMatchObject({ messageFa: "رمز باید حداقل ۸ حرف باشه." });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects an incomplete code before calling the provider", async () => {
     const httpApi = await loadApi();
 
@@ -175,6 +191,37 @@ describe("email sign-in", () => {
       httpApi.verifyEmailCode({ email: "a@b.com", code: "123" }),
     ).rejects.toMatchObject({ messageFa: "کد ۶ رقمی رو کامل وارد کن." });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed address before requesting a password reset", async () => {
+    const httpApi = await loadApi();
+
+    await expect(
+      httpApi.requestPasswordReset({ email: "not-an-email" }),
+    ).rejects.toMatchObject({ messageFa: "ایمیل معتبر وارد کن." });
+    expect(resetPasswordForEmail).not.toHaveBeenCalled();
+  });
+
+  it("sends a recovery email to the reset-password callback", async () => {
+    const httpApi = await loadApi();
+
+    await httpApi.requestPasswordReset({
+      email: "otp@shop.com",
+      redirect_to: "http://localhost:3000/auth/reset-password",
+    });
+
+    expect(resetPasswordForEmail).toHaveBeenCalledWith("otp@shop.com", {
+      redirectTo: "http://localhost:3000/auth/reset-password",
+    });
+  });
+
+  it("rejects a short new password before updating the account", async () => {
+    const httpApi = await loadApi();
+
+    await expect(httpApi.updatePassword({ password: "short" })).rejects.toMatchObject({
+      messageFa: "رمز باید حداقل ۸ حرف باشه.",
+    });
+    expect(updateUser).not.toHaveBeenCalled();
   });
 });
 

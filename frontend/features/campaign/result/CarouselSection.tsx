@@ -1,20 +1,29 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { track } from "@/lib/analytics/track";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { DownloadIcon } from "@/components/ui/icons";
+import { DownloadIcon, EditIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
-import { toPersianDigits } from "@/lib/format/persian";
+import { formatDigits } from "@/lib/format/display";
+import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { AssetRenderSpec, CampaignAsset } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { useAssetExport } from "@/features/campaign/ad-renderer/AssetExportProvider";
 import { SectionHeading } from "./AssetSection";
 
 /** Spec §16 section 3 — three slides, each individually downloadable. */
-export function CarouselSection({ slides }: { slides: CampaignAsset[] }) {
+export function CarouselSection({
+  slides,
+  campaignId,
+}: {
+  slides: CampaignAsset[];
+  campaignId: string;
+}) {
   const { toast } = useToast();
+  const { t, locale } = useI18n();
   const { exportAsset } = useAssetExport();
   const [downloading, setDownloading] = useState<string | null>(null);
 
@@ -29,7 +38,7 @@ export function CarouselSection({ slides }: { slides: CampaignAsset[] }) {
       });
       track("asset_downloaded", { asset_type: asset.asset_type });
     } catch {
-      toast("دانلود انجام نشد. دوباره امتحان کن.", "error");
+      toast(t("result.downloadFailed"), "error");
     } finally {
       setDownloading(null);
     }
@@ -48,7 +57,7 @@ export function CarouselSection({ slides }: { slides: CampaignAsset[] }) {
         track("asset_downloaded", { asset_type: slide.asset_type });
       }
     } catch {
-      toast("دانلود همه انجام نشد. دوباره امتحان کن.", "error");
+      toast(t("result.downloadAllFailed"), "error");
     } finally {
       setDownloading(null);
     }
@@ -59,8 +68,8 @@ export function CarouselSection({ slides }: { slides: CampaignAsset[] }) {
   return (
     <section>
       <SectionHeading
-        title="کاروسل سه‌اسلایدی"
-        description="اسلاید اول قلاب، دومی مزیت محصول و سومی دعوت به خرید."
+        title={t("result.carouselTitle")}
+        description={t("result.carouselDescription")}
         action={
           <Button
             size="sm"
@@ -69,7 +78,7 @@ export function CarouselSection({ slides }: { slides: CampaignAsset[] }) {
             onClick={downloadAll}
             iconStart={<DownloadIcon width={16} height={16} />}
           >
-            دانلود همه
+            {t("result.downloadAll")}
           </Button>
         }
       />
@@ -90,20 +99,34 @@ export function CarouselSection({ slides }: { slides: CampaignAsset[] }) {
                 />
               </div>
             </div>
-            <div className="flex items-center justify-between gap-2 border-t border-ink-100 px-3 py-2">
-              <span className="text-xs font-semibold text-ink-500">
-                اسلاید {toPersianDigits(index + 1)}
+            <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
+              <span className="text-xs font-semibold text-muted">
+                {t("result.slideN", { n: formatDigits(index + 1, locale) })}
               </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`دانلود اسلاید ${index + 1}`}
-                loading={downloading === slide.id}
-                onClick={() => downloadSlide(slide)}
-                className="size-11 p-0 sm:size-9"
-              >
-                <DownloadIcon width={17} height={17} />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Link
+                  href={`/campaigns/${campaignId}/assets/${slide.id}/edit`}
+                  aria-label={t("result.editSlide", {
+                    n: formatDigits(index + 1, locale),
+                  })}
+                >
+                  <Button size="sm" variant="ghost" className="size-11 p-0 sm:size-9">
+                    <EditIcon width={17} height={17} />
+                  </Button>
+                </Link>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t("result.downloadSlide", {
+                    n: formatDigits(index + 1, locale),
+                  })}
+                  loading={downloading === slide.id}
+                  onClick={() => downloadSlide(slide)}
+                  className="size-11 p-0 sm:size-9"
+                >
+                  <DownloadIcon width={17} height={17} />
+                </Button>
+              </div>
             </div>
           </Card>
         ))}

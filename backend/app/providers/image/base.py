@@ -9,6 +9,8 @@ class ImageRequest:
     resolution: str = "2K"
     output_format: str | None = None
     seed: int | None = None
+    references: tuple[bytes, ...] = ()
+    n: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +27,10 @@ class ImageResult:
     content: bytes
     media_type: str
     usage: ImageUsage
+    contents: tuple[bytes, ...] = ()
+
+    def images(self) -> tuple[bytes, ...]:
+        return self.contents or (self.content,)
 
 
 class ImageApiError(Exception):
@@ -58,10 +64,8 @@ class ImageApiError(Exception):
 
 class ImageProvider:
     """
-    Empty-scene generation. Campaign code never sends the product through this.
-
-    Selected by IMAGE_PROVIDER; OpenRouter lives behind an implementation so
-    swapping hosts does not touch services (spec §23).
+    Image generation. Accurate mode never sends the product through this.
+    Creative mode may attach the cropped product as a reference.
     """
 
     name: str

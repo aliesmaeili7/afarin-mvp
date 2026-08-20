@@ -1,46 +1,49 @@
 "use client";
 
 import type { RewriteIntent } from "@/lib/api/types";
+import { useI18n } from "@/lib/i18n/PreferencesProvider";
+import type { TranslationKey } from "@/lib/i18n/t";
 
-export interface RewriteChip {
-  intent: RewriteIntent;
-  label: string;
-}
+const CHIP_KEYS: Record<RewriteIntent, TranslationKey> = {
+  informal: "result.rewriteInformal",
+  shorter: "result.rewriteShorter",
+  more_luxury: "result.rewriteLuxury",
+  stronger_cta: "result.rewriteCta",
+  new_headline: "result.rewriteHeadline",
+};
 
-export const CAPTION_REWRITE_CHIPS: RewriteChip[] = [
-  { intent: "informal", label: "کپشن رو خودمونی‌تر کن" },
-  { intent: "shorter", label: "متن رو کوتاه‌تر کن" },
-  { intent: "more_luxury", label: "تبلیغ رو لوکس‌تر کن" },
-  { intent: "stronger_cta", label: "CTA قوی‌تر بده" },
+export const CAPTION_REWRITE_CHIPS: RewriteIntent[] = [
+  "informal",
+  "shorter",
+  "more_luxury",
+  "stronger_cta",
 ];
 
-export const ASSET_REWRITE_CHIPS: RewriteChip[] = [
-  { intent: "new_headline", label: "یه تیتر جدید بده" },
-  { intent: "stronger_cta", label: "CTA قوی‌تر بده" },
-];
+export const ASSET_REWRITE_CHIPS: RewriteIntent[] = ["new_headline", "stronger_cta"];
 
 export function RewriteChips({
   chips,
   onSelect,
   disabled,
 }: {
-  chips: RewriteChip[];
+  chips: RewriteIntent[];
   onSelect: (intent: RewriteIntent) => void;
   disabled?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm font-bold text-ink-800">چی رو می‌خوای تغییر بدی؟</p>
+      <p className="text-sm font-bold text-ink-800">{t("result.rewritePrompt")}</p>
       <div className="flex flex-wrap gap-2">
-        {chips.map((chip) => (
+        {chips.map((intent) => (
           <button
-            key={chip.intent}
+            key={intent}
             type="button"
             disabled={disabled}
-            onClick={() => onSelect(chip.intent)}
-            className="rounded-full border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
+            onClick={() => onSelect(intent)}
+            className="rounded-full border border-ink-200 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-700 hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
           >
-            {chip.label}
+            {t(CHIP_KEYS[intent])}
           </button>
         ))}
       </div>

@@ -96,15 +96,25 @@ if (JSON.stringify(newTitles) === JSON.stringify(conceptTitles)) {
   problems.push("regenerate produced identical concepts");
 }
 
-console.log("\n8. signup gate");
+console.log("\n8. wizard step 6 — visual mode");
 await page.getByRole("button", { name: "این رو انتخاب کن" }).first().click();
+await page.waitForURL("**/create/visual");
+await page.waitForTimeout(600);
+await shot("07-visual");
+await page.getByRole("button", { name: /دقیق/ }).click();
+await page.waitForTimeout(400);
+await page.getByRole("button", { name: "ساخت کمپین" }).click();
+
+console.log("\n9. signup gate");
 await page.waitForURL("**/create/signup");
 await page.waitForTimeout(800);
 await shot("07-signup");
 await page.getByLabel("ایمیل").fill("test@example.com");
+await page.getByLabel("رمز عبور").fill("testpass1");
+await page.getByLabel("تکرار رمز").fill("testpass1");
 await page.getByRole("button", { name: "ثبت‌نام و ساخت کمپین" }).click();
 
-console.log("\n9. generation progress");
+console.log("\n10. generation progress");
 await page.waitForURL(/\/campaigns\//, { timeout: 15000 });
 await page.waitForTimeout(2500);
 await shot("08-generating");
@@ -114,7 +124,7 @@ const progressText = await page
   .then((text) => text.split("\n").slice(0, 6).join(" / "));
 log(`progress screen: ${progressText}`);
 
-console.log("\n10. refresh mid-generation (resume check)");
+console.log("\n11. refresh mid-generation (resume check)");
 await page.reload({ waitUntil: "networkidle" });
 await page.waitForTimeout(1500);
 const resumed = await page.locator("body").innerText();
@@ -123,7 +133,7 @@ if (!resumed.includes("داریم کمپینت رو می‌سازیم")) {
   problems.push("generation did not resume after refresh");
 }
 
-console.log("\n11. result page");
+console.log("\n12. result page");
 await page.getByText("کمپینت آماده‌ست").waitFor({ timeout: 30000 });
 await page.waitForTimeout(1500);
 await shot("09-result");
@@ -140,7 +150,7 @@ for (const section of [
 }
 log(`sections present: ${bodyText.includes("ایده ریلز")}`);
 
-console.log("\n12. PNG export (Persian font check)");
+console.log("\n13. PNG export (Persian font check)");
 const downloadPromise = page.waitForEvent("download", { timeout: 30000 });
 await page.getByRole("button", { name: "دانلود" }).first().click();
 const download = await downloadPromise;
@@ -154,7 +164,7 @@ if (existsSync(target)) {
   problems.push("download did not produce a file");
 }
 
-console.log("\n13. copy caption + edit text");
+console.log("\n14. copy caption + edit text");
 await page.getByRole("button", { name: "کپی", exact: true }).first().click();
 await page.waitForTimeout(600);
 await page.getByRole("button", { name: "ویرایش متن" }).first().click();
@@ -169,14 +179,14 @@ if (!afterEdit.includes("تیتر آزمایشی")) {
 }
 await shot("11-after-edit");
 
-console.log("\n14. dashboard");
+console.log("\n15. dashboard");
 await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle" });
 await page.waitForTimeout(1500);
 await shot("12-dashboard");
 const dash = await page.locator("body").innerText();
 log(`dashboard shows campaigns: ${dash.includes("کمپین‌های اخیر")}`);
 
-console.log("\n15. desktop landing");
+console.log("\n16. desktop landing");
 const desktop = await context.newPage();
 await desktop.setViewportSize({ width: 1280, height: 900 });
 await desktop.goto(BASE, { waitUntil: "networkidle" });

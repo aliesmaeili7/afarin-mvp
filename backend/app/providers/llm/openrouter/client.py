@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -11,6 +12,8 @@ import httpx
 from app.core.config import Settings
 from app.core.errors import generation_failed
 from app.providers.llm.base import LlmUsage
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,9 +27,10 @@ class LlmClient(Protocol):
     async def complete_json(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         schema_name: str,
         schema: dict[str, Any],
+        model: str | None = None,
     ) -> CompletionResult: ...
 
 
@@ -45,15 +49,16 @@ class OpenRouterClient:
     async def complete_json(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         schema_name: str,
         schema: dict[str, Any],
+        model: str | None = None,
     ) -> CompletionResult:
         if not self._settings.openrouter_api_key:
             raise generation_failed()
 
         payload = {
-            "model": self._settings.llm_model,
+            "model": model or self._settings.llm_model,
             "messages": messages,
             "response_format": {
                 "type": "json_schema",
@@ -88,6 +93,11 @@ class OpenRouterClient:
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         if response.status_code >= 400:
+            logger.warning(
+                "openrouter chat failed status=%s body=%s",
+                response.status_code,
+                _safe_error_body(response),
+            )
             raise generation_failed()
 
         try:
@@ -101,7 +111,9 @@ class OpenRouterClient:
 
         return CompletionResult(
             content=content,
-            usage=_usage_from(body, latency_ms, self._settings.llm_model),
+            usage=_usage_from(
+                body, latency_ms, model or self._settings.llm_model
+            ),
             raw=body if isinstance(body, dict) else {},
         )
 
@@ -109,6 +121,11 @@ class OpenRouterClient:
         if self._http is None:
             self._http = httpx.AsyncClient()
         return self._http
+
+
+def _safe_error_body(response: httpx.Response) -> str:
+    text = (response.text or "").replace("\n", " ").strip()
+    return text[:800] if text else "<empty>"
 
 
 def _message_content(body: Any) -> str:

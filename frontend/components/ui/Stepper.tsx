@@ -1,4 +1,7 @@
-import { toPersianDigits } from "@/lib/format/persian";
+"use client";
+
+import { formatDigits } from "@/lib/format/display";
+import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import { cn } from "./cn";
 
 /** Wizard progress indicator, e.g. ۲ / ۵ (spec §7). */
@@ -11,15 +14,22 @@ export function Stepper({
   total: number;
   label?: string;
 }) {
+  const { locale } = useI18n();
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-sm font-semibold text-ink-700">{label}</span>
+        <span className="text-sm font-semibold text-foreground">{label}</span>
         <span className="text-sm font-bold tabular-nums text-brand-600">
-          {toPersianDigits(current)} / {toPersianDigits(total)}
+          {formatDigits(current, locale)} / {formatDigits(total, locale)}
         </span>
       </div>
-      <div className="flex gap-1.5" role="progressbar" aria-valuenow={current} aria-valuemin={1} aria-valuemax={total}>
+      <div
+        className="flex gap-1.5"
+        role="progressbar"
+        aria-valuenow={current}
+        aria-valuemin={1}
+        aria-valuemax={total}
+      >
         {Array.from({ length: total }, (_, index) => (
           <span
             key={index}

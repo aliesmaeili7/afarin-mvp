@@ -20,6 +20,8 @@ from app.db.models import (
     Campaign,
     CampaignAsset,
     CampaignCopy,
+    CampaignVisualAttempt,
+    CampaignVisualCandidate,
     GenerationJob,
     Product,
     ProductImage,
@@ -32,9 +34,12 @@ from app.schemas.domain import (
     CampaignCopyOut,
     CampaignDetailOut,
     CampaignOut,
+    CampaignStatusOut,
     CampaignSummaryOut,
     ProductImageOut,
     ProductOut,
+    VisualAttemptOut,
+    VisualCandidateOut,
 )
 from app.schemas.requests import (
     AssetTextIn,
@@ -44,11 +49,17 @@ from app.schemas.requests import (
     RewriteIn,
     UpdateCampaignIn,
     UpdateCopyIn,
+    VisualRecipeIn,
 )
+from app.services.campaigns import cost as budgets
+from app.services.campaigns import creative as creative_visuals
 from app.services.campaigns import jobs as job_records
 from app.services.campaigns import materialize as materializer
+from app.services.campaigns import planner as visual_planner
 from app.services.campaigns import queries, summaries
+from app.services.campaigns import recipes as recipe_builder
 from app.services.campaigns import visuals as visualizer
+from app.services.campaigns import text_layers as type_layers
 from app.services.campaigns.crop import parse_crop
 from app.services.campaigns.ownership import get_owned_campaign
 from app.services.campaigns.product_media import assign_suggested_crop, save_crop
@@ -130,6 +141,8 @@ async def get_campaign(
         copies=await queries.copies_of(session, campaign.id),
         assets=await queries.assets_of(session, campaign.id),
         brand=await queries.brand_of(session, campaign),
+        visual_attempt=await _visual_attempt_out(session, campaign),
+        visual_candidates=await _visual_candidates_out(session, campaign),
     )
 
 
@@ -159,6 +172,13 @@ async def update_campaign(
             body.visual_style
         ) != materializer.blank_text(campaign.visual_style)
         campaign.visual_style = body.visual_style
+    if "visual_creation_mode" in provided:
+        mode = body.visual_creation_mode
+        if mode is not None and mode not in ("accurate", "creative"):
+            raise invalid(messages.VISUAL_MODE_REQUIRED)
+        campaign.visual_creation_mode = mode
+        if mode == "accurate":
+            campaign.visual_recipe_json = {}
     if "brand_id" in provided:
         changed = changed or body.brand_id != campaign.brand_id
         campaign.brand_id = body.brand_id
@@ -444,6 +464,147 @@ async def select_concept(
     return campaign
 
 
+@router.post("/{campaign_id}/visual/plan")
+async def plan_visuals(
+    campaign_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    result = await visual_planner.propose_recipes(
+        session, campaign, principal.user_id
+    )
+    await session.flush()
+    return {
+        "input_quality": {
+            "status": result.input_quality.status,
+            "reasons": list(result.input_quality.reasons),
+        },
+        "product_type": result.product_type,
+        "visual_identity": list(result.visual_identity),
+        "unsuitable_style_ids": list(result.unsuitable_style_ids),
+        "unsuitable_template_ids": list(result.unsuitable_template_ids),
+        "recipes": visual_planner.public_proposals(result),
+    }
+
+
+@router.post("/{campaign_id}/visual/recipe", response_model=CampaignOut)
+async def save_visual_recipe(
+    campaign_id: uuid.UUID,
+    body: VisualRecipeIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> Campaign:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    if campaign.visual_creation_mode != "creative":
+        campaign.visual_creation_mode = "creative"
+    campaign.visual_recipe_json = recipe_builder.recipe_from_ids(
+        body.style_id,
+        body.template_id,
+        source=body.source if body.source in ("smart", "custom") else "custom",
+        scene_direction=body.scene_direction,
+        identity_constraints=body.identity_constraints,
+        title_fa=body.title_fa,
+        description_fa=body.description_fa,
+        warning_fa=body.warning_fa,
+        text_safe_area=body.text_safe_area,
+    )
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return campaign
+
+
+@router.post(
+    "/{campaign_id}/visual/candidates/{candidate_id}/select",
+    response_model=CampaignOut,
+)
+async def select_visual_candidate(
+    campaign_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> Campaign:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    user_id = principal.require_user()
+    await creative_visuals.select_winner(session, campaign, candidate_id, user_id)
+    await session.flush()
+    return campaign
+
+
+@router.post("/{campaign_id}/visual/regenerate", response_model=CampaignStatusOut)
+async def regenerate_visual_candidates(
+    campaign_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> CampaignStatusOut:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    user_id = principal.require_user()
+    if (campaign.visual_creation_mode or "accurate") != "creative":
+        raise invalid(messages.VISUAL_RECIPE_REQUIRED)
+    recipe = campaign.visual_recipe_json or {}
+    if not recipe.get("style_id"):
+        raise invalid(messages.VISUAL_RECIPE_REQUIRED)
+    if campaign.status not in ("candidates_ready", "ready", "partial_failed"):
+        raise invalid(messages.CANDIDATE_REQUIRED)
+    await budgets.assert_can_start_attempt(session, campaign)
+
+    active = await session.scalar(
+        select(GenerationJob).where(
+            GenerationJob.campaign_id == campaign.id,
+            GenerationJob.job_type.in_(("campaign_generation", "image_generation")),
+            GenerationJob.status.in_(("queued", "processing")),
+        )
+    )
+    if active is not None:
+        raise conflict(messages.GENERATION_BUSY)
+
+    job = GenerationJob(
+        campaign_id=campaign.id,
+        user_id=user_id,
+        job_type="image_generation",
+        status="processing",
+        started_at=datetime.now(UTC),
+        input_json={},
+    )
+    session.add(job)
+    campaign.status = "generating"
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    from app.api.v1 import generation as generation_api
+
+    return await generation_api._run_images(session, campaign, job)
+
+
+async def _visual_attempt_out(
+    session, campaign: Campaign
+) -> VisualAttemptOut | None:
+    if campaign.current_visual_attempt_id is None:
+        return None
+    row = await session.scalar(
+        select(CampaignVisualAttempt).where(
+            CampaignVisualAttempt.id == campaign.current_visual_attempt_id
+        )
+    )
+    if row is None:
+        return None
+    return VisualAttemptOut.model_validate(row)
+
+
+async def _visual_candidates_out(
+    session, campaign: Campaign
+) -> list[VisualCandidateOut]:
+    if campaign.current_visual_attempt_id is None:
+        return []
+    rows = await session.scalars(
+        select(CampaignVisualCandidate)
+        .where(
+            CampaignVisualCandidate.attempt_id == campaign.current_visual_attempt_id
+        )
+        .order_by(CampaignVisualCandidate.slot, CampaignVisualCandidate.created_at)
+    )
+    return [VisualCandidateOut.model_validate(row) for row in rows]
+
+
 @router.patch("/{campaign_id}/copy/{copy_id}", response_model=CampaignCopyOut)
 async def update_copy(
     campaign_id: uuid.UUID,
@@ -578,8 +739,10 @@ async def rewrite_asset(
 
     if field == "headline":
         spec["headline_fa"] = rewritten
+        spec = type_layers.apply_role_text(spec, "headline", rewritten)
     else:
         spec["cta_fa"] = rewritten
+        spec = type_layers.apply_role_text(spec, "cta", rewritten)
         await _sync_cta_copy(session, campaign.id, rewritten)
     asset.metadata_json = spec
     job_records.mark_succeeded(job, {"text_fa": rewritten})
@@ -599,6 +762,8 @@ async def regenerate_asset(
     principal: PrincipalDep,
 ) -> CampaignAsset:
     campaign = await get_owned_campaign(session, principal, campaign_id)
+    if (campaign.visual_creation_mode or "accurate") == "creative":
+        raise invalid(messages.ACCURATE_REGEN_ONLY)
     asset = await _owned_asset(session, campaign.id, asset_id)
 
     active = await session.scalar(
@@ -680,9 +845,27 @@ async def update_asset_text(
     campaign = await get_owned_campaign(session, principal, campaign_id)
     asset = await _owned_asset(session, campaign.id, asset_id)
 
+    spec = dict(asset.metadata_json or {})
     patch = body.model_dump(exclude_unset=True)
-    asset.metadata_json = {**(asset.metadata_json or {}), **patch}
+    layers_touched = "text_layers" in body.model_fields_set
+    layers_value = patch.pop("text_layers", None) if layers_touched else None
 
+    role_for_field = {
+        "headline_fa": "headline",
+        "subheadline_fa": "subheadline",
+        "cta_fa": "cta",
+        "price_text": "price",
+    }
+    for key, value in patch.items():
+        spec[key] = value
+        role = role_for_field.get(key)
+        if role is not None:
+            spec = type_layers.apply_role_text(spec, role, value or "")
+
+    if layers_touched:
+        spec = type_layers.apply_text_layers(spec, layers_value)
+
+    asset.metadata_json = spec
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
     return asset
@@ -695,6 +878,7 @@ async def _sync_asset_cta(session, campaign_id: uuid.UUID, cta_fa: str) -> None:
             continue
         spec = dict(asset.metadata_json or {})
         spec["cta_fa"] = cta_fa
+        spec = type_layers.apply_role_text(spec, "cta", cta_fa)
         asset.metadata_json = spec
 
 

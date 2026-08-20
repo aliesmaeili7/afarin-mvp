@@ -11,6 +11,9 @@ import type {
   Product,
   ProductImage,
   Session,
+  VisualCatalog,
+  VisualPlanResponse,
+  VisualRecipe,
 } from "@/types/domain";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -21,7 +24,10 @@ import {
   type CreateCampaignInput,
   type EmailCodeRequest,
   type EmailCodeVerification,
+  type EmailPasswordCredentials,
   type GoogleSignInInput,
+  type PasswordResetRequest,
+  type UpdatePasswordInput,
   type ProductInput,
   type RewriteIntent,
   type UpdateCampaignInput,
@@ -124,6 +130,40 @@ export const httpApi: AfarinApi = {
     );
   },
 
+  getVisualCatalog(): Promise<VisualCatalog> {
+    return request<VisualCatalog>("/api/visual-catalog");
+  },
+
+  planVisuals(campaignId: string): Promise<VisualPlanResponse> {
+    return request<VisualPlanResponse>(`/api/campaigns/${campaignId}/visual/plan`, {
+      method: "POST",
+    });
+  },
+
+  saveVisualRecipe(campaignId: string, recipe: VisualRecipe): Promise<Campaign> {
+    return request<Campaign>(`/api/campaigns/${campaignId}/visual/recipe`, {
+      method: "POST",
+      body: recipe,
+    });
+  },
+
+  selectVisualCandidate(
+    campaignId: string,
+    candidateId: string,
+  ): Promise<Campaign> {
+    return request<Campaign>(
+      `/api/campaigns/${campaignId}/visual/candidates/${candidateId}/select`,
+      { method: "POST" },
+    );
+  },
+
+  regenerateVisuals(campaignId: string): Promise<CampaignStatusResponse> {
+    return request<CampaignStatusResponse>(
+      `/api/campaigns/${campaignId}/visual/regenerate`,
+      { method: "POST" },
+    );
+  },
+
   startGeneration(campaignId: string): Promise<CampaignStatusResponse> {
     return request<CampaignStatusResponse>(
       `/api/campaigns/${campaignId}/generate`,
@@ -208,17 +248,80 @@ export const httpApi: AfarinApi = {
     });
   },
 
-  async requestEmailCode(input: EmailCodeRequest): Promise<void> {
-    const email = input.email.trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      throw new ApiError("validation_error", "ایمیل معتبر وارد کن.");
+  async signInWithPassword(input: EmailPasswordCredentials): Promise<Session> {
+    const email = normalizeEmail(input.email);
+    const password = requirePassword(input.password);
+
+    const { error } = await getSupabaseClient().auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw toAuthError(error, "password");
+
+    return httpApi.adoptAnonymousWork();
+  },
+
+  async signUpWithPassword(input: EmailPasswordCredentials): Promise<Session> {
+    const email = normalizeEmail(input.email);
+    const password = requirePassword(input.password);
+
+    const { data, error } = await getSupabaseClient().auth.signUp({
+      email,
+      password,
+    });
+    if (error) {
+      if (isAlreadyRegistered(error.message)) {
+        return httpApi.signInWithPassword({ email, password });
+      }
+      throw toAuthError(error, "password");
     }
+    if (!data.session) {
+      throw new ApiError(
+        "validation_error",
+        "حساب ساخته شد. برای ورود همان ایمیل و رمز رو بزن.",
+      );
+    }
+
+    return httpApi.adoptAnonymousWork();
+  },
+
+  async requestPasswordReset(input: PasswordResetRequest): Promise<void> {
+    const email = normalizeEmail(input.email);
+    const redirectTo =
+      input.redirect_to ??
+      (typeof window === "undefined"
+        ? undefined
+        : new URL("/auth/reset-password", window.location.origin).toString());
+
+    const { error } = await getSupabaseClient().auth.resetPasswordForEmail(
+      email,
+      redirectTo ? { redirectTo } : undefined,
+    );
+    if (error) throw toAuthError(error, "recovery");
+  },
+
+  async ensurePasswordRecoverySession(): Promise<void> {
+    await waitForAuthSession();
+  },
+
+  async updatePassword(input: UpdatePasswordInput): Promise<Session> {
+    const password = requirePassword(input.password);
+    await waitForAuthSession();
+
+    const { error } = await getSupabaseClient().auth.updateUser({ password });
+    if (error) throw toAuthError(error, "password");
+
+    return httpApi.adoptAnonymousWork();
+  },
+
+  async requestEmailCode(input: EmailCodeRequest): Promise<void> {
+    const email = normalizeEmail(input.email);
 
     const { error } = await getSupabaseClient().auth.signInWithOtp({
       email,
       options: { shouldCreateUser: true },
     });
-    if (error) throw toAuthError(error);
+    if (error) throw toAuthError(error, "otp");
   },
 
   async verifyEmailCode(input: EmailCodeVerification): Promise<Session> {
@@ -228,11 +331,11 @@ export const httpApi: AfarinApi = {
     }
 
     const { error } = await getSupabaseClient().auth.verifyOtp({
-      email: input.email.trim().toLowerCase(),
+      email: normalizeEmail(input.email),
       token: code,
       type: "email",
     });
-    if (error) throw toAuthError(error);
+    if (error) throw toAuthError(error, "otp");
 
     return httpApi.adoptAnonymousWork();
   },
@@ -243,7 +346,7 @@ export const httpApi: AfarinApi = {
       options: { redirectTo: input.redirect_to },
     });
     // Success navigates away, so reaching here at all means it failed.
-    if (error) throw toAuthError(error);
+    if (error) throw toAuthError(error, "oauth");
   },
 
   adoptAnonymousWork(): Promise<Session> {
@@ -290,25 +393,93 @@ export const httpApi: AfarinApi = {
   },
 };
 
+const MIN_PASSWORD_LENGTH = 8;
+
+function normalizeEmail(raw: string): string {
+  const email = raw.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    throw new ApiError("validation_error", "ایمیل معتبر وارد کن.");
+  }
+  return email;
+}
+
+function requirePassword(password: string): string {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new ApiError("validation_error", "رمز باید حداقل ۸ حرف باشه.");
+  }
+  return password;
+}
+
+async function waitForAuthSession(): Promise<void> {
+  const client = getSupabaseClient();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const { data } = await client.auth.getSession();
+    if (data.session) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new ApiError(
+    "unauthorized",
+    "این لینک معتبر نیست یا منقضی شده. دوباره درخواست بده.",
+  );
+}
+
+function isAlreadyRegistered(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("already registered") || lower.includes("already been registered");
+}
+
 /**
  * Supabase reports errors in English. Sellers see Persian, and the original is
  * left on `cause` for debugging (spec §27).
  */
-function toAuthError(error: { message: string; status?: number }): ApiError {
+function toAuthError(
+  error: { message: string; status?: number },
+  surface: "otp" | "password" | "oauth" | "recovery",
+): ApiError {
   const message = error.message.toLowerCase();
 
-  if (message.includes("expired")) {
-    return new ApiError("validation_error", "این کد منقضی شده. یه کد جدید بگیر.", error);
-  }
-  if (message.includes("invalid") || error.status === 403) {
-    return new ApiError("validation_error", "کد واردشده درست نیست.", error);
-  }
   if (message.includes("rate") || error.status === 429) {
     return new ApiError(
       "rate_limited",
       "تعداد تلاش‌ها زیاد بود. چند دقیقه دیگه دوباره امتحان کن.",
       error,
     );
+  }
+  if (surface === "password") {
+    if (message.includes("email not confirmed")) {
+      return new ApiError(
+        "validation_error",
+        "این حساب هنوز فعال نشده. از ورود با کد ایمیل استفاده کن.",
+        error,
+      );
+    }
+    if (message.includes("password")) {
+      return new ApiError("validation_error", "رمز باید حداقل ۸ حرف باشه.", error);
+    }
+    if (message.includes("invalid") || error.status === 400) {
+      return new ApiError("validation_error", "ایمیل یا رمز درست نیست.", error);
+    }
+  }
+  if (surface === "recovery") {
+    if (message.includes("expired") || message.includes("invalid")) {
+      return new ApiError(
+        "validation_error",
+        "این لینک معتبر نیست یا منقضی شده. دوباره درخواست بده.",
+        error,
+      );
+    }
+  }
+  if (surface === "otp") {
+    if (message.includes("expired")) {
+      return new ApiError(
+        "validation_error",
+        "این کد منقضی شده. یه کد جدید بگیر.",
+        error,
+      );
+    }
+    if (message.includes("invalid") || error.status === 403) {
+      return new ApiError("validation_error", "کد واردشده درست نیست.", error);
+    }
   }
   return new ApiError("unknown", "یه مشکلی پیش اومد. لطفاً دوباره امتحان کن.", error);
 }

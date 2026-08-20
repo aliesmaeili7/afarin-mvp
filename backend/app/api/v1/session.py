@@ -27,8 +27,16 @@ async def ensure_anonymous_owner(
 
     Idempotent: an existing valid cookie is reused rather than replaced, because
     the frontend cannot read the cookie to check whether it already has one.
+    A signed-in caller gets a profile row if this is their first write, so
+    campaigns.user_id cannot miss profiles.user_id.
     """
-    if principal.is_authenticated or principal.anonymous_session_id is not None:
+    if principal.is_authenticated:
+        await identity.get_or_create_profile(
+            session, principal.require_user(), principal.email
+        )
+        return principal
+
+    if principal.anonymous_session_id is not None:
         return principal
 
     token = request.cookies.get(settings.anon_cookie_name)

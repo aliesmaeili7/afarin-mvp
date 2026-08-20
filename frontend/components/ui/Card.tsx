@@ -10,7 +10,7 @@ export function Card({
     <div
       {...props}
       className={cn(
-        "rounded-3xl border border-ink-100 bg-white shadow-soft",
+        "rounded-3xl border border-border bg-surface shadow-soft",
         className,
       )}
     >
@@ -29,11 +29,11 @@ export function CardHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-ink-100 p-5">
+    <div className="flex items-start justify-between gap-3 border-b border-border p-5">
       <div className="min-w-0">
-        <h2 className="text-lg font-bold text-ink-900">{title}</h2>
+        <h2 className="text-lg font-bold text-foreground">{title}</h2>
         {description ? (
-          <p className="mt-1 text-sm leading-7 text-ink-500">{description}</p>
+          <p className="mt-1 text-sm leading-7 text-muted">{description}</p>
         ) : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
@@ -51,7 +51,7 @@ export function Badge({
   className?: string;
 }) {
   const tones = {
-    neutral: "bg-ink-100 text-ink-600",
+    neutral: "bg-ink-100 text-muted",
     brand: "bg-brand-50 text-brand-700",
     success: "bg-mint-100 text-mint-600",
     warning: "bg-gold-100 text-gold-600",

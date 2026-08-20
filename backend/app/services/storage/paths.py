@@ -81,6 +81,19 @@ def scene_image_key(campaign_id: uuid.UUID, aspect: str, token: str) -> str:
     return f"campaigns/{campaign_id}/generated/scene-{slug}-{token}.jpg"
 
 
+def visual_candidate_key(
+    campaign_id: uuid.UUID, attempt: int, slot: int, token: str
+) -> str:
+    return (
+        f"campaigns/{campaign_id}/visuals/attempt-{attempt}/"
+        f"candidate-{slot}-{token}.jpg"
+    )
+
+
+def visual_story_key(campaign_id: uuid.UUID, attempt: int, token: str) -> str:
+    return f"campaigns/{campaign_id}/visuals/attempt-{attempt}/story-{token}.jpg"
+
+
 def product_cutout_key(campaign_id: uuid.UUID, image_id: uuid.UUID) -> str:
     return f"campaigns/{campaign_id}/cutouts/{image_id}.png"
 

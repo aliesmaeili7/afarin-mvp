@@ -13,6 +13,8 @@ from app.services.storage.paths import (
     product_cutout_key,
     product_image_key,
     scene_image_key,
+    visual_candidate_key,
+    visual_story_key,
 )
 from app.services.storage.supabase import (
     StorageBackend,
@@ -37,6 +39,8 @@ __all__ = [
     "product_crop_key",
     "product_image_key",
     "scene_image_key",
+    "visual_candidate_key",
+    "visual_story_key",
     "resolve_paths",
     "set_storage",
     "validate_upload",

@@ -2,18 +2,20 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { api, toPersianError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Container } from "@/components/layout/Container";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Button } from "@/components/ui/Button";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/Feedback";
 import { useToast } from "@/components/ui/Toast";
 import { useAsyncData } from "@/lib/hooks/useAsyncData";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { CampaignDetail } from "@/types/domain";
 import { beginNewCampaign, resumeCampaign } from "@/features/campaign/wizard/useWizardStore";
 import { AssetExportProvider } from "./ad-renderer/AssetExportProvider";
 import { GenerationProgress } from "./generation/GenerationProgress";
 import { CampaignResult } from "./result/CampaignResult";
+import { CandidatePicker } from "./result/CandidatePicker";
 
 /**
  * `/campaigns/{id}` renders progress or results depending on campaign status,
@@ -22,6 +24,8 @@ import { CampaignResult } from "./result/CampaignResult";
 export function CampaignView({ campaignId }: { campaignId: string }) {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
   const { data, loading, error, reload } = useAsyncData<CampaignDetail>(
     () => api.getCampaign(campaignId),
     [campaignId],
@@ -38,7 +42,19 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
       await api.startGeneration(campaignId);
       await reload();
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  async function handleRetryVisuals() {
+    setRetrying(true);
+    try {
+      await api.regenerateVisuals(campaignId);
+      await reload();
+    } catch (caught) {
+      toast(displayError(caught), "error");
     } finally {
       setRetrying(false);
     }
@@ -46,7 +62,7 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
 
   if (loading && !data) {
     return (
-      <div className="min-h-dvh bg-ink-50">
+      <div className="min-h-dvh bg-background">
         <SiteHeader />
         <Container size="md" className="flex flex-col gap-4 py-8">
           <Skeleton className="h-10 w-2/3" />
@@ -59,21 +75,21 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
 
   if (error || !data) {
     return (
-      <div className="min-h-dvh bg-ink-50">
+      <div className="min-h-dvh bg-background">
         <SiteHeader />
         <Container size="sm" className="py-16">
           <ErrorState
-            title="این کمپین پیدا نشد"
-            description="ممکنه لینک اشتباه باشه یا کمپین روی دستگاه دیگه‌ای ساخته شده باشه."
+            title={t("errors.campaignNotFound")}
+            description={t("errors.campaignNotFoundDescription")}
             action={
               <Button
                 onClick={() => {
                   void beginNewCampaign()
                     .then(() => router.push("/create"))
-                    .catch((caught: unknown) => toast(toPersianError(caught), "error"));
+                    .catch((caught: unknown) => toast(displayError(caught), "error"));
                 }}
               >
-                ساخت کمپین جدید
+                {t("result.newCampaign")}
               </Button>
             }
           />
@@ -92,15 +108,41 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
 
   if (status === "failed") {
     return (
-      <div className="min-h-dvh bg-ink-50">
+      <div className="min-h-dvh bg-background">
         <SiteHeader />
         <Container size="sm" className="py-16">
           <ErrorState
-            title="ساخت کمپین ناتموم موند"
-            description="مشکل از سمت ما بود و چیزی از اطلاعاتت پاک نشده. یک بار دیگه امتحان کن."
+            title={t("result.failedTitle")}
+            description={t("result.failedDescription")}
             action={
               <Button loading={retrying} onClick={handleRetry}>
-                دوباره بساز
+                {t("result.retryBuild")}
+              </Button>
+            }
+          />
+        </Container>
+      </div>
+    );
+  }
+
+  if (status === "candidates_ready") {
+    return <CandidatePicker detail={data} onChanged={handleFinished} />;
+  }
+
+  if (
+    status === "partial_failed" &&
+    data.campaign.visual_creation_mode === "creative"
+  ) {
+    return (
+      <div className="min-h-dvh bg-background">
+        <SiteHeader />
+        <Container size="sm" className="py-16">
+          <ErrorState
+            title={t("result.visualsFailedTitle")}
+            description={t("result.visualsFailedDescription")}
+            action={
+              <Button loading={retrying} onClick={() => void handleRetryVisuals()}>
+                {t("result.retryVisuals")}
               </Button>
             }
           />
@@ -111,12 +153,12 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
 
   if (status !== "ready" && status !== "partial_failed") {
     return (
-      <div className="min-h-dvh bg-ink-50">
+      <div className="min-h-dvh bg-background">
         <SiteHeader />
         <Container size="sm" className="py-16">
           <EmptyState
-            title="این کمپین هنوز کامل نشده"
-            description="چند قدم تا آماده شدن کمپینت مونده."
+            title={t("result.incompleteTitle")}
+            description={t("result.incompleteDescription")}
             action={
               <Button
                 onClick={() => {
@@ -124,7 +166,7 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
                   router.push("/create");
                 }}
               >
-                ادامه ساخت کمپین
+                {t("result.continueBuild")}
               </Button>
             }
           />

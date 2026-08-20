@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { ProductStep } from "@/features/campaign/wizard/steps/ProductStep";
+import { localeMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = { title: "درباره محصول" };
+export const generateMetadata = () => localeMetadata("meta.wizardProduct");
 
 export default function Page() {
   return <ProductStep />;

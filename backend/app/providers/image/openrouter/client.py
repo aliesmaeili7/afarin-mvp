@@ -112,7 +112,7 @@ class OpenRouterImageClient:
                     continue
                 raise last_error from error
 
-            content, media_type = await self._image_from(body)
+            content, extra, media_type = await self._images_from(body)
             if not content:
                 last_error = ImageApiError(
                     status_code=response.status_code,
@@ -126,6 +126,7 @@ class OpenRouterImageClient:
 
             return ImageResult(
                 content=content,
+                contents=(content, *extra) if extra else (),
                 media_type=media_type,
                 usage=_usage_from(body, latency_ms, self._settings.image_model),
             )
@@ -154,6 +155,10 @@ class OpenRouterImageClient:
             payload["aspect_ratio"] = request.aspect_ratio
             if resolution and resolution != "1K":
                 payload["resolution"] = resolution
+            if request.references:
+                payload["input_references"] = [
+                    _reference_part(item) for item in request.references
+                ]
             return payload
 
         if _enum_allows(params, "aspect_ratio", request.aspect_ratio) or not params:
@@ -168,6 +173,14 @@ class OpenRouterImageClient:
             params, "output_format", request.output_format
         ):
             payload["output_format"] = request.output_format
+
+        if request.references:
+            payload["input_references"] = [
+                _reference_part(item) for item in request.references
+            ]
+
+        if request.n > 1 and _int_allows(params, "n", request.n):
+            payload["n"] = request.n
         return payload
 
     async def _supported_parameters(self) -> dict[str, Any] | None:
@@ -211,13 +224,26 @@ class OpenRouterImageClient:
         self._capabilities = params
         return params
 
-    async def _image_from(self, body: Any) -> tuple[bytes, str]:
+    async def _images_from(self, body: Any) -> tuple[bytes, tuple[bytes, ...], str]:
         if not isinstance(body, dict):
-            return b"", "image/jpeg"
+            return b"", (), "image/jpeg"
         rows = body.get("data") or []
-        if not rows or not isinstance(rows[0], dict):
-            return b"", "image/jpeg"
-        item = rows[0]
+        if not isinstance(rows, list) or not rows:
+            return b"", (), "image/jpeg"
+        frames: list[bytes] = []
+        media_type = "image/jpeg"
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            content, kind = await self._one_image(item)
+            if content:
+                frames.append(content)
+                media_type = kind
+        if not frames:
+            return b"", (), "image/jpeg"
+        return frames[0], tuple(frames[1:]), media_type
+
+    async def _one_image(self, item: dict[str, Any]) -> tuple[bytes, str]:
         encoded = item.get("b64_json") or item.get("b64")
         if isinstance(encoded, str) and encoded:
             raw = _decode_b64(encoded)
@@ -254,6 +280,29 @@ def _enum_allows(params: dict[str, Any], name: str, value: str) -> bool:
     if isinstance(values, list):
         return value in values
     return False
+
+
+def _int_allows(params: dict[str, Any], name: str, value: int) -> bool:
+    spec = params.get(name)
+    if spec is True:
+        return True
+    if not isinstance(spec, dict):
+        return False
+    maximum = spec.get("max") or spec.get("maximum")
+    return not (isinstance(maximum, int) and value > maximum)
+
+
+def _reference_part(content: bytes) -> dict[str, Any]:
+    return {
+        "type": "image_url",
+        "image_url": {"url": _data_url(content)},
+    }
+
+
+def _data_url(content: bytes) -> str:
+    kind = "image/png" if content.startswith(b"\x89PNG") else "image/jpeg"
+    encoded = base64.b64encode(content).decode("ascii")
+    return f"data:{kind};base64,{encoded}"
 
 
 def _is_retryable(status_code: int) -> bool:

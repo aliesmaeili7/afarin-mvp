@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { toPersianError } from "@/lib/api";
+import { toDisplayError } from "@/lib/i18n/errors";
+import { useI18n } from "@/lib/i18n/PreferencesProvider";
 
 export interface AsyncDataState<T> {
   data: T | null;
@@ -13,7 +14,7 @@ export interface AsyncDataState<T> {
 
 interface InternalState<T> {
   data: T | null;
-  error: string | null;
+  error: unknown | null;
   loading: boolean;
 }
 
@@ -29,6 +30,7 @@ export function useAsyncData<T>(
   loader: () => Promise<T>,
   deps: readonly unknown[] = [],
 ): AsyncDataState<T> {
+  const { locale } = useI18n();
   const key = JSON.stringify(deps);
 
   const [state, setState] = useState<InternalState<T>>({
@@ -55,7 +57,7 @@ export function useAsyncData<T>(
         if (!cancelled) {
           setState((current) => ({
             ...current,
-            error: toPersianError(caught),
+            error: caught,
             loading: false,
           }));
         }
@@ -77,5 +79,11 @@ export function useAsyncData<T>(
     setState((current) => ({ ...current, data: value }));
   }, []);
 
-  return { ...state, reload, setData };
+  return {
+    data: state.data,
+    error: state.error ? toDisplayError(state.error, locale) : null,
+    loading: state.loading,
+    reload,
+    setData,
+  };
 }

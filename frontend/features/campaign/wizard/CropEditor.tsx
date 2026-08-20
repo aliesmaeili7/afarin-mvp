@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { CropRect } from "@/types/domain";
 import { type CropHandle, resizeCrop } from "./cropMath";
 
@@ -17,6 +18,7 @@ export function CropEditor({
   onChange: (crop: CropRect) => void;
   onCommit?: (crop: CropRect) => void;
 }) {
+  const { t } = useI18n();
   const frameRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{
     handle: CropHandle;
@@ -85,7 +87,7 @@ export function CropEditor({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
-          alt="کادر محصول"
+          alt={t("wizard.cropAlt")}
           className="pointer-events-none block h-auto w-full"
           draggable={false}
         />
@@ -105,7 +107,7 @@ export function CropEditor({
             <button
               key={handle}
               type="button"
-              aria-label="تغییر اندازه کادر"
+              aria-label={t("wizard.cropResize")}
               className={`absolute z-10 size-8 rounded-full border-2 border-white bg-brand-500 ${
                 handle.startsWith("n") ? "top-0 -translate-y-1/2" : "bottom-0 translate-y-1/2"
               } ${
@@ -121,10 +123,7 @@ export function CropEditor({
           ))}
         </div>
       </div>
-      <p className="text-sm leading-7 text-ink-500">
-        کادر رو دور خود محصول بکش تا نوار اینستاگرام و حاشیه‌ها تو تبلیغ نیاد. با
-        انگشت جابه‌جا یا بزرگش کن.
-      </p>
+      <p className="text-sm leading-7 text-muted">{t("wizard.cropHelp")}</p>
     </div>
   );
 }

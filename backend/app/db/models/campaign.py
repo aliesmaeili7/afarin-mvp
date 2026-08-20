@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -23,6 +24,10 @@ from app.core.enums import (
     COPY_TYPES,
     JOB_STATUSES,
     JOB_TYPES,
+    VISUAL_ATTEMPT_SOURCES,
+    VISUAL_ATTEMPT_STATUSES,
+    VISUAL_CANDIDATE_KINDS,
+    VISUAL_CREATION_MODES,
     VISUAL_STYLES,
 )
 from app.db.base import (
@@ -49,6 +54,12 @@ class Campaign(Base):
     __table_args__ = (
         enum_check("campaigns", "objective", CAMPAIGN_OBJECTIVES, nullable=True),
         enum_check("campaigns", "visual_style", VISUAL_STYLES, nullable=True),
+        enum_check(
+            "campaigns",
+            "visual_creation_mode",
+            VISUAL_CREATION_MODES,
+            nullable=True,
+        ),
         enum_check("campaigns", "status", CAMPAIGN_STATUSES),
         CheckConstraint(
             "user_id is not null or anonymous_session_id is not null",
@@ -80,6 +91,19 @@ class Campaign(Base):
     objective: Mapped[str | None] = text_column()
     audience: Mapped[str | None] = text_column()
     visual_style: Mapped[str | None] = text_column()
+    visual_creation_mode: Mapped[str | None] = text_column()
+    visual_recipe_json: Mapped[dict] = json_column("visual_recipe_json")
+    current_visual_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "campaign_visual_attempts.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_campaigns_current_visual_attempt",
+        ),
+        nullable=True,
+        index=True,
+    )
     selected_concept_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
@@ -225,3 +249,88 @@ class GenerationJob(Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class CampaignVisualAttempt(Base):
+    """One creative generation round: 3 candidates, optional repair, later Story."""
+
+    __tablename__ = "campaign_visual_attempts"
+    __table_args__ = (
+        enum_check("campaign_visual_attempts", "source", VISUAL_ATTEMPT_SOURCES),
+        enum_check(
+            "campaign_visual_attempts", "status", VISUAL_ATTEMPT_STATUSES
+        ),
+        UniqueConstraint(
+            "campaign_id",
+            "attempt_number",
+            name="uq_visual_attempts_campaign_number",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = pk()
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    recipe_json: Mapped[dict] = json_column("recipe_json")
+    planner_json: Mapped[dict] = json_column("planner_json")
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    auto_repair_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    selected_candidate_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "campaign_visual_candidates.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_visual_attempts_selected_candidate",
+        ),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = created_timestamp()
+
+
+class CampaignVisualCandidate(Base):
+    """One 4:5 creative output. Previous attempts are never overwritten."""
+
+    __tablename__ = "campaign_visual_candidates"
+    __table_args__ = (
+        enum_check(
+            "campaign_visual_candidates", "kind", VISUAL_CANDIDATE_KINDS
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = pk()
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("campaign_visual_attempts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    slot: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(
+        String, nullable=False, server_default=text("'primary'")
+    )
+    storage_path: Mapped[str] = mapped_column(String, nullable=False)
+    quality_json: Mapped[dict] = json_column("quality_json")
+    hard_failed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    hidden: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    generation_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("generation_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    variation_index: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    created_at: Mapped[datetime] = created_timestamp()
+

@@ -3,6 +3,7 @@ The journey the spec is actually about: a stranger uploads a photo, gets a
 campaign, signs up, and finds it waiting for them.
 """
 
+import asyncio
 import uuid
 
 import pytest
@@ -100,6 +101,36 @@ async def test_generation_requires_signing_in(client: AsyncClient, storage) -> N
     response = await client.post(f"/api/campaigns/{campaign_id}/generate")
     assert response.status_code == 403
     assert response.json()["message_fa"] == "برای ساخت کمپین اول باید وارد بشی."
+
+
+async def test_signed_in_user_can_create_campaign_without_prior_adopt(
+    client: AsyncClient, storage
+) -> None:
+    user_id = uuid.uuid4()
+    headers = auth_header(user_id)
+    response = await client.post("/api/campaigns", json={}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["user_id"] == str(user_id)
+
+    dashboard = await client.get("/api/campaigns", headers=headers)
+    assert dashboard.status_code == 200
+    # Sample seed plus the new draft.
+    assert len(dashboard.json()) == 2
+
+
+async def test_concurrent_session_me_does_not_duplicate_profile(
+    client: AsyncClient,
+) -> None:
+    user_id = uuid.uuid4()
+    headers = auth_header(user_id)
+    first, second = await asyncio.gather(
+        client.get("/api/session/me", headers=headers),
+        client.get("/api/session/me", headers=headers),
+    )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["user"]["id"] == str(user_id)
+    assert second.json()["user"]["id"] == str(user_id)
 
 
 async def test_signed_in_user_can_generate_a_second_campaign(

@@ -25,12 +25,14 @@ class StubImageProvider(ImageProvider):
 
     async def generate(self, request: ImageRequest) -> ImageResult:
         tone = sum(request.prompt.encode()) % 80
-        if request.aspect_ratio == "9:16":
-            content = _jpeg(9, 16, (36, 28 + tone, 56))
-        else:
-            content = _jpeg(8, 10, (48, 40 + tone, 72))
+        count = max(1, request.n)
+        frames = tuple(
+            _jpeg_for(request.aspect_ratio, tone + index * 17)
+            for index in range(count)
+        )
         return ImageResult(
-            content=content,
+            content=frames[0],
+            contents=frames,
             media_type="image/jpeg",
             usage=ImageUsage(
                 latency_ms=1,
@@ -38,3 +40,9 @@ class StubImageProvider(ImageProvider):
                 model=self.model,
             ),
         )
+
+
+def _jpeg_for(aspect: str, tone: int) -> bytes:
+    if aspect == "9:16":
+        return _jpeg(9, 16, (36, 28 + tone % 80, 56))
+    return _jpeg(8, 10, (48, 40 + tone % 80, 72))

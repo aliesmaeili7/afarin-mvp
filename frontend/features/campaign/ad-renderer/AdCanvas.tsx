@@ -6,16 +6,24 @@ import { getBackground } from "@/lib/content/backgrounds";
 import { cn } from "@/components/ui/cn";
 import { BackgroundLayer } from "./BackgroundLayer";
 import { getTemplate } from "./templates";
+import { persistedTextLayers } from "./textLayers";
+import { TextLayerView } from "./TextLayerView";
 import { useResolvedAssetUrl } from "./useResolvedAssetUrl";
+
+export type AdCanvasMode = "view" | "export";
 
 export interface AdCanvasProps {
   spec: AssetRenderSpec;
   width: number;
   height: number;
-  /** Set once the backend renders assets server-side; the image then wins. */
+  /**
+   * Only a baked final PNG should win over composition. Product photos must
+   * not be passed here — they would hide Persian type.
+   */
   storagePath?: string | null;
   className?: string;
   innerRef?: Ref<HTMLDivElement>;
+  mode?: AdCanvasMode;
 }
 
 /**
@@ -24,6 +32,9 @@ export interface AdCanvasProps {
  * The background never contains text: the Persian headline, price, CTA and
  * brand name are always our own layers, which is what keeps the typography,
  * RTL layout and نیم‌فاصله correct (spec §5.6).
+ *
+ * `mode` is view/export only. Editor chrome lives outside this tree so PNG
+ * capture cannot include handles or guides.
  */
 export function AdCanvas({
   spec,
@@ -32,12 +43,14 @@ export function AdCanvas({
   storagePath,
   className,
   innerRef,
+  mode = "view",
 }: AdCanvasProps) {
   const template = getTemplate(spec.template_id);
   const background = getBackground(spec.background_id);
   const productUrl = useResolvedAssetUrl(spec.product_image_path);
   const sceneUrl = useResolvedAssetUrl(spec.scene_image_path ?? null);
   const renderedUrl = useResolvedAssetUrl(storagePath ?? null);
+  const layers = persistedTextLayers(spec);
 
   const containerStyle: CSSProperties = {
     aspectRatio: `${width} / ${height}`,
@@ -50,7 +63,9 @@ export function AdCanvas({
       <div
         ref={innerRef}
         dir="rtl"
-        style={containerStyle}
+        data-ad-canvas
+        data-ad-canvas-mode={mode}
+        style={{ ...containerStyle, colorScheme: "only light" }}
         className={cn("relative w-full overflow-hidden", className)}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -65,7 +80,9 @@ export function AdCanvas({
 
   const unit = (value: number) => `${value}cqw`;
 
-  const productBlock = template.show_product ? (
+  const showProduct =
+    template.show_product && spec.product_source !== "generated";
+  const productBlock = showProduct ? (
     <div
       className="relative flex min-h-0 items-center justify-center"
       style={{ flex: template.product_flex }}
@@ -101,6 +118,32 @@ export function AdCanvas({
       )}
     </div>
   ) : null;
+
+  if (layers) {
+    return (
+      <div
+        ref={innerRef}
+        dir="rtl"
+        data-ad-canvas
+        data-ad-canvas-mode={mode}
+        style={{ ...containerStyle, colorScheme: "only light" }}
+        className={cn("relative w-full overflow-hidden", className)}
+      >
+        <BackgroundLayer background={background} sceneUrl={sceneUrl} />
+        {showProduct ? (
+          <div
+            className="absolute inset-0 flex flex-col"
+            style={{ padding: unit(template.padding), paddingBlock: unit(14) }}
+          >
+            {productBlock}
+          </div>
+        ) : null}
+        {layers.map((layer) => (
+          <TextLayerView key={layer.id} layer={layer} />
+        ))}
+      </div>
+    );
+  }
 
   const textBlock = (
     <div
@@ -166,7 +209,9 @@ export function AdCanvas({
     <div
       ref={innerRef}
       dir="rtl"
-      style={containerStyle}
+      data-ad-canvas
+      data-ad-canvas-mode={mode}
+      style={{ ...containerStyle, colorScheme: "only light" }}
       className={cn("relative w-full overflow-hidden", className)}
     >
       <BackgroundLayer background={background} sceneUrl={sceneUrl} />

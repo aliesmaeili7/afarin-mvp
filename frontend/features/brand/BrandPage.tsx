@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { api, toPersianError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Container } from "@/components/layout/Container";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Button } from "@/components/ui/Button";
@@ -14,6 +14,8 @@ import { useToast } from "@/components/ui/Toast";
 import { VISUAL_STYLES } from "@/lib/content/styles";
 import { useAsyncData } from "@/lib/hooks/useAsyncData";
 import { useHydratedForm } from "@/lib/hooks/useHydratedForm";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
+import type { TranslationKey } from "@/lib/i18n/t";
 import type { Brand, VisualStyle } from "@/types/domain";
 
 interface BrandForm {
@@ -30,6 +32,8 @@ interface BrandForm {
 /** Spec §18 — a simple, fully editable Brand Kit. */
 export function BrandPage({ brandId }: { brandId: string }) {
   const { toast } = useToast();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
   const { data, loading, error, reload } = useAsyncData<Brand>(
     () => api.getBrand(brandId),
     [brandId],
@@ -73,16 +77,16 @@ export function BrandPage({ brandId }: { brandId: string }) {
         visual_style: form.visual_style,
       });
       await reload();
-      toast("اطلاعات برند ذخیره شد");
+      toast(t("brand.saved"));
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="min-h-dvh bg-ink-50">
+    <div className="min-h-dvh bg-background">
       <SiteHeader />
 
       <Container size="md" className="flex flex-col gap-6 py-8">
@@ -93,48 +97,46 @@ export function BrandPage({ brandId }: { brandId: string }) {
           </>
         ) : error || !form ? (
           <ErrorState
-            title="این برند پیدا نشد"
+            title={t("errors.brandNotFound")}
             description={error ?? undefined}
             action={
               <Link href="/dashboard">
-                <Button>بازگشت به داشبورد</Button>
+                <Button>{t("brand.backDashboard")}</Button>
               </Link>
             }
           />
         ) : (
           <>
             <header>
-              <h1 className="text-2xl font-extrabold text-ink-900">
-                هویت برند {form.name}
+              <h1 className="text-2xl font-extrabold text-foreground">
+                {t("brand.title", { name: form.name })}
               </h1>
-              <p className="mt-1 text-sm leading-7 text-ink-500">
-                این اطلاعات توی کمپین‌های بعدی به‌صورت خودکار استفاده می‌شه.
-              </p>
+              <p className="mt-1 text-sm leading-7 text-muted">{t("brand.subtitle")}</p>
             </header>
 
             <Card>
-              <CardHeader title="اطلاعات پایه" />
+              <CardHeader title={t("brand.basics")} />
               <div className="flex flex-col gap-5 p-5">
                 <TextField
-                  label="اسم برند"
+                  label={t("brand.name")}
                   value={form.name}
                   onChange={(event) => update("name", event.target.value)}
                 />
                 <TextAreaField
-                  label="معرفی کسب‌وکار"
+                  label={t("brand.about")}
                   optional
                   value={form.description}
                   onChange={(event) => update("description", event.target.value)}
                 />
                 <TextField
-                  label="دسته‌بندی"
+                  label={t("brand.category")}
                   optional
-                  placeholder="مثلاً پوشاک، مواد غذایی، آرایشی"
+                  placeholder={t("brand.categoryPlaceholder")}
                   value={form.category}
                   onChange={(event) => update("category", event.target.value)}
                 />
                 <TextField
-                  label="آیدی اینستاگرام"
+                  label={t("brand.instagram")}
                   optional
                   dir="ltr"
                   placeholder="yourshop"
@@ -144,7 +146,7 @@ export function BrandPage({ brandId }: { brandId: string }) {
                   }
                 />
                 <TextField
-                  label="وب‌سایت"
+                  label={t("brand.website")}
                   optional
                   type="url"
                   placeholder="https://example.com"
@@ -155,10 +157,10 @@ export function BrandPage({ brandId }: { brandId: string }) {
             </Card>
 
             <Card>
-              <CardHeader title="لحن و مخاطب" />
+              <CardHeader title={t("brand.toneAudience")} />
               <div className="flex flex-col gap-5 p-5">
                 <TextField
-                  label="مخاطب هدف"
+                  label={t("brand.audience")}
                   optional
                   value={form.target_audience}
                   onChange={(event) =>
@@ -166,9 +168,9 @@ export function BrandPage({ brandId }: { brandId: string }) {
                   }
                 />
                 <TextField
-                  label="لحن مورد علاقه"
+                  label={t("brand.tone")}
                   optional
-                  placeholder="مثلاً صمیمی و ساده"
+                  placeholder={t("brand.tonePlaceholder")}
                   value={form.tone}
                   onChange={(event) => update("tone", event.target.value)}
                 />
@@ -177,8 +179,8 @@ export function BrandPage({ brandId }: { brandId: string }) {
 
             <Card>
               <CardHeader
-                title="سبک بصری پیش‌فرض"
-                description="کمپین‌های بعدی با این سبک شروع می‌شن."
+                title={t("brand.defaultStyle")}
+                description={t("brand.defaultStyleHint")}
               />
               <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3">
                 {VISUAL_STYLES.map((option) => (
@@ -186,7 +188,7 @@ export function BrandPage({ brandId }: { brandId: string }) {
                     key={option.value}
                     selected={form.visual_style === option.value}
                     onSelect={() => update("visual_style", option.value)}
-                    title={option.label_fa}
+                    title={t(`campaign.style.${option.value}.label` as TranslationKey)}
                     media={
                       <span
                         className="block h-14"
@@ -207,7 +209,7 @@ export function BrandPage({ brandId }: { brandId: string }) {
                 onClick={handleSave}
                 className="shadow-lift"
               >
-                ذخیره تغییرات
+                {t("brand.save")}
               </Button>
             </div>
           </>

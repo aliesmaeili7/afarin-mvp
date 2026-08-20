@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import messages
@@ -36,18 +37,32 @@ async def get_or_create_profile(
     if profile is not None:
         return profile
 
+    # Two /api/session/me calls (React Strict Mode, header + page) often race
+    # the first-login insert. ON CONFLICT waits for the other transaction, then
+    # skips instead of raising UniqueViolationError.
     display_name = (email or "").split("@")[0] or "دوست عزیز"
-    profile = Profile(
-        user_id=user_id,
-        display_name=display_name,
-        email=email,
-        locale="fa",
-        free_campaigns_remaining=1,
+    inserted_id = await session.scalar(
+        insert(Profile)
+        .values(
+            user_id=user_id,
+            display_name=display_name,
+            email=email,
+            locale="fa",
+            free_campaigns_remaining=1,
+        )
+        .on_conflict_do_nothing(constraint="profiles_user_id_key")
+        .returning(Profile.id)
     )
-    session.add(profile)
-    await session.flush()
+    if inserted_id is not None:
+        profile = await session.get(Profile, inserted_id)
+        if profile is None:
+            raise RuntimeError("inserted profile id was not readable")
+        await seed_sample_campaign(session, profile)
+        return profile
 
-    await seed_sample_campaign(session, profile)
+    profile = await session.scalar(select(Profile).where(Profile.user_id == user_id))
+    if profile is None:
+        raise RuntimeError("profile insert conflicted but no row was visible")
     return profile
 
 

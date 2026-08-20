@@ -65,7 +65,10 @@ describe("mock campaign journey", () => {
       ApiError,
     );
 
-    const session = await mockApi.verifyEmailCode({ email: "shop@example.com", code: "123456" });
+    const session = await mockApi.signUpWithPassword({
+      email: "shop@example.com",
+      password: "shoppass1",
+    });
     expect(session.user.email).toBe("shop@example.com");
 
     const started = await mockApi.startGeneration(campaignId);
@@ -295,4 +298,56 @@ describe("mock campaign journey", () => {
     expect(afterRename.concepts).toEqual([]);
     expect(afterRename.campaign.status).toBe("brief_complete");
   }, 60_000);
+});
+
+describe("password recovery for OTP-only accounts", () => {
+  it("does not tell an existing OTP user to sign up again", async () => {
+    await mockApi.verifyEmailCode({ email: "otp@shop.com", code: "123456" });
+    await mockApi.signOut();
+
+    await expect(
+      mockApi.signInWithPassword({ email: "otp@shop.com", password: "newpass1" }),
+    ).rejects.toMatchObject({
+      messageFa: "ایمیل یا رمز درست نیست.",
+    });
+  });
+
+  it("lets an OTP-only account set a first password and then sign in", async () => {
+    await mockApi.verifyEmailCode({ email: "otp@shop.com", code: "123456" });
+    await mockApi.signOut();
+
+    await mockApi.requestPasswordReset({ email: "otp@shop.com" });
+    await mockApi.ensurePasswordRecoverySession();
+    const afterReset = await mockApi.updatePassword({ password: "newpass12" });
+    expect(afterReset.user.email).toBe("otp@shop.com");
+
+    await mockApi.signOut();
+    const signedIn = await mockApi.signInWithPassword({
+      email: "otp@shop.com",
+      password: "newpass12",
+    });
+    expect(signedIn.user.email).toBe("otp@shop.com");
+  });
+
+  it("rejects setting a password without a recovery session", async () => {
+    await expect(mockApi.ensurePasswordRecoverySession()).rejects.toMatchObject({
+      messageFa: "این لینک معتبر نیست یا منقضی شده. دوباره درخواست بده.",
+    });
+    await expect(mockApi.updatePassword({ password: "newpass12" })).rejects.toMatchObject({
+      messageFa: "این لینک معتبر نیست یا منقضی شده. دوباره درخواست بده.",
+    });
+  });
+
+  it("keeps OTP login working after a password is set", async () => {
+    await mockApi.signUpWithPassword({
+      email: "both@shop.com",
+      password: "shoppass1",
+    });
+    await mockApi.signOut();
+    const viaCode = await mockApi.verifyEmailCode({
+      email: "both@shop.com",
+      code: "654321",
+    });
+    expect(viaCode.user.email).toBe("both@shop.com");
+  });
 });

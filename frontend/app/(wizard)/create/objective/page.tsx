@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { ObjectiveStep } from "@/features/campaign/wizard/steps/ObjectiveStep";
+import { localeMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = { title: "هدف تبلیغ" };
+export const generateMetadata = () => localeMetadata("meta.wizardObjective");
 
 export default function Page() {
   return <ObjectiveStep />;

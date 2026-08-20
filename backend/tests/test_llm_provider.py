@@ -174,6 +174,19 @@ def test_strict_schema_closes_objects() -> None:
     assert "concepts" in schema["required"]
 
 
+def test_strict_schema_requires_defaulted_fields() -> None:
+    from app.providers.vision.schemas import LlmPlannerResult
+
+    schema = strict_schema(LlmPlannerResult)
+    dumped = json.dumps(schema)
+    assert "default" not in dumped
+    recipe = schema["properties"]["recommended_recipes"]["items"]
+    assert "warning_fa" in recipe["required"]
+    assert "identity_constraints" in recipe["required"]
+    quality = schema["properties"]["input_quality"]
+    assert "reasons" in quality["required"]
+
+
 def test_pydantic_rejects_two_concepts() -> None:
     with pytest.raises(ValidationError):
         LlmConcepts.model_validate({"concepts": three_concepts()["concepts"][:2]})

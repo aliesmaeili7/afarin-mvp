@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import assets, brands, campaigns, generation, session
+from app.api.v1 import assets, brands, campaigns, catalog, generation, session
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.db.session import dispose_engine
@@ -64,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(generation.router)
     app.include_router(brands.router)
     app.include_router(assets.router)
+    app.include_router(catalog.router)
 
     @app.get("/health", tags=["ops"])
     async def health() -> dict[str, str]:

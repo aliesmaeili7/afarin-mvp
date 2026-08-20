@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { api, toPersianError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
 import { Button } from "@/components/ui/Button";
 import { ChoiceCard } from "@/components/ui/ChoiceCard";
@@ -10,6 +10,8 @@ import { Skeleton } from "@/components/ui/Feedback";
 import { useToast } from "@/components/ui/Toast";
 import { VISUAL_STYLES } from "@/lib/content/styles";
 import { useHydratedForm } from "@/lib/hooks/useHydratedForm";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
+import type { TranslationKey } from "@/lib/i18n/t";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { buildStylePreviewSpec } from "@/features/campaign/ad-renderer/previewSpec";
 import type { VisualStyle } from "@/types/domain";
@@ -29,6 +31,8 @@ const OBJECTIVE_STYLE_HINT: Record<string, VisualStyle> = {
 export function StyleStep() {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
   const { detail, campaignId, loading } = useDraftCampaign();
   const blocked = useWizardGuard(4, detail, loading, campaignId);
 
@@ -54,7 +58,7 @@ export function StyleStep() {
       track("style_selected", { style, auto: autoPicked });
       router.push("/create/concepts");
     } catch (caught) {
-      toast(toPersianError(caught), "error");
+      toast(displayError(caught), "error");
     } finally {
       setSaving(false);
     }
@@ -64,8 +68,8 @@ export function StyleStep() {
     <WizardShell
       step={WIZARD_STEPS[3]}
       backHref="/create/objective"
-      heading="دوست داری تبلیغت چه حسی داشته باشه؟"
-      description="هر کارت، محصول خودت رو توی همون سبک نشون می‌ده."
+      heading={t("wizard.styleTitle")}
+      description={t("wizard.styleDescription")}
       footer={
         <Button
           fullWidth
@@ -74,7 +78,7 @@ export function StyleStep() {
           disabled={!style}
           onClick={handleContinue}
         >
-          ادامه
+          {t("common.continue")}
         </Button>
       }
     >
@@ -95,8 +99,10 @@ export function StyleStep() {
                   setStyle(option.value);
                   setAutoPicked(false);
                 }}
-                title={option.label_fa}
-                description={option.description_fa}
+                title={t(`campaign.style.${option.value}.label` as TranslationKey)}
+                description={t(
+                  `campaign.style.${option.value}.description` as TranslationKey,
+                )}
                 media={
                   <span className="block" aria-hidden="true">
                     <AdCanvas
@@ -115,16 +121,14 @@ export function StyleStep() {
             onClick={handleAutoPick}
             className="-mx-2 flex h-11 items-center self-start rounded-xl px-2 text-sm font-semibold text-brand-700 underline-offset-4 hover:underline"
           >
-            خودت بهترین سبک رو انتخاب کن
+            {t("wizard.styleAuto")}
           </button>
 
           {autoPicked && style ? (
             <p className="rounded-2xl bg-brand-50 p-4 text-sm leading-7 text-brand-800">
-              با توجه به هدف تبلیغت، سبک{" "}
-              <span className="font-bold">
-                {VISUAL_STYLES.find((item) => item.value === style)?.label_fa}
-              </span>{" "}
-              رو پیشنهاد می‌کنیم. اگه دوست نداشتی، هر کدوم دیگه‌ای رو انتخاب کن.
+              {t("wizard.styleAutoPicked", {
+                style: t(`campaign.style.${style}.label` as TranslationKey),
+              })}
             </p>
           ) : null}
         </div>

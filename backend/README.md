@@ -45,13 +45,16 @@ set by hand in the dashboard, and nothing else:
    Under **Email Templates → Magic Link**, paste
    `supabase/templates/magic_link.html`. This is the important one: the default
    template sends a link, and the app asks for a six-digit code. The template
-   must contain `{{ .Token }}`, not `{{ .ConfirmationURL }}`.
+   must contain `{{ .Token }}`, not `{{ .ConfirmationURL }}`. Leave
+   **Reset Password** as a link (`{{ .ConfirmationURL }}`) pointing at
+   `/auth/reset-password` so OTP-only accounts can set a password.
 2. **Authentication → Sign In / Providers → Google.** Enable it and paste the
    client ID and secret from Google Cloud. Add
    `https://<project-ref>.supabase.co/auth/v1/callback` as an authorised
    redirect URI on the Google side.
 3. **Authentication → URL Configuration.** Set the site URL to the deployed
-   frontend and add `<frontend-origin>/auth/callback` to the redirect
+   frontend and add `<frontend-origin>/auth/callback` and
+   `<frontend-origin>/auth/reset-password` to the redirect
    allow-list. Google sign-in fails silently without it.
 4. **Database → Connection string.** Use the `postgres` URI as
    `ADMIN_DATABASE_URL` for the one-time bootstrap, then run

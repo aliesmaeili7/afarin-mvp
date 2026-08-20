@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { BrandPage } from "@/features/brand/BrandPage";
+import { localeMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = { title: "هویت برند" };
+export const generateMetadata = () => localeMetadata("meta.brand");
 
 export default async function Page({
   params,

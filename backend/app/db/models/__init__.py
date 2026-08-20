@@ -5,6 +5,8 @@ from app.db.models.campaign import (
     CampaignAsset,
     CampaignConcept,
     CampaignCopy,
+    CampaignVisualAttempt,
+    CampaignVisualCandidate,
     GenerationJob,
 )
 from app.db.models.identity import AnonymousSession, Profile
@@ -23,6 +25,8 @@ __all__ = [
     "CampaignAsset",
     "CampaignConcept",
     "CampaignCopy",
+    "CampaignVisualAttempt",
+    "CampaignVisualCandidate",
     "GenerationJob",
     "Product",
     "ProductImage",
@@ -51,4 +55,6 @@ APP_TABLES: tuple[str, ...] = (
     "campaign_copy",
     "campaign_assets",
     "generation_jobs",
+    "campaign_visual_attempts",
+    "campaign_visual_candidates",
 )

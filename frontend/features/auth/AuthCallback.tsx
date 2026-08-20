@@ -2,12 +2,13 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, toPersianError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
 import { Container } from "@/components/layout/Container";
 import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Feedback";
+import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
 import { useSessionStore } from "./sessionStore";
 
 /**
@@ -20,6 +21,8 @@ import { useSessionStore } from "./sessionStore";
 export function AuthCallback() {
   const router = useRouter();
   const params = useSearchParams();
+  const { t } = useI18n();
+  const displayError = useDisplayError();
   const setSession = useSessionStore((state) => state.setSession);
 
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +35,11 @@ export function AuthCallback() {
     started.current = true;
 
     const campaignId = params.get("campaign");
+    if (params.get("type") === "recovery") {
+      const next = `/auth/reset-password${window.location.search}${window.location.hash}`;
+      window.location.replace(next);
+      return;
+    }
 
     void (async () => {
       try {
@@ -48,28 +56,26 @@ export function AuthCallback() {
         track("generation_started", { campaign_id: campaignId });
         router.replace(`/campaigns/${campaignId}`);
       } catch (caught) {
-        setError(toPersianError(caught));
+        setError(displayError(caught));
       }
     })();
-  }, [params, router, setSession]);
+  }, [params, router, setSession, displayError]);
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-ink-50">
+    <main className="grid min-h-dvh place-items-center bg-background">
       <Container size="sm" className="flex flex-col items-center gap-6 text-center">
         <Logo />
         {error ? (
           <>
-            <p className="text-sm leading-7 text-ink-500">{error}</p>
+            <p className="text-sm leading-7 text-muted">{error}</p>
             <Button onClick={() => router.replace("/dashboard")}>
-              رفتن به کمپین‌های من
+              {t("auth.goToCampaigns")}
             </Button>
           </>
         ) : (
           <>
             <Skeleton className="h-2 w-40 rounded-full" />
-            <p className="text-sm leading-7 text-ink-500">
-              یه لحظه صبر کن، داریم واردت می‌کنیم…
-            </p>
+            <p className="text-sm leading-7 text-muted">{t("auth.callbackWait")}</p>
           </>
         )}
       </Container>

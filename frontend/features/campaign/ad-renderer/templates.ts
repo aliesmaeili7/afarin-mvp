@@ -16,7 +16,6 @@ export type TemplateOrder = "product_first" | "headline_first" | "statement";
 
 export interface AdTemplate {
   id: string;
-  label_fa: string;
   order: TemplateOrder;
   /** Outer padding, in cqw. */
   padding: number;
@@ -34,7 +33,6 @@ export interface AdTemplate {
 export const TEMPLATES: Record<string, AdTemplate> = {
   feed_classic: {
     id: "feed_classic",
-    label_fa: "پست فید",
     order: "product_first",
     padding: 7,
     headline_size: 7.6,
@@ -48,7 +46,6 @@ export const TEMPLATES: Record<string, AdTemplate> = {
   },
   story_classic: {
     id: "story_classic",
-    label_fa: "استوری",
     order: "product_first",
     padding: 8,
     headline_size: 8.2,
@@ -62,7 +59,6 @@ export const TEMPLATES: Record<string, AdTemplate> = {
   },
   carousel_hook: {
     id: "carousel_hook",
-    label_fa: "اسلاید ۱ — قلاب",
     order: "headline_first",
     padding: 8,
     headline_size: 9.4,
@@ -76,7 +72,6 @@ export const TEMPLATES: Record<string, AdTemplate> = {
   },
   carousel_benefit: {
     id: "carousel_benefit",
-    label_fa: "اسلاید ۲ — مزیت",
     order: "product_first",
     padding: 8,
     headline_size: 7,
@@ -90,7 +85,6 @@ export const TEMPLATES: Record<string, AdTemplate> = {
   },
   carousel_cta: {
     id: "carousel_cta",
-    label_fa: "اسلاید ۳ — دعوت به اقدام",
     order: "statement",
     padding: 9,
     headline_size: 10,
@@ -120,12 +114,12 @@ export const ASSET_DIMENSIONS: Record<AssetType, { width: number; height: number
 };
 
 export const ASSET_LABELS: Record<AssetType, string> = {
-  uploaded_product: "عکس محصول",
-  product_cutout: "محصول جدا شده",
-  generated_background: "پس‌زمینه",
-  feed_final: "پست فید",
-  story_final: "استوری",
-  carousel_1: "اسلاید ۱",
-  carousel_2: "اسلاید ۲",
-  carousel_3: "اسلاید ۳",
+  uploaded_product: "ad.asset.uploaded_product",
+  product_cutout: "ad.asset.product_cutout",
+  generated_background: "ad.asset.generated_background",
+  feed_final: "ad.asset.feed_final",
+  story_final: "ad.asset.story_final",
+  carousel_1: "ad.asset.carousel_1",
+  carousel_2: "ad.asset.carousel_2",
+  carousel_3: "ad.asset.carousel_3",
 };

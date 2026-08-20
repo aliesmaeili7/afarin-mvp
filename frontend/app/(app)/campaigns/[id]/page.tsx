@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { CampaignView } from "@/features/campaign/CampaignView";
+import { localeMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = { title: "کمپین من" };
+export const generateMetadata = () => localeMetadata("meta.campaign");
 
 export default async function Page({
   params,

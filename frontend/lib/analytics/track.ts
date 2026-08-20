@@ -13,6 +13,7 @@ export type AnalyticsEvent =
   | "style_selected"
   | "concepts_generated"
   | "concept_selected"
+  | "visual_mode_selected"
   | "signup_started"
   | "signup_completed"
   | "generation_started"
