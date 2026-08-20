@@ -149,5 +149,32 @@ describe("email sign-in", () => {
     await expect(
       httpApi.verifyEmailCode({ email: "a@b.com", code: "123" }),
     ).rejects.toMatchObject({ messageFa: "کد ۶ رقمی رو کامل وارد کن." });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("rewrite", () => {
+  it("posts a closed rewrite intent for copy", async () => {
+    const httpApi = await loadApi();
+    fetchMock.mockResolvedValue(jsonResponse({ id: "copy-1", content: "سفارش بده" }));
+
+    await httpApi.rewriteCopy("c1", "copy-1", "informal");
+
+    expect(fetchMock.mock.calls[0][0]).toContain("/copy/copy-1/rewrite");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ intent: "informal" });
+  });
+
+  it("posts a closed rewrite intent for asset text", async () => {
+    const httpApi = await loadApi();
+    fetchMock.mockResolvedValue(
+      jsonResponse({ id: "asset-1", metadata_json: { headline_fa: "تیتر جدید" } }),
+    );
+
+    await httpApi.rewriteAssetText("c1", "asset-1", "new_headline");
+
+    expect(fetchMock.mock.calls[0][0]).toContain("/assets/asset-1/rewrite");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      intent: "new_headline",
+    });
   });
 });

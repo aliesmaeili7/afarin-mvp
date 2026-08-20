@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { api, toPersianError } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
+import type { RewriteIntent } from "@/lib/api/types";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Sheet } from "@/components/ui/Sheet";
@@ -12,6 +13,7 @@ import { useToast } from "@/components/ui/Toast";
 import { useClipboard } from "@/lib/hooks/useClipboard";
 import type { CampaignCopy, CopyType } from "@/types/domain";
 import { SectionHeading } from "./AssetSection";
+import { CAPTION_REWRITE_CHIPS, RewriteChips } from "./RewriteChips";
 
 const CAPTION_TABS: { value: CopyType; label: string }[] = [
   { value: "caption_short", label: "کوتاه و مستقیم" },
@@ -35,6 +37,7 @@ export function CaptionsSection({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
 
   const current = copies.find((item) => item.copy_type === active);
   const hashtags = copies.find((item) => item.copy_type === "hashtags");
@@ -53,6 +56,21 @@ export function CaptionsSection({
       toast(toPersianError(caught), "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRewrite(intent: RewriteIntent) {
+    if (!current) return;
+    setRewriting(true);
+    try {
+      const updated = await api.rewriteCopy(campaignId, current.id, intent);
+      onChanged();
+      setDraft(updated.content);
+      toast("متن جدید آماده شد");
+    } catch (caught) {
+      toast(toPersianError(caught), "error");
+    } finally {
+      setRewriting(false);
     }
   }
 
@@ -78,6 +96,14 @@ export function CaptionsSection({
             {hashtags.content}
           </p>
         ) : null}
+
+        <div className="mt-4">
+          <RewriteChips
+            chips={CAPTION_REWRITE_CHIPS}
+            onSelect={(intent) => void handleRewrite(intent)}
+            disabled={rewriting || saving}
+          />
+        </div>
 
         <div className="mt-4 flex gap-2">
           <Button

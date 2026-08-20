@@ -64,7 +64,14 @@ class Settings(BaseSettings):
     anon_cookie_path: str = "/"
 
     # --- Behaviour ------------------------------------------------------
-    content_provider: Literal["stub"] = "stub"
+    content_provider: Literal["stub", "openrouter"] = "stub"
+    openrouter_api_key: str = ""
+    llm_model: str = "openai/gpt-5-mini"
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_timeout_seconds: float = 45
+    llm_max_retries: int = 2
+    llm_http_referer: str = "http://localhost:3000"
+    llm_app_title: str = "Afarin"
     # Phase 1 spent 900ms queued plus 13800ms of stages. Keeping the same total
     # means the progress screen behaves identically; tests set this to 0.
     generation_simulated_ms: int = 14700

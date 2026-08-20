@@ -188,4 +188,96 @@ describe("mock campaign journey", () => {
     );
     expect(await mockApi.resolveAssetUrl(null)).toBeNull();
   });
+
+  it("rewrites caption and headline through closed intents", async () => {
+    const campaignId = await completeBrief();
+    const concepts = await mockApi.generateConcepts(campaignId);
+    await mockApi.selectConcept(campaignId, concepts[0].id);
+    await mockApi.verifyEmailCode({ email: "rewrite@example.com", code: "123456" });
+    await mockApi.startGeneration(campaignId);
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + TOTAL_GENERATION_MS + 5000);
+    await mockApi.getCampaignStatus(campaignId);
+
+    const detail = await mockApi.getCampaign(campaignId);
+    const caption = detail.copies.find((copy) => copy.copy_type === "caption_short");
+    expect(caption).toBeDefined();
+    const rewritten = await mockApi.rewriteCopy(campaignId, caption!.id, "informal");
+    expect(rewritten.content).toContain("😊");
+
+    const feed = detail.assets.find((asset) => asset.asset_type === "feed_final");
+    expect(feed).toBeDefined();
+    const asset = await mockApi.rewriteAssetText(
+      campaignId,
+      feed!.id,
+      "new_headline",
+    );
+    expect(
+      (asset.metadata_json as { headline_fa: string }).headline_fa,
+    ).toContain("انتخاب هوشمندانه‌تر");
+  }, 60_000);
+
+  it("lets a signed-in user generate a second campaign without signing up again", async () => {
+    const firstId = await completeBrief();
+    const firstConcepts = await mockApi.generateConcepts(firstId);
+    await mockApi.selectConcept(firstId, firstConcepts[0].id);
+    await expect(mockApi.startGeneration(firstId)).rejects.toBeInstanceOf(ApiError);
+
+    await mockApi.verifyEmailCode({ email: "repeat@shop.com", code: "123456" });
+    await mockApi.startGeneration(firstId);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + TOTAL_GENERATION_MS + 5000);
+    await mockApi.getCampaignStatus(firstId);
+
+    const second = await mockApi.createCampaign({});
+    await mockApi.saveProduct(second.id, { name: "صابون زیتون", brand_name: "زیتونک" });
+    await mockApi.updateCampaign(second.id, {
+      objective: "sell_product",
+      visual_style: "minimal",
+    });
+    const secondConcepts = await mockApi.generateConcepts(second.id);
+    expect(secondConcepts).toHaveLength(3);
+    const first = await mockApi.getCampaign(firstId);
+    expect(secondConcepts.map((item) => item.id)).not.toEqual(
+      first.concepts.map((item) => item.id),
+    );
+    await mockApi.selectConcept(second.id, secondConcepts[0].id);
+    const started = await mockApi.startGeneration(second.id);
+    expect(["queued", "generating"]).toContain(started.status);
+  }, 60_000);
+
+  it("never shows another campaign's concepts on a fresh draft", async () => {
+    const firstId = await completeBrief();
+    const firstConcepts = await mockApi.generateConcepts(firstId);
+    expect(firstConcepts[0].headline_fa).toContain("زعفران");
+
+    const second = await mockApi.createCampaign({});
+    const detail = await mockApi.getCampaign(second.id);
+    expect(detail.concepts).toEqual([]);
+    expect(detail.campaign.id).not.toBe(firstId);
+  }, 60_000);
+
+  it("invalidates concepts when the brief changes", async () => {
+    const campaignId = await completeBrief();
+    const generated = await mockApi.generateConcepts(campaignId);
+    await mockApi.selectConcept(campaignId, generated[0].id);
+
+    const patched = await mockApi.updateCampaign(campaignId, {
+      visual_style: "minimal",
+    });
+    expect(patched.status).toBe("brief_complete");
+    expect(patched.selected_concept_id).toBeNull();
+    expect((await mockApi.getCampaign(campaignId)).concepts).toEqual([]);
+
+    const regenerated = await mockApi.generateConcepts(campaignId);
+    expect(regenerated).toHaveLength(3);
+    await mockApi.updateCampaign(campaignId, { visual_style: "minimal" });
+    expect((await mockApi.getCampaign(campaignId)).concepts).toHaveLength(3);
+
+    await mockApi.saveProduct(campaignId, { name: "صابون زیتون" });
+    const afterRename = await mockApi.getCampaign(campaignId);
+    expect(afterRename.concepts).toEqual([]);
+    expect(afterRename.campaign.status).toBe("brief_complete");
+  }, 60_000);
 });

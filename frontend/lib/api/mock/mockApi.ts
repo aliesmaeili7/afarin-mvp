@@ -23,6 +23,7 @@ import {
   type ProductInput,
   type EmailCodeRequest,
   type EmailCodeVerification,
+  type RewriteIntent,
   type UpdateCampaignInput,
 } from "@/lib/api/types";
 import { backgroundsForStyle } from "@/lib/content/backgrounds";
@@ -139,6 +140,32 @@ function conceptsOf(db: MockDbShape, campaignId: string): CampaignConcept[] {
   return db.campaign_concepts
     .filter((concept) => concept.campaign_id === campaignId)
     .sort((a, b) => a.concept_number - b.concept_number);
+}
+
+function dropStaleConcepts(
+  db: MockDbShape,
+  campaign: Campaign,
+  changed: boolean,
+): void {
+  if (!changed) return;
+  if (campaign.status !== "concepts_ready" && campaign.status !== "concept_selected") {
+    return;
+  }
+  db.campaign_concepts = db.campaign_concepts.filter(
+    (concept) => concept.campaign_id !== campaign.id,
+  );
+  campaign.selected_concept_id = null;
+  delete db.concept_rounds[campaign.id];
+  if (campaign.product_id && campaign.objective && campaign.visual_style) {
+    campaign.status = "brief_complete";
+  } else {
+    campaign.status = "draft";
+  }
+}
+
+function blank(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 function writeConcepts(
@@ -521,12 +548,23 @@ export const mockApi: AfarinApi = {
       const campaign = findCampaign(db, campaignId);
       assertOwnership(db, campaign);
 
+      const changed =
+        (patch.objective !== undefined &&
+          blank(patch.objective) !== blank(campaign.objective)) ||
+        (patch.audience !== undefined &&
+          blank(patch.audience) !== blank(campaign.audience)) ||
+        (patch.visual_style !== undefined &&
+          blank(patch.visual_style) !== blank(campaign.visual_style)) ||
+        (patch.brand_id !== undefined && patch.brand_id !== campaign.brand_id);
+
       if (patch.objective !== undefined) campaign.objective = patch.objective;
       if (patch.audience !== undefined) campaign.audience = patch.audience;
       if (patch.visual_style !== undefined) {
         campaign.visual_style = patch.visual_style;
       }
       if (patch.brand_id !== undefined) campaign.brand_id = patch.brand_id;
+
+      dropStaleConcepts(db, campaign, changed);
 
       if (
         campaign.status === "draft" &&
@@ -571,14 +609,30 @@ export const mockApi: AfarinApi = {
       const campaign = findCampaign(db, campaignId);
       assertOwnership(db, campaign);
       const product = ensureProduct(db, campaign);
+      const brand = brandOf(db, campaign);
 
-      product.name = input.name.trim();
-      product.description = input.description?.trim() || null;
-      product.price_text = input.price_text?.trim() || null;
-      product.main_benefit = input.main_benefit?.trim() || null;
+      const incomingName = input.name.trim();
+      const incomingDescription = blank(input.description);
+      const incomingPrice = blank(input.price_text);
+      const incomingBenefit = blank(input.main_benefit);
+      const incomingBrand = blank(input.brand_name);
+
+      let changed =
+        incomingName !== (product.name || "") ||
+        incomingDescription !== blank(product.description) ||
+        incomingPrice !== blank(product.price_text) ||
+        incomingBenefit !== blank(product.main_benefit);
+      if (incomingBrand !== null) {
+        changed = changed || incomingBrand !== (brand?.name ?? null);
+      }
+
+      product.name = incomingName;
+      product.description = incomingDescription;
+      product.price_text = incomingPrice;
+      product.main_benefit = incomingBenefit;
       product.updated_at = nowIso();
 
-      const brandName = input.brand_name?.trim();
+      const brandName = incomingBrand;
       if (brandName) {
         const existing = db.brands.find(
           (brand) =>
@@ -611,6 +665,8 @@ export const mockApi: AfarinApi = {
           product.brand_id = brand.id;
         }
       }
+
+      dropStaleConcepts(db, campaign, changed);
 
       campaign.updated_at = nowIso();
       return { ...product };
@@ -899,6 +955,38 @@ export const mockApi: AfarinApi = {
     });
   },
 
+  async rewriteCopy(
+    campaignId: string,
+    copyId: string,
+    intent: RewriteIntent,
+  ): Promise<CampaignCopy> {
+    await delay(LATENCY.write);
+    return mutateDb((db) => {
+      const campaign = findCampaign(db, campaignId);
+      assertOwnership(db, campaign);
+      const copy = db.campaign_copy.find(
+        (item) => item.id === copyId && item.campaign_id === campaign.id,
+      );
+      if (!copy) throw new ApiError("not_found", "این متن پیدا نشد.");
+      if (
+        intent === "new_headline" ||
+        !["informal", "shorter", "stronger_cta", "more_luxury"].includes(intent)
+      ) {
+        throw new ApiError("validation_error", "این تغییر برای این متن ممکن نیست.");
+      }
+      const product = db.products.find((item) => item.id === campaign.product_id);
+      copy.content = stubRewrite(
+        intent,
+        copy.content,
+        copy.copy_type,
+        product?.name ?? "محصول شما",
+      );
+      copy.updated_at = nowIso();
+      campaign.updated_at = nowIso();
+      return { ...copy };
+    });
+  },
+
   async regenerateAsset(
     campaignId: string,
     assetId: string,
@@ -953,6 +1041,43 @@ export const mockApi: AfarinApi = {
       if (!asset) throw new ApiError("not_found", "این تصویر پیدا نشد.");
 
       asset.metadata_json = { ...(asset.metadata_json as AssetRenderSpec), ...patch };
+      campaign.updated_at = nowIso();
+      return { ...asset };
+    });
+  },
+
+  async rewriteAssetText(
+    campaignId: string,
+    assetId: string,
+    intent: RewriteIntent,
+  ): Promise<CampaignAsset> {
+    await delay(LATENCY.write);
+    return mutateDb((db) => {
+      const campaign = findCampaign(db, campaignId);
+      assertOwnership(db, campaign);
+      const asset = db.campaign_assets.find(
+        (item) => item.id === assetId && item.campaign_id === campaign.id,
+      );
+      if (!asset) throw new ApiError("not_found", "این تصویر پیدا نشد.");
+      if (intent !== "new_headline" && intent !== "stronger_cta") {
+        throw new ApiError("validation_error", "این تغییر برای این متن ممکن نیست.");
+      }
+      const spec = { ...(asset.metadata_json as AssetRenderSpec) };
+      const product = db.products.find((item) => item.id === campaign.product_id);
+      const productName = product?.name ?? "محصول شما";
+      if (intent === "new_headline") {
+        spec.headline_fa = stubRewrite(intent, spec.headline_fa, "headline", productName);
+      } else {
+        spec.cta_fa = stubRewrite(intent, spec.cta_fa ?? "", "cta", productName);
+        const ctaCopy = db.campaign_copy.find(
+          (item) => item.campaign_id === campaign.id && item.copy_type === "cta",
+        );
+        if (ctaCopy) {
+          ctaCopy.content = spec.cta_fa ?? ctaCopy.content;
+          ctaCopy.updated_at = nowIso();
+        }
+      }
+      asset.metadata_json = spec;
       campaign.updated_at = nowIso();
       return { ...asset };
     });
@@ -1093,3 +1218,29 @@ export const mockApi: AfarinApi = {
     return Object.fromEntries(entries);
   },
 };
+
+function stubRewrite(
+  intent: RewriteIntent,
+  current: string,
+  field: string,
+  productName: string,
+): string {
+  const text = current.trim();
+  if (intent === "shorter") {
+    const first = text.split("\n")[0]?.trim() ?? text;
+    return first !== text ? first : text.slice(0, Math.max(12, Math.floor(text.length / 2)));
+  }
+  if (intent === "informal") {
+    return text.includes("😊") ? text : `${text}\nخوشحال می‌شیم کمکت کنیم 😊`;
+  }
+  if (intent === "stronger_cta") {
+    return field === "cta" ? "همین حالا سفارش بده" : `${text}\nهمین حالا سفارش بده 👇`;
+  }
+  if (intent === "new_headline") {
+    return `${productName}، انتخاب هوشمندانه‌تر`;
+  }
+  if (intent === "more_luxury") {
+    return `مجموعه‌ای منتخب\n${text}`;
+  }
+  return text;
+}

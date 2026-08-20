@@ -2,6 +2,15 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
+class PreviousConcept:
+    """A concept the seller already saw, so regeneration cannot paraphrase it."""
+
+    title_fa: str
+    description_fa: str
+    visual_direction: str
+
+
+@dataclass(frozen=True, slots=True)
 class CopyContext:
     """
     Everything the content provider needs to produce copy that actually mentions
@@ -19,6 +28,8 @@ class CopyContext:
     style: str
     # Increments each time the seller asks for fresh output.
     round: int
+    selected_headline: str | None = None
+    previous_concepts: tuple[PreviousConcept, ...] = ()
 
 
 def pick[T](items: tuple[T, ...] | list[T], index: int) -> T:

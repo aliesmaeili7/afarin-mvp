@@ -50,7 +50,8 @@ async def test_repeated_taps_launch_one_job(client: AsyncClient, storage) -> Non
     async with get_sessionmaker()() as session:
         count = await session.scalar(
             select(func.count(GenerationJob.id)).where(
-                GenerationJob.campaign_id == uuid.UUID(campaign_id)
+                GenerationJob.campaign_id == uuid.UUID(campaign_id),
+                GenerationJob.job_type == "campaign_generation",
             )
         )
     assert count == 1

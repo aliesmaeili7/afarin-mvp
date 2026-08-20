@@ -1,13 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Container } from "@/components/layout/Container";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Card";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { PlusIcon } from "@/components/ui/icons";
+import { useToast } from "@/components/ui/Toast";
+import { toPersianError } from "@/lib/api";
 import type { CampaignAsset, CampaignDetail } from "@/types/domain";
 import { BrandKitPrompt } from "@/features/brand/BrandKitPrompt";
+import { beginNewCampaign } from "@/features/campaign/wizard/useWizardStore";
 import { AssetSection } from "./AssetSection";
 import { CaptionsSection } from "./CaptionsSection";
 import { CarouselSection } from "./CarouselSection";
@@ -22,6 +27,10 @@ export function CampaignResult({
   detail: CampaignDetail;
   onChanged: () => void;
 }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [starting, setStarting] = useState(false);
+
   const byType = (type: CampaignAsset["asset_type"]) =>
     detail.assets.find((asset) => asset.asset_type === type);
 
@@ -85,16 +94,25 @@ export function CampaignResult({
         <BrandKitPrompt detail={detail} onSaved={onChanged} />
 
         <div className="flex flex-col gap-3 border-t border-ink-100 pt-8 sm:flex-row">
-          <Link href="/create" className="flex-1">
-            <Button
-              fullWidth
-              variant="outline"
-              size="lg"
-              iconStart={<PlusIcon width={18} height={18} />}
-            >
-              ساخت کمپین جدید
-            </Button>
-          </Link>
+          <Button
+            fullWidth
+            variant="outline"
+            size="lg"
+            className="flex-1"
+            loading={starting}
+            iconStart={<PlusIcon width={18} height={18} />}
+            onClick={() => {
+              setStarting(true);
+              void beginNewCampaign()
+                .then(() => router.push("/create"))
+                .catch((caught: unknown) => {
+                  toast(toPersianError(caught), "error");
+                  setStarting(false);
+                });
+            }}
+          >
+            ساخت کمپین جدید
+          </Button>
           <Link href="/dashboard" className="flex-1">
             <Button fullWidth variant="ghost" size="lg">
               رفتن به داشبورد

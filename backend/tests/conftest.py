@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.db.models import APP_TABLES
 from app.db.session import dispose_engine, get_sessionmaker
 from app.main import create_app
+from app.providers.llm import set_content_provider
 from app.services.storage import StorageRef, set_storage
 
 # Generation is simulated, and the point of these tests is the persistence, not
@@ -21,6 +22,7 @@ TEST_SETTINGS_ENV = {
     "GENERATION_SIMULATED_MS": "0",
     "GENERATION_QUEUE_MS": "0",
     "DB_NULL_POOL": "true",
+    "CONTENT_PROVIDER": "stub",
 }
 
 
@@ -53,11 +55,25 @@ def _configure() -> None:
     get_settings.cache_clear()
 
 
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Paid OpenRouter stays out of the default suite even if a key is in the env."""
+    expr = (config.option.markexpr or "").strip()
+    if expr == "live":
+        return
+    skip_live = pytest.mark.skip(reason="optional live test; run with pytest -m live")
+    for item in items:
+        if item.get_closest_marker("live"):
+            item.add_marker(skip_live)
+
+
 @pytest.fixture(autouse=True)
 async def _fresh_engine() -> AsyncIterator[None]:
     """Each test gets its own event loop, so it gets its own engine."""
     yield
     await dispose_engine()
+    set_content_provider(None)
 
 
 @pytest.fixture

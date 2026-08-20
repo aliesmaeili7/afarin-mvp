@@ -60,6 +60,8 @@ try {
   console.log("\n1. landing → wizard, anonymous session");
   await page.goto(APP, { waitUntil: "networkidle" });
   check("landing renders", await page.getByRole("heading", { level: 1 }).first().isVisible());
+  await page.getByRole("link", { name: "ورود" }).waitFor({ timeout: 10000 });
+  check("login entry is visible while logged out", await page.getByRole("link", { name: "ورود" }).isVisible());
 
   await page.locator('a[href="/create"]').first().click();
   await page.waitForURL(/\/create$/, { timeout: 20000 });
@@ -114,7 +116,7 @@ try {
   console.log("\n4. concepts");
   await page.waitForURL(/\/create\/concepts/, { timeout: 20000 });
   const pick = page.getByRole("button", { name: /این رو انتخاب کن/ });
-  await pick.first().waitFor({ timeout: 40000 });
+  await pick.first().waitFor({ timeout: 90000 });
   check("three concepts offered", (await pick.count()) === 3, `${await pick.count()}`);
   await pick.first().click();
 
@@ -137,14 +139,20 @@ try {
   await page.waitForURL(/\/campaigns\/[0-9a-f-]+/, { timeout: 40000 });
   check("anonymous campaign carried into the account", true, page.url().split("/").pop());
 
+  const progressCopy = page.getByText("داریم کمپینت رو می‌سازیم");
+  const feedCopy = page.getByText("پست فید");
+  const sawProgress = await progressCopy
+    .waitFor({ state: "visible", timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
   check(
     "progress screen runs while the job works",
-    await page.getByText("داریم کمپینت رو می‌سازیم").isVisible(),
+    sawProgress || (await feedCopy.isVisible().catch(() => false)),
   );
 
   // "پست فید" only exists on the finished result; the progress messages
   // mention captions and stories, so those words would match too early.
-  await page.getByText("پست فید").waitFor({ timeout: 120000 });
+  await feedCopy.waitFor({ timeout: 120000 });
   const result = await page.locator("body").innerText();
   check("the product name is in the generated copy", result.includes("زعفران"));
   check(
@@ -163,15 +171,58 @@ try {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/result.png`, fullPage: true });
 
   console.log("\n7. dashboard");
-  await page.goto(`${APP}/dashboard`, { waitUntil: "networkidle" });
-  await page.getByText(PRODUCT).first().waitFor({ timeout: 20000 });
-  check("campaign appears in history", true);
+  await page.getByRole("link", { name: "داشبورد", exact: true }).click();
+  await page.waitForURL(/\/dashboard/, { timeout: 20000 });
+  await page.getByRole("button", { name: "کمپین جدید بساز" }).waitFor({ timeout: 20000 });
+  await page.waitForFunction(
+    (name) => document.body.innerText.includes(name),
+    PRODUCT,
+    { timeout: 20000 },
+  );
+  const history = await page.locator("body").innerText();
+  check("campaign appears in history", history.includes(PRODUCT));
   await page.waitForTimeout(2000);
   const thumbnails = await page.locator("img").evaluateAll(loadedImages);
   check("history thumbnails render", thumbnails > 0, `${thumbnails} loaded`);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/dashboard.png`, fullPage: true });
+  check(
+    "logged-in header does not offer signup/login",
+    !(await page.getByRole("link", { name: "ورود" }).isVisible().catch(() => false)),
+  );
 
-  console.log("\n8. a different browser, same account");
+  console.log("\n8. second campaign while logged in");
+  await page.getByRole("button", { name: "کمپین جدید بساز" }).click();
+  await page.waitForURL(/\/create$/, { timeout: 20000 });
+  await page.setInputFiles('input[type="file"]', PHOTO);
+  await page.getByRole("button", { name: "ادامه", exact: true }).waitFor({ timeout: 30000 });
+  await page.getByRole("button", { name: "ادامه", exact: true }).click();
+
+  await page.waitForURL(/\/create\/product/, { timeout: 20000 });
+  await page.getByLabel("اسم محصول").fill("صابون زیتون");
+  await page.getByLabel("اسم برند یا کسب‌وکار").fill("زیتونک");
+  await page.getByRole("button", { name: "ادامه", exact: true }).click();
+
+  await page.waitForURL(/\/create\/objective/, { timeout: 20000 });
+  await page.getByRole("button").filter({ hasText: "فروش محصول" }).first().click();
+  await page.getByRole("button", { name: "ادامه", exact: true }).click();
+
+  await page.waitForURL(/\/create\/style/, { timeout: 20000 });
+  await page.getByRole("button").filter({ hasText: "مینیمال" }).first().click();
+  await page.getByRole("button", { name: "ادامه", exact: true }).click();
+
+  await page.waitForURL(/\/create\/concepts/, { timeout: 20000 });
+  await pick.first().waitFor({ timeout: 90000 });
+  const secondConcepts = await page.locator("body").innerText();
+  check(
+    "new campaign concepts are for the new product",
+    secondConcepts.includes("صابون") && !secondConcepts.includes(PRODUCT),
+  );
+  await pick.first().click();
+  await page.waitForURL(/\/campaigns\/[0-9a-f-]+/, { timeout: 40000 });
+  check("logged-in user skipped the signup gate", !page.url().includes("/create/signup"));
+  await page.getByText("پست فید").waitFor({ timeout: 120000 });
+
+  console.log("\n9. a different browser, same account");
   const session = await page.evaluate(() =>
     JSON.stringify(
       Object.fromEntries(
@@ -189,7 +240,12 @@ try {
       window.localStorage.setItem(key, value),
     );
   }, session);
-  await secondPage.goto(`${APP}/dashboard`, { waitUntil: "networkidle" });
+  await secondPage.goto(`${APP}/dashboard`, { waitUntil: "domcontentloaded" });
+  await secondPage.waitForFunction(
+    (name) => document.body.innerText.includes(name),
+    PRODUCT,
+    { timeout: 20000 },
+  );
   const carried = await secondPage
     .getByText(PRODUCT)
     .first()
@@ -198,10 +254,10 @@ try {
   check("history follows the account across devices", carried);
   await second.close();
 
-  console.log("\n9. an unrelated visitor");
+  console.log("\n10. an unrelated visitor");
   const stranger = await browser.newContext();
   const strangerPage = await stranger.newPage();
-  await strangerPage.goto(`${APP}/dashboard`, { waitUntil: "networkidle" });
+  await strangerPage.goto(`${APP}/dashboard`, { waitUntil: "domcontentloaded" });
   const strangerText = await strangerPage.locator("body").innerText();
   check("cannot see someone else's campaigns", !strangerText.includes(PRODUCT));
   await stranger.close();

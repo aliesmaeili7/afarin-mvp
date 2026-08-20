@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/Toast";
 import { toPersianDigits } from "@/lib/format/persian";
 import type { AssetRenderSpec, CampaignConcept } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
+import { useSessionStore } from "@/features/auth/sessionStore";
 import { useDraftCampaign } from "../useDraftCampaign";
 import { useWizardGuard } from "../useWizardGuard";
 import { WizardShell } from "../WizardShell";
@@ -23,16 +24,34 @@ export function ConceptsStep() {
   const { detail, campaignId, loading, reload } = useDraftCampaign();
   const blocked = useWizardGuard(5, detail, loading, campaignId);
 
+  const sessionLoaded = useSessionStore((state) => state.loaded);
+  const loadSession = useSessionStore((state) => state.load);
+
   const [generating, setGenerating] = useState(false);
   const [selecting, setSelecting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestedRef = useRef(false);
+
+  useEffect(() => {
+    if (!sessionLoaded) void loadSession();
+  }, [sessionLoaded, loadSession]);
 
   const concepts = detail?.concepts ?? [];
   const primaryImage =
     detail?.product_images.find((image) => image.is_primary)?.storage_path ??
     detail?.product_images[0]?.storage_path ??
     null;
+
+  const briefKey = [
+    campaignId,
+    detail?.product?.name,
+    detail?.product?.description,
+    detail?.product?.price_text,
+    detail?.product?.main_benefit,
+    detail?.campaign.objective,
+    detail?.campaign.audience,
+    detail?.campaign.visual_style,
+  ].join("|");
 
   const runGenerate = useCallback(async () => {
     if (!campaignId) return;
@@ -44,6 +63,10 @@ export function ConceptsStep() {
       setError(toPersianError(caught));
     }
   }, [campaignId, reload]);
+
+  useEffect(() => {
+    requestedRef.current = false;
+  }, [briefKey]);
 
   // The first visit generates automatically; the button below regenerates.
   const needsConcepts = !loading && !blocked && !error && concepts.length === 0;
@@ -67,6 +90,16 @@ export function ConceptsStep() {
     try {
       await api.selectConcept(campaignId, concept.id);
       track("concept_selected", { concept_number: concept.concept_number });
+
+      if (!useSessionStore.getState().loaded) {
+        await useSessionStore.getState().load();
+      }
+      if (useSessionStore.getState().session) {
+        await api.startGeneration(campaignId);
+        track("generation_started", { campaign_id: campaignId });
+        router.push(`/campaigns/${campaignId}`);
+        return;
+      }
       router.push("/create/signup");
     } catch (caught) {
       toast(toPersianError(caught), "error");
@@ -130,8 +163,6 @@ export function ConceptsStep() {
 
             return (
               <Card key={concept.id} className="overflow-hidden">
-                {/* The preview leads: the user is choosing a look, so the look
-                    has to be the largest thing on the card. */}
                 <div className="relative">
                   <AdCanvas spec={spec} width={1080} height={1350} />
                   <span className="absolute top-3 start-3 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-ink-800 shadow-soft">

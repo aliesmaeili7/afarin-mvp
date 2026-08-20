@@ -37,13 +37,13 @@ export function AuthCallback() {
       try {
         const session = await api.adoptAnonymousWork();
         setSession(session);
-        track("signup_completed", { provider: "google" });
 
         if (!campaignId) {
           router.replace("/dashboard");
           return;
         }
 
+        track("signup_completed", { provider: "google" });
         await api.startGeneration(campaignId);
         track("generation_started", { campaign_id: campaignId });
         router.replace(`/campaigns/${campaignId}`);

@@ -51,5 +51,9 @@ class UpdateCopyIn(BaseModel):
     content: str
 
 
+class RewriteIn(BaseModel):
+    intent: str
+
+
 class ResolveAssetsIn(BaseModel):
     paths: list[str]

@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import messages
 from app.core.config import Settings
 from app.core.deps import PrincipalDep, SessionDep, SettingsDep
-from app.core.errors import invalid
+from app.core.errors import ApiError, invalid
 from app.db.models import Campaign, GenerationJob
 from app.schemas.domain import CampaignStatusOut
+from app.services.campaigns import jobs as job_records
 from app.services.campaigns import materialize as materializer
 from app.services.campaigns.ownership import get_owned_campaign
 from app.services.campaigns.stages import compute_progress
@@ -63,6 +64,8 @@ async def start_generation(
         job_type="campaign_generation",
         status="queued",
         started_at=datetime.now(UTC),
+        provider=None,
+        model=None,
         input_json={"objective": campaign.objective, "style": campaign.visual_style},
     )
     session.add(job)
@@ -118,8 +121,9 @@ async def _advance(
     """
     Derives progress from the job's start time and materializes once it elapses.
 
-    Phase 2 has no providers, so the elapsed time is simulated; the polling
-    contract is real, which is what lets Phase 4 drop a worker in behind it.
+    Elapsed time is still simulated so the progress screen matches Phase 1; the
+    completing poll awaits the LLM copy package. Concurrent polls cannot both
+    materialize because of the row lock.
     """
     started = job.started_at or datetime.now(UTC)
     elapsed_ms = (datetime.now(UTC) - started).total_seconds() * 1000
@@ -143,15 +147,33 @@ async def _advance(
     locked = await session.scalar(
         select(GenerationJob).where(GenerationJob.id == job.id).with_for_update()
     )
-    if locked is not None and locked.status == "succeeded":
+    if locked is not None and locked.status in ("succeeded", "failed"):
         await session.refresh(campaign)
-        return _status(campaign, None, 100, None)
+        return _status(
+            campaign,
+            None,
+            0 if campaign.status == "failed" else 100,
+            None,
+        )
+
+    try:
+        final_status = await materializer.materialize(session, campaign)
+    except Exception as error:
+        if locked is not None:
+            job_records.mark_failed(locked, error)
+        campaign.status = "failed"
+        campaign.updated_at = datetime.now(UTC)
+        await session.flush()
+        message = (
+            error.message_fa
+            if isinstance(error, ApiError)
+            else messages.GENERATION_FAILED
+        )
+        return _status(campaign, None, 0, message)
 
     if locked is not None:
-        locked.status = "succeeded"
-        locked.completed_at = datetime.now(UTC)
+        job_records.mark_succeeded(locked)
 
-    final_status = await materializer.materialize(session, campaign)
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
 
@@ -170,6 +192,7 @@ async def _active_job(
     return await session.scalar(
         select(GenerationJob).where(
             GenerationJob.campaign_id == campaign_id,
+            GenerationJob.job_type == "campaign_generation",
             GenerationJob.status.in_(("queued", "processing")),
         )
     )
@@ -180,7 +203,10 @@ async def _latest_job(
 ) -> GenerationJob | None:
     return await session.scalar(
         select(GenerationJob)
-        .where(GenerationJob.campaign_id == campaign_id)
+        .where(
+            GenerationJob.campaign_id == campaign_id,
+            GenerationJob.job_type == "campaign_generation",
+        )
         .order_by(GenerationJob.started_at.desc())
         .limit(1)
     )

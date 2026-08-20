@@ -18,7 +18,7 @@ import type { Brand, CampaignStatus, CampaignSummary } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { useResolvedAssetUrl } from "@/features/campaign/ad-renderer/useResolvedAssetUrl";
 import { useSessionStore } from "@/features/auth/sessionStore";
-import { useWizardStore } from "@/features/campaign/wizard/useWizardStore";
+import { beginNewCampaign } from "@/features/campaign/wizard/useWizardStore";
 
 const STATUS_LABELS: Record<CampaignStatus, { label: string; tone: "neutral" | "brand" | "success" | "warning" | "danger" }> = {
   draft: { label: "ناتمام", tone: "neutral" },
@@ -39,7 +39,6 @@ export function DashboardPage() {
   const session = useSessionStore((state) => state.session);
   const sessionLoaded = useSessionStore((state) => state.loaded);
   const loadSession = useSessionStore((state) => state.load);
-  const setCampaignId = useWizardStore((state) => state.setCampaignId);
 
   const [creating, setCreating] = useState<string | null>(null);
 
@@ -48,16 +47,26 @@ export function DashboardPage() {
   }, [sessionLoaded, loadSession]);
 
   const campaigns = useAsyncData<CampaignSummary[]>(
-    () => api.listCampaigns(),
-    [session?.user.id],
+    async () => {
+      // Wait until we know whether a Supabase session exists. Listing before
+      // that uses the spent anonymous cookie and returns an empty history.
+      if (!sessionLoaded) return [];
+      return api.listCampaigns();
+    },
+    [sessionLoaded, session?.user.id],
   );
-  const brands = useAsyncData<Brand[]>(() => api.listBrands(), [session?.user.id]);
+  const brands = useAsyncData<Brand[]>(
+    async () => {
+      if (!sessionLoaded) return [];
+      return api.listBrands();
+    },
+    [sessionLoaded, session?.user.id],
+  );
 
   async function startCampaign(brandId: string | null) {
     setCreating(brandId ?? "new");
     try {
-      const campaign = await api.createCampaign({ brand_id: brandId });
-      setCampaignId(campaign.id);
+      await beginNewCampaign(brandId);
       track("campaign_repeated", { brand_id: brandId });
       router.push("/create");
     } catch (caught) {
@@ -66,7 +75,20 @@ export function DashboardPage() {
     }
   }
 
-  if (sessionLoaded && !session) {
+  if (!sessionLoaded) {
+    return (
+      <div className="min-h-dvh bg-ink-50">
+        <SiteHeader />
+        <Container size="lg" className="flex flex-col gap-4 py-8">
+          <Skeleton className="h-10 w-1/3" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </Container>
+      </div>
+    );
+  }
+
+  if (!session) {
     return (
       <div className="min-h-dvh bg-ink-50">
         <SiteHeader />
@@ -114,7 +136,7 @@ export function DashboardPage() {
           <h2 className="mb-4 text-lg font-extrabold text-ink-900">
             کمپین‌های اخیر
           </h2>
-          {campaigns.loading ? (
+          {!sessionLoaded || campaigns.loading ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Skeleton className="h-32" />
               <Skeleton className="h-32" />
@@ -140,7 +162,7 @@ export function DashboardPage() {
 
         <section>
           <h2 className="mb-4 text-lg font-extrabold text-ink-900">برندهای من</h2>
-          {brands.loading ? (
+          {!sessionLoaded || brands.loading ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Skeleton className="h-28" />
               <Skeleton className="h-28" />
@@ -221,7 +243,7 @@ function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="truncate text-sm font-bold text-ink-900">
+            <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-ink-900">
               {campaign.product_name ?? "کمپین بدون نام"}
             </h3>
             <Badge tone={status.tone}>{status.label}</Badge>

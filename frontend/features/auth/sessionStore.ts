@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
 import type { Session } from "@/types/domain";
+import { useWizardStore } from "@/features/campaign/wizard/useWizardStore";
 
 interface SessionState {
   session: Session | null;
@@ -35,6 +36,7 @@ export const useSessionStore = create<SessionState>()((set) => ({
   setSession: (session) => set({ session, loaded: true }),
   signOut: async () => {
     await api.signOut();
-    set({ session: null });
+    useWizardStore.getState().clear();
+    set({ session: null, loaded: true });
   },
 }));

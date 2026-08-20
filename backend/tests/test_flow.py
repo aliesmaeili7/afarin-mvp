@@ -102,6 +102,87 @@ async def test_generation_requires_signing_in(client: AsyncClient, storage) -> N
     assert response.json()["message_fa"] == "برای ساخت کمپین اول باید وارد بشی."
 
 
+async def test_signed_in_user_can_generate_a_second_campaign(
+    client: AsyncClient, storage
+) -> None:
+    first_id = await _draft_campaign(client)
+    await _complete_brief(client, first_id)
+    await _select_first_concept(client, first_id)
+
+    headers = auth_header(uuid.uuid4())
+    await client.post("/api/session/adopt", headers=headers)
+    await client.post(f"/api/campaigns/{first_id}/generate", headers=headers)
+    await client.get(f"/api/campaigns/{first_id}/status", headers=headers)
+
+    second_id = (await client.post("/api/campaigns", json={}, headers=headers)).json()[
+        "id"
+    ]
+    await client.post(
+        f"/api/campaigns/{second_id}/product",
+        headers=headers,
+        json={"name": "صابون زیتون", "brand_name": "زیتونک"},
+    )
+    await client.patch(
+        f"/api/campaigns/{second_id}",
+        headers=headers,
+        json={"objective": "sell_product", "visual_style": "minimal"},
+    )
+    concepts = await client.post(
+        f"/api/campaigns/{second_id}/concepts/generate", headers=headers
+    )
+    assert concepts.status_code == 200
+    first_detail = await client.get(f"/api/campaigns/{first_id}", headers=headers)
+    first_ids = {row["id"] for row in first_detail.json()["concepts"]}
+    second_ids = {row["id"] for row in concepts.json()}
+    assert second_ids.isdisjoint(first_ids)
+
+    await client.post(
+        f"/api/campaigns/{second_id}/concepts/{concepts.json()[0]['id']}/select",
+        headers=headers,
+    )
+    started = await client.post(f"/api/campaigns/{second_id}/generate", headers=headers)
+    assert started.status_code == 200
+
+
+async def test_changing_brief_invalidates_concepts(
+    client: AsyncClient, storage
+) -> None:
+    campaign_id = await _draft_campaign(client)
+    await _complete_brief(client, campaign_id)
+    generated = await client.post(f"/api/campaigns/{campaign_id}/concepts/generate")
+    assert len(generated.json()) == 3
+    await client.post(
+        f"/api/campaigns/{campaign_id}/concepts/{generated.json()[0]['id']}/select"
+    )
+
+    patched = await client.patch(
+        f"/api/campaigns/{campaign_id}", json={"visual_style": "minimal"}
+    )
+    assert patched.json()["status"] == "brief_complete"
+    assert patched.json()["selected_concept_id"] is None
+
+    detail = await client.get(f"/api/campaigns/{campaign_id}")
+    assert detail.json()["concepts"] == []
+
+    regenerated = await client.post(f"/api/campaigns/{campaign_id}/concepts/generate")
+    assert len(regenerated.json()) == 3
+    kept = await client.patch(
+        f"/api/campaigns/{campaign_id}", json={"visual_style": "minimal"}
+    )
+    assert kept.json()["status"] == "concepts_ready"
+    same = await client.get(f"/api/campaigns/{campaign_id}")
+    assert len(same.json()["concepts"]) == 3
+
+    renamed = await client.post(
+        f"/api/campaigns/{campaign_id}/product",
+        json={"name": "صابون زیتون", "brand_name": "سحند"},
+    )
+    assert renamed.status_code == 200
+    after_rename = await client.get(f"/api/campaigns/{campaign_id}")
+    assert after_rename.json()["concepts"] == []
+    assert after_rename.json()["campaign"]["status"] == "brief_complete"
+
+
 async def test_full_anonymous_to_dashboard_journey(
     client: AsyncClient, storage
 ) -> None:

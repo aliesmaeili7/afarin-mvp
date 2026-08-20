@@ -62,6 +62,12 @@ export interface AfarinApi {
     copyId: string,
     content: string,
   ): Promise<CampaignCopy>;
+  // POST /api/campaigns/{id}/copy/{copy_id}/rewrite
+  rewriteCopy(
+    campaignId: string,
+    copyId: string,
+    intent: RewriteIntent,
+  ): Promise<CampaignCopy>;
   // POST /api/campaigns/{id}/assets/{asset_id}/regenerate
   regenerateAsset(campaignId: string, assetId: string): Promise<CampaignAsset>;
   // PATCH /api/campaigns/{id}/assets/{asset_id}
@@ -69,6 +75,12 @@ export interface AfarinApi {
     campaignId: string,
     assetId: string,
     patch: AssetTextPatch,
+  ): Promise<CampaignAsset>;
+  // POST /api/campaigns/{id}/assets/{asset_id}/rewrite
+  rewriteAssetText(
+    campaignId: string,
+    assetId: string,
+    intent: RewriteIntent,
   ): Promise<CampaignAsset>;
 
   // GET /api/brands
@@ -141,6 +153,13 @@ export interface AssetTextPatch {
   cta_fa?: string | null;
   price_text?: string | null;
 }
+
+export type RewriteIntent =
+  | "informal"
+  | "shorter"
+  | "stronger_cta"
+  | "new_headline"
+  | "more_luxury";
 
 export interface BrandInput {
   name: string;

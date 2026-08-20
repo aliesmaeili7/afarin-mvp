@@ -22,6 +22,7 @@ import {
   type EmailCodeVerification,
   type GoogleSignInInput,
   type ProductInput,
+  type RewriteIntent,
   type UpdateCampaignInput,
 } from "../types";
 import { request } from "./request";
@@ -133,6 +134,17 @@ export const httpApi: AfarinApi = {
     });
   },
 
+  rewriteCopy(
+    campaignId: string,
+    copyId: string,
+    intent: RewriteIntent,
+  ): Promise<CampaignCopy> {
+    return request<CampaignCopy>(
+      `/api/campaigns/${campaignId}/copy/${copyId}/rewrite`,
+      { method: "POST", body: { intent } },
+    );
+  },
+
   regenerateAsset(campaignId: string, assetId: string): Promise<CampaignAsset> {
     return request<CampaignAsset>(
       `/api/campaigns/${campaignId}/assets/${assetId}/regenerate`,
@@ -148,6 +160,17 @@ export const httpApi: AfarinApi = {
     return request<CampaignAsset>(
       `/api/campaigns/${campaignId}/assets/${assetId}`,
       { method: "PATCH", body: patch },
+    );
+  },
+
+  rewriteAssetText(
+    campaignId: string,
+    assetId: string,
+    intent: RewriteIntent,
+  ): Promise<CampaignAsset> {
+    return request<CampaignAsset>(
+      `/api/campaigns/${campaignId}/assets/${assetId}/rewrite`,
+      { method: "POST", body: { intent } },
     );
   },
 

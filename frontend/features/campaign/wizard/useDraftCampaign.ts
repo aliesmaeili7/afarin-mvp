@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import type { CampaignDetail } from "@/types/domain";
-import { track } from "@/lib/analytics/track";
 import { useAsyncData } from "@/lib/hooks/useAsyncData";
-import { useWizardStore } from "./useWizardStore";
+import { isWizardDraft } from "./draftStatus";
+import { reuseOrCreateDraft, useWizardStore } from "./useWizardStore";
 
 interface DraftCampaignState {
   detail: CampaignDetail | null;
@@ -23,7 +23,15 @@ export function useDraftCampaign(): DraftCampaignState {
   const creatingRef = useRef<Promise<string> | null>(null);
 
   const { data, loading, error, reload } = useAsyncData<CampaignDetail | null>(
-    () => (campaignId ? api.getCampaign(campaignId) : Promise.resolve(null)),
+    async () => {
+      if (!campaignId) return null;
+      const detail = await api.getCampaign(campaignId);
+      if (!isWizardDraft(detail.campaign.status)) {
+        setCampaignId(null);
+        return null;
+      }
+      return detail;
+    },
     [campaignId],
   );
 
@@ -34,23 +42,17 @@ export function useDraftCampaign(): DraftCampaignState {
   }, [error, campaignId, setCampaignId]);
 
   const ensureCampaign = useCallback(async () => {
-    if (campaignId) return campaignId;
-    creatingRef.current ??= (async () => {
-      const campaign = await api.createCampaign({});
-      setCampaignId(campaign.id);
-      track("campaign_started", { campaign_id: campaign.id });
-      return campaign.id;
-    })();
+    creatingRef.current ??= reuseOrCreateDraft();
     try {
       return await creatingRef.current;
     } finally {
       creatingRef.current = null;
     }
-  }, [campaignId, setCampaignId]);
+  }, []);
 
   return {
     detail: data ?? null,
-    campaignId,
+    campaignId: data?.campaign.id ?? null,
     loading,
     error,
     reload,

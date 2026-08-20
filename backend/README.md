@@ -114,17 +114,38 @@ app/
   core/          config, errors, JWT verification, request principal, cookies
   db/            SQLAlchemy models and the session factory
   content/       Persian copy fixtures (ported from the Phase 1 mock)
-  providers/     ContentProvider protocol; Phase 2 ships only the stub
+  providers/     ContentProvider protocol; stub or OpenRouter via CONTENT_PROVIDER
   services/      campaign, identity and storage logic
 migrations/      Alembic
 scripts/         bootstrap, end-to-end verification
 ```
 
+## LLM provider (Phase 3)
+
+`CONTENT_PROVIDER=stub` uses the deterministic Persian fixtures. Tests always
+run this way and never call a paid API.
+
+`CONTENT_PROVIDER=openrouter` sends concept and copy requests to OpenRouter.
+Set `OPENROUTER_API_KEY` in this backend environment only — never in the
+frontend. Switch models with `LLM_MODEL` (default `openai/gpt-5-mini`); no UI
+control exists for this.
+
+If the key is missing while the provider is `openrouter`, the API returns a
+Persian generation error. It does not silently fall back to fixtures.
+
+Optional live check (makes a real paid call):
+
+```bash
+OPENROUTER_API_KEY=... uv run pytest -m live
+```
+
+Compare models later with `uv run python -m scripts.eval_llm`.
+
 ## Notes for later phases
 
-- `generation_jobs` already records provider, model and timing columns; Phase 4
-  fills them in when real image generation lands.
-- `campaign_assets.storage_path` is null throughout Phase 2. The browser
+- `generation_jobs` records provider, model, tokens, latency and cost for LLM
+  calls. Phase 4 will add image-generation jobs on the same table.
+- `campaign_assets.storage_path` is null throughout Phase 3. The browser
   composes each ad from `metadata_json`; once a renderer writes real files, the
   path takes over with no frontend change.
 - Phone/SMS sign-in is deliberately out of scope. It slots in beside email in

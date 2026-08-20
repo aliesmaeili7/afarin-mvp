@@ -27,3 +27,6 @@ supabase/.temp/
 
 # Screenshot written when scripts/verify-ui.mjs fails
 verify-ui-failure.png
+
+# LLM eval output
+backend/eval/out/

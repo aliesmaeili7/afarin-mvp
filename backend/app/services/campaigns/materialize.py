@@ -9,6 +9,7 @@ CampaignSummary.thumbnail_spec working.
 """
 
 import uuid
+from dataclasses import replace
 from typing import Any
 
 from sqlalchemy import delete
@@ -32,11 +33,12 @@ def concept_background_id(concept: CampaignConcept | None, campaign: Campaign) -
 async def write_concepts(
     session: AsyncSession, campaign: Campaign, ctx: CopyContext
 ) -> list[CampaignConcept]:
+    drafts = await get_content_provider().build_concepts(ctx)
+
     await session.execute(
         delete(CampaignConcept).where(CampaignConcept.campaign_id == campaign.id)
     )
 
-    drafts = get_content_provider().build_concepts(ctx)
     created: list[CampaignConcept] = []
     for index, draft in enumerate(drafts):
         concept = CampaignConcept(
@@ -55,6 +57,34 @@ async def write_concepts(
 
     await session.flush()
     return created
+
+
+CONCEPT_INVALIDATION_STATUSES = ("concepts_ready", "concept_selected")
+
+
+def blank_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+async def invalidate_concepts_if_stale(
+    session: AsyncSession, campaign: Campaign, changed: bool
+) -> None:
+    """Drop generated ideas when the brief that produced them no longer holds."""
+    if not changed or campaign.status not in CONCEPT_INVALIDATION_STATUSES:
+        return
+
+    await session.execute(
+        delete(CampaignConcept).where(CampaignConcept.campaign_id == campaign.id)
+    )
+    campaign.selected_concept_id = None
+    campaign.concept_round = None
+    if campaign.product_id and campaign.objective and campaign.visual_style:
+        campaign.status = "brief_complete"
+    else:
+        campaign.status = "draft"
 
 
 def _spec(
@@ -85,23 +115,25 @@ async def materialize(
         selected.selected = True
         campaign.selected_concept_id = selected.id
 
+    ctx = replace(ctx, selected_headline=selected.headline_fa)
+
     await session.execute(
         delete(CampaignCopy).where(CampaignCopy.campaign_id == campaign.id)
     )
 
-    captions = provider.build_captions(ctx)
+    captions = await provider.build_captions(ctx)
     _add_copy(session, campaign.id, "caption_short", captions.caption_short)
     _add_copy(session, campaign.id, "caption_friendly", captions.caption_friendly)
     _add_copy(session, campaign.id, "caption_persuasive", captions.caption_persuasive)
 
-    for order, story in enumerate(provider.build_story_ideas(ctx)):
+    for order, story in enumerate(await provider.build_story_ideas(ctx)):
         _add_copy(session, campaign.id, "story", story, {"order": order})
 
-    primary_cta = provider.build_primary_cta(ctx)
+    primary_cta = await provider.build_primary_cta(ctx)
     _add_copy(session, campaign.id, "cta", primary_cta)
-    _add_copy(session, campaign.id, "hashtags", provider.build_hashtags(ctx))
+    _add_copy(session, campaign.id, "hashtags", await provider.build_hashtags(ctx))
 
-    reel = provider.build_reel_concept(ctx)
+    reel = await provider.build_reel_concept(ctx)
     _add_copy(
         session, campaign.id, "reel_concept", reel.hook_fa, {"reel": reel.to_dict()}
     )
@@ -111,7 +143,7 @@ async def materialize(
         "template_id": "feed_classic",
         "background_id": concept_background_id(selected, campaign),
         "headline_fa": selected.headline_fa,
-        "subheadline_fa": provider.build_subheadline(ctx),
+        "subheadline_fa": await provider.build_subheadline(ctx),
         "cta_fa": primary_cta,
         "price_text": ctx.price_text,
         "brand_name": brand.name if brand else ctx.brand_name,

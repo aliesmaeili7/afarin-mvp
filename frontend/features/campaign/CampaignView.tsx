@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { api, toPersianError } from "@/lib/api";
 import { Container } from "@/components/layout/Container";
@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, Skeleton } from "@/components/ui/Feedback";
 import { useToast } from "@/components/ui/Toast";
 import { useAsyncData } from "@/lib/hooks/useAsyncData";
 import type { CampaignDetail } from "@/types/domain";
+import { beginNewCampaign, resumeCampaign } from "@/features/campaign/wizard/useWizardStore";
 import { AssetExportProvider } from "./ad-renderer/AssetExportProvider";
 import { GenerationProgress } from "./generation/GenerationProgress";
 import { CampaignResult } from "./result/CampaignResult";
@@ -19,6 +20,7 @@ import { CampaignResult } from "./result/CampaignResult";
  * which is what makes a refresh mid-generation land in the right place.
  */
 export function CampaignView({ campaignId }: { campaignId: string }) {
+  const router = useRouter();
   const { toast } = useToast();
   const { data, loading, error, reload } = useAsyncData<CampaignDetail>(
     () => api.getCampaign(campaignId),
@@ -64,9 +66,15 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
             title="این کمپین پیدا نشد"
             description="ممکنه لینک اشتباه باشه یا کمپین روی دستگاه دیگه‌ای ساخته شده باشه."
             action={
-              <Link href="/create">
-                <Button>ساخت کمپین جدید</Button>
-              </Link>
+              <Button
+                onClick={() => {
+                  void beginNewCampaign()
+                    .then(() => router.push("/create"))
+                    .catch((caught: unknown) => toast(toPersianError(caught), "error"));
+                }}
+              >
+                ساخت کمپین جدید
+              </Button>
             }
           />
         </Container>
@@ -110,9 +118,14 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
             title="این کمپین هنوز کامل نشده"
             description="چند قدم تا آماده شدن کمپینت مونده."
             action={
-              <Link href="/create">
-                <Button>ادامه ساخت کمپین</Button>
-              </Link>
+              <Button
+                onClick={() => {
+                  resumeCampaign(campaignId);
+                  router.push("/create");
+                }}
+              >
+                ادامه ساخت کمپین
+              </Button>
             }
           />
         </Container>

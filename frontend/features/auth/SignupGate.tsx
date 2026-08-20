@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { api, toPersianError } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
 import { Container } from "@/components/layout/Container";
@@ -10,20 +10,23 @@ import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Feedback";
-import { TextField } from "@/components/ui/Field";
 import { Stepper } from "@/components/ui/Stepper";
-import { ArrowBackIcon, GoogleIcon, SparkleIcon } from "@/components/ui/icons";
+import { ArrowBackIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
 import type { AssetRenderSpec } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { useDraftCampaign } from "@/features/campaign/wizard/useDraftCampaign";
 import { WIZARD_TOTAL } from "@/features/campaign/wizard/wizardSteps";
+import { AuthForm } from "./AuthForm";
 import { useSessionStore } from "./sessionStore";
 
 /**
  * Spec §11 — the account is only asked for once the user has seen their
  * concepts and picked one, and signing up continues straight into generation
  * instead of dropping the user on an empty dashboard.
+ *
+ * Returning users never see this screen: ConceptsStep starts generation
+ * directly when a session already exists.
  */
 export function SignupGate() {
   const router = useRouter();
@@ -34,16 +37,7 @@ export function SignupGate() {
   const sessionLoaded = useSessionStore((state) => state.loaded);
   const loadSession = useSessionStore((state) => state.load);
   const setSession = useSessionStore((state) => state.setSession);
-
-  const [email, setEmail] = useState("");
-  const [emailError, setEmailError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  // A real provider has to deliver the code before it can be checked, so email
-  // sign-in became two screens in Phase 2. Google still leaves the app.
-  const [step, setStep] = useState<"identify" | "code">("identify");
-  const [code, setCode] = useState("");
-  const [codeError, setCodeError] = useState<string | null>(null);
+  const started = useRef(false);
 
   useEffect(() => {
     if (!sessionLoaded) void loadSession();
@@ -56,103 +50,35 @@ export function SignupGate() {
     }
   }, [loading, detail, router]);
 
+  const startGeneration = useCallback(
+    async (campaignId: string) => {
+      await api.startGeneration(campaignId);
+      track("generation_started", { campaign_id: campaignId });
+      router.push(`/campaigns/${campaignId}`);
+    },
+    [router],
+  );
+
+  useEffect(() => {
+    if (!sessionLoaded || loading || !detail || !session) return;
+    if (!detail.campaign.selected_concept_id || started.current) return;
+    started.current = true;
+    void startGeneration(detail.campaign.id).catch((caught: unknown) => {
+      started.current = false;
+      toast(toPersianError(caught), "error");
+    });
+  }, [sessionLoaded, loading, detail, session, startGeneration, toast]);
+
   const selectedConcept = detail?.concepts.find((concept) => concept.selected);
   const primaryImage =
     detail?.product_images.find((image) => image.is_primary)?.storage_path ??
     detail?.product_images[0]?.storage_path ??
     null;
 
-  async function startGeneration(campaignId: string) {
-    await api.startGeneration(campaignId);
-    track("generation_started", { campaign_id: campaignId });
-    router.push(`/campaigns/${campaignId}`);
-  }
-
-  async function handleSendCode() {
-    if (!detail) return;
-
-    const address = email.trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
-      setEmailError("ایمیل معتبر وارد کن.");
-      return;
-    }
-
-    setSubmitting(true);
-    track("signup_started", { provider: "email" });
-    try {
-      await api.requestEmailCode({ email: address });
-      setStep("code");
-    } catch (caught) {
-      toast(toPersianError(caught), "error");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleVerifyCode() {
-    if (!detail) return;
-
-    const entered = code.trim();
-    if (!/^\d{6}$/.test(entered)) {
-      setCodeError("کد ۶ رقمی رو کامل وارد کن.");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const newSession = await api.verifyEmailCode({
-        email: email.trim().toLowerCase(),
-        code: entered,
-      });
-      setSession(newSession);
-      track("signup_completed", { provider: "email" });
-      await startGeneration(detail.campaign.id);
-    } catch (caught) {
-      setCodeError(toPersianError(caught));
-      setSubmitting(false);
-    }
-  }
-
-  async function handleGoogle() {
-    if (!detail) return;
-
-    setSubmitting(true);
-    track("signup_started", { provider: "google" });
-    try {
-      // The campaign id survives the round trip through Google so the callback
-      // can resume generation instead of stranding the user on the dashboard.
-      const redirect = new URL("/auth/callback", window.location.origin);
-      redirect.searchParams.set("campaign", detail.campaign.id);
-      await api.signInWithGoogle({ redirect_to: redirect.toString() });
-
-      // Mock mode signs in without navigating away, so continue inline.
-      const current = await api.getSession();
-      if (current) {
-        setSession(current);
-        track("signup_completed", { provider: "google" });
-        await startGeneration(detail.campaign.id);
-      }
-    } catch (caught) {
-      toast(toPersianError(caught), "error");
-      setSubmitting(false);
-    }
-  }
-
-  async function handleGenerateAsMember() {
-    if (!detail) return;
-    setSubmitting(true);
-    try {
-      await startGeneration(detail.campaign.id);
-    } catch (caught) {
-      toast(toPersianError(caught), "error");
-      setSubmitting(false);
-    }
-  }
+  const waitingForSession = !sessionLoaded || Boolean(session);
 
   return (
     <div className="min-h-dvh bg-ink-50">
-      {/* Keeps the wizard's chrome so the user can still go back and change
-          their concept, and can see how far along they are. */}
       <header className="border-b border-ink-100 bg-white">
         <Container size="sm" className="pt-safe">
           <div className="flex h-14 items-center justify-between gap-2">
@@ -180,8 +106,8 @@ export function SignupGate() {
             کمپینت آماده ساخته شدنه ✨
           </h1>
           <p className="mt-2 text-sm leading-7 text-ink-500">
-            {session
-              ? "همه چیز آماده‌ست. با یک کلیک کمپین کاملت رو می‌سازیم."
+            {waitingForSession
+              ? "همه چیز آماده‌ست. داریم کمپین کاملت رو می‌سازیم."
               : "برای ساخت و ذخیره کمپین، حساب رایگان بساز."}
           </p>
         </div>
@@ -223,111 +149,43 @@ export function SignupGate() {
           </Card>
         ) : null}
 
-        {session ? (
-          <Button
-            size="lg"
-            fullWidth
-            loading={submitting}
-            onClick={handleGenerateAsMember}
-            iconStart={<SparkleIcon width={18} height={18} />}
-          >
-            ساخت کمپین
-          </Button>
-        ) : step === "code" ? (
-          <Card className="flex flex-col gap-4 p-5">
-            <div className="text-center">
-              <p className="text-sm font-bold text-ink-900">کد رو برات فرستادیم</p>
-              <p className="mt-1 text-sm leading-7 text-ink-500">
-                کد ۶ رقمی که به <span dir="ltr">{email}</span> ارسال شد رو وارد کن.
-              </p>
-            </div>
-
-            <TextField
-              label="کد تأیید"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              dir="ltr"
-              placeholder="۱۲۳۴۵۶"
-              value={code}
-              error={codeError}
-              className="text-center text-lg tracking-[0.5em]"
-              onChange={(event) => {
-                setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
-                setCodeError(null);
-              }}
-            />
-
-            <Button
-              size="lg"
-              fullWidth
-              loading={submitting}
-              onClick={handleVerifyCode}
-              iconStart={<SparkleIcon width={18} height={18} />}
-            >
-              تأیید و ساخت کمپین
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              fullWidth
-              disabled={submitting}
-              onClick={() => {
-                setStep("identify");
-                setCode("");
-                setCodeError(null);
-              }}
-            >
-              ایمیل رو اشتباه زدم
-            </Button>
-          </Card>
+        {waitingForSession ? (
+          <Skeleton className="h-14 w-full" />
         ) : (
-          <Card className="flex flex-col gap-4 p-5">
-            <Button
-              variant="outline"
-              size="lg"
-              fullWidth
-              disabled={submitting}
-              onClick={handleGoogle}
-              iconStart={<GoogleIcon />}
-            >
-              ادامه با گوگل
-            </Button>
-
-            <div className="flex items-center gap-3 text-xs text-ink-400">
-              <span className="h-px flex-1 bg-ink-200" />
-              یا
-              <span className="h-px flex-1 bg-ink-200" />
-            </div>
-
-            <TextField
-              label="ایمیل"
-              type="email"
-              inputMode="email"
-              placeholder="you@example.com"
-              value={email}
-              error={emailError}
-              onChange={(event) => {
-                setEmail(event.target.value);
-                setEmailError(null);
+          <>
+            <AuthForm
+              submitLabel="ثبت‌نام و ساخت کمپین"
+              verifyLabel="تأیید و ساخت کمپین"
+              onRequestCode={() => track("signup_started", { provider: "email" })}
+              onVerified={async (next) => {
+                setSession(next);
+                track("signup_completed", { provider: "email" });
+                if (detail) await startGeneration(detail.campaign.id);
+              }}
+              onGoogle={async () => {
+                if (!detail) return;
+                track("signup_started", { provider: "google" });
+                const redirect = new URL("/auth/callback", window.location.origin);
+                redirect.searchParams.set("campaign", detail.campaign.id);
+                await api.signInWithGoogle({ redirect_to: redirect.toString() });
+                const current = await api.getSession();
+                if (current) {
+                  setSession(current);
+                  track("signup_completed", { provider: "google" });
+                  await startGeneration(detail.campaign.id);
+                }
               }}
             />
-
-            <Button
-              size="lg"
-              fullWidth
-              loading={submitting}
-              onClick={handleSendCode}
-              iconStart={<SparkleIcon width={18} height={18} />}
-            >
-              ثبت‌نام و ساخت کمپین
-            </Button>
-
             <p className="text-center text-xs leading-6 text-ink-400">
               اولین کمپین رایگانه و نیازی به کارت بانکی نیست.
             </p>
-          </Card>
+            <p className="text-center text-sm leading-7 text-ink-500">
+              قبلاً حساب ساختی؟{" "}
+              <Link href="/login" className="font-semibold text-brand-700">
+                ورود
+              </Link>
+            </p>
+          </>
         )}
       </Container>
     </div>

@@ -60,7 +60,18 @@ BRAND_ASSET_TYPES = ("logo", "reference_image", "product_reference")
 
 JOB_STATUSES = ("queued", "processing", "succeeded", "failed", "cancelled")
 
-JOB_TYPES = ("campaign_generation",)
+JOB_TYPES = ("campaign_generation", "concept_generation", "copy_rewrite")
+
+REWRITE_INTENTS = (
+    "informal",
+    "shorter",
+    "stronger_cta",
+    "new_headline",
+    "more_luxury",
+)
+
+COPY_REWRITE_INTENTS = ("informal", "shorter", "stronger_cta", "more_luxury")
+ASSET_REWRITE_INTENTS = ("new_headline", "stronger_cta")
 
 GENERATION_STAGES = ("planning", "visual", "captions", "story", "finalizing")
 

@@ -9,15 +9,18 @@ from app.api.v1.session import ensure_anonymous_owner
 from app.content.backgrounds import backgrounds_for_style
 from app.core import messages
 from app.core.deps import PrincipalDep, SessionDep, SettingsDep
-from app.core.errors import invalid, not_found
+from app.core.enums import ASSET_REWRITE_INTENTS, COPY_REWRITE_INTENTS
+from app.core.errors import ApiError, generation_failed, invalid, not_found
 from app.db.models import (
     Brand,
     Campaign,
     CampaignAsset,
     CampaignCopy,
+    GenerationJob,
     Product,
     ProductImage,
 )
+from app.providers.llm import get_content_provider
 from app.schemas.domain import (
     CampaignAssetOut,
     CampaignConceptOut,
@@ -32,9 +35,11 @@ from app.schemas.requests import (
     AssetTextIn,
     CreateCampaignIn,
     ProductIn,
+    RewriteIn,
     UpdateCampaignIn,
     UpdateCopyIn,
 )
+from app.services.campaigns import jobs as job_records
 from app.services.campaigns import materialize as materializer
 from app.services.campaigns import queries, summaries
 from app.services.campaigns.ownership import get_owned_campaign
@@ -94,9 +99,9 @@ async def list_campaigns(
 
     result: list[CampaignSummaryOut] = []
     for campaign in campaigns:
-        # The seeded sample has no assets until someone looks at it, and the
-        # card needs the feed ad to preview.
-        await summaries.ensure_materialized(session, campaign)
+        # Listing is a read. The seeded sample has no generated ads yet; the
+        # card falls back to its product photo. Materializing here would fire
+        # the live LLM for every new account's dashboard visit.
         result.append(await summaries.summarize(session, campaign))
     return result
 
@@ -128,15 +133,28 @@ async def update_campaign(
 ) -> Campaign:
     campaign = await get_owned_campaign(session, principal, campaign_id)
     provided = body.model_fields_set
+    changed = False
 
     if "objective" in provided:
+        changed = changed or materializer.blank_text(
+            body.objective
+        ) != materializer.blank_text(campaign.objective)
         campaign.objective = body.objective
     if "audience" in provided:
+        changed = changed or materializer.blank_text(
+            body.audience
+        ) != materializer.blank_text(campaign.audience)
         campaign.audience = body.audience
     if "visual_style" in provided:
+        changed = changed or materializer.blank_text(
+            body.visual_style
+        ) != materializer.blank_text(campaign.visual_style)
         campaign.visual_style = body.visual_style
     if "brand_id" in provided:
+        changed = changed or body.brand_id != campaign.brand_id
         campaign.brand_id = body.brand_id
+
+    await materializer.invalidate_concepts_if_stale(session, campaign, changed)
 
     if (
         campaign.status == "draft"
@@ -163,16 +181,34 @@ async def save_product(
 
     campaign = await get_owned_campaign(session, principal, campaign_id)
     product = await _ensure_product(session, campaign)
+    brand = await queries.brand_of(session, campaign)
 
-    product.name = body.name.strip()
-    product.description = (body.description or "").strip() or None
-    product.price_text = (body.price_text or "").strip() or None
-    product.main_benefit = (body.main_benefit or "").strip() or None
+    incoming_name = body.name.strip()
+    incoming_description = materializer.blank_text(body.description)
+    incoming_price = materializer.blank_text(body.price_text)
+    incoming_benefit = materializer.blank_text(body.main_benefit)
+    incoming_brand = materializer.blank_text(body.brand_name)
+
+    changed = (
+        incoming_name != (product.name or "")
+        or incoming_description != materializer.blank_text(product.description)
+        or incoming_price != materializer.blank_text(product.price_text)
+        or incoming_benefit != materializer.blank_text(product.main_benefit)
+    )
+    if incoming_brand is not None:
+        changed = changed or incoming_brand != (brand.name if brand else None)
+
+    product.name = incoming_name
+    product.description = incoming_description
+    product.price_text = incoming_price
+    product.main_benefit = incoming_benefit
     product.updated_at = datetime.now(UTC)
 
-    brand_name = (body.brand_name or "").strip()
+    brand_name = incoming_brand
     if brand_name:
         await _attach_brand(session, campaign, product, brand_name, principal.user_id)
+
+    await materializer.invalidate_concepts_if_stale(session, campaign, changed)
 
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
@@ -308,7 +344,32 @@ async def generate_concepts(
         0 if campaign.concept_round is None else campaign.concept_round + 1
     )
     ctx = await queries.build_copy_context(session, campaign)
-    created = await materializer.write_concepts(session, campaign, ctx)
+
+    job = GenerationJob(
+        campaign_id=campaign.id,
+        user_id=principal.user_id,
+        job_type="concept_generation",
+        status="processing",
+        started_at=datetime.now(UTC),
+        input_json={
+            "objective": campaign.objective,
+            "style": campaign.visual_style,
+            "round": campaign.concept_round,
+        },
+    )
+    session.add(job)
+    await session.flush()
+
+    try:
+        created = await materializer.write_concepts(session, campaign, ctx)
+    except Exception as error:
+        job_records.mark_failed(job, error)
+        await session.commit()
+        if isinstance(error, ApiError):
+            raise
+        raise generation_failed() from error
+
+    job_records.mark_succeeded(job, {"count": len(created)})
 
     campaign.selected_concept_id = None
     campaign.status = "concepts_ready"
@@ -364,6 +425,126 @@ async def update_copy(
     return copy
 
 
+@router.post("/{campaign_id}/copy/{copy_id}/rewrite", response_model=CampaignCopyOut)
+async def rewrite_copy(
+    campaign_id: uuid.UUID,
+    copy_id: uuid.UUID,
+    body: RewriteIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> CampaignCopy:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    copy = await session.scalar(
+        select(CampaignCopy).where(
+            CampaignCopy.id == copy_id, CampaignCopy.campaign_id == campaign.id
+        )
+    )
+    if copy is None:
+        raise not_found(messages.COPY_NOT_FOUND)
+    if body.intent not in COPY_REWRITE_INTENTS:
+        raise invalid(messages.REWRITE_NOT_ALLOWED)
+
+    ctx = await queries.build_copy_context(session, campaign)
+    job = GenerationJob(
+        campaign_id=campaign.id,
+        user_id=principal.user_id,
+        job_type="copy_rewrite",
+        status="processing",
+        started_at=datetime.now(UTC),
+        input_json={
+            "intent": body.intent,
+            "copy_type": copy.copy_type,
+            "copy_id": str(copy.id),
+        },
+    )
+    session.add(job)
+    await session.flush()
+
+    try:
+        rewritten = await get_content_provider().rewrite_text(
+            ctx,
+            intent=body.intent,
+            current=copy.content,
+            field=copy.copy_type,
+        )
+    except Exception as error:
+        job_records.mark_failed(job, error)
+        await session.commit()
+        if isinstance(error, ApiError):
+            raise
+        raise generation_failed() from error
+
+    copy.content = rewritten
+    copy.updated_at = datetime.now(UTC)
+    if body.intent == "stronger_cta" and copy.copy_type == "cta":
+        await _sync_asset_cta(session, campaign.id, rewritten)
+    job_records.mark_succeeded(job, {"text_fa": rewritten})
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return copy
+
+
+@router.post(
+    "/{campaign_id}/assets/{asset_id}/rewrite",
+    response_model=CampaignAssetOut,
+)
+async def rewrite_asset(
+    campaign_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    body: RewriteIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> CampaignAsset:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    asset = await _owned_asset(session, campaign.id, asset_id)
+    if body.intent not in ASSET_REWRITE_INTENTS:
+        raise invalid(messages.REWRITE_NOT_ALLOWED)
+
+    spec = dict(asset.metadata_json or {})
+    field = "headline" if body.intent == "new_headline" else "cta"
+    current = (
+        spec.get("headline_fa") if field == "headline" else spec.get("cta_fa")
+    ) or ""
+
+    ctx = await queries.build_copy_context(session, campaign)
+    job = GenerationJob(
+        campaign_id=campaign.id,
+        user_id=principal.user_id,
+        job_type="copy_rewrite",
+        status="processing",
+        started_at=datetime.now(UTC),
+        input_json={
+            "intent": body.intent,
+            "asset_id": str(asset.id),
+            "field": field,
+        },
+    )
+    session.add(job)
+    await session.flush()
+
+    try:
+        rewritten = await get_content_provider().rewrite_text(
+            ctx, intent=body.intent, current=current, field=field
+        )
+    except Exception as error:
+        job_records.mark_failed(job, error)
+        await session.commit()
+        if isinstance(error, ApiError):
+            raise
+        raise generation_failed() from error
+
+    if field == "headline":
+        spec["headline_fa"] = rewritten
+    else:
+        spec["cta_fa"] = rewritten
+        await _sync_cta_copy(session, campaign.id, rewritten)
+    asset.metadata_json = spec
+    job_records.mark_succeeded(job, {"text_fa": rewritten})
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return asset
+
+
 @router.post(
     "/{campaign_id}/assets/{asset_id}/regenerate",
     response_model=CampaignAssetOut,
@@ -415,6 +596,25 @@ async def update_asset_text(
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
     return asset
+
+
+async def _sync_asset_cta(session, campaign_id: uuid.UUID, cta_fa: str) -> None:
+    assets = await queries.assets_of(session, campaign_id)
+    for asset in assets:
+        spec = dict(asset.metadata_json or {})
+        spec["cta_fa"] = cta_fa
+        asset.metadata_json = spec
+
+
+async def _sync_cta_copy(session, campaign_id: uuid.UUID, cta_fa: str) -> None:
+    copy = await session.scalar(
+        select(CampaignCopy).where(
+            CampaignCopy.campaign_id == campaign_id, CampaignCopy.copy_type == "cta"
+        )
+    )
+    if copy is not None:
+        copy.content = cta_fa
+        copy.updated_at = datetime.now(UTC)
 
 
 async def _owned_asset(session, campaign_id: uuid.UUID, asset_id: uuid.UUID):

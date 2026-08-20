@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.content.context import CopyContext
+from app.content.context import CopyContext, PreviousConcept
 from app.db.models import (
     Brand,
     Campaign,
@@ -87,6 +87,16 @@ async def build_copy_context(session: AsyncSession, campaign: Campaign) -> CopyC
     product = await product_of(session, campaign)
     brand = await brand_of(session, campaign)
     name = (product.name or "").strip() if product else ""
+    previous: tuple[PreviousConcept, ...] = ()
+    if campaign.concept_round and campaign.concept_round > 0:
+        previous = tuple(
+            PreviousConcept(
+                title_fa=row.title_fa,
+                description_fa=row.description_fa,
+                visual_direction=row.visual_direction,
+            )
+            for row in await concepts_of(session, campaign.id)
+        )
 
     return CopyContext(
         product_name=name or "محصول شما",
@@ -98,4 +108,5 @@ async def build_copy_context(session: AsyncSession, campaign: Campaign) -> CopyC
         objective=campaign.objective or "sell_product",
         style=campaign.visual_style or "modern",
         round=campaign.concept_round or 0,
+        previous_concepts=previous,
     )

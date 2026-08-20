@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { api, toPersianError } from "@/lib/api";
+import type { RewriteIntent } from "@/lib/api/types";
 import { Button } from "@/components/ui/Button";
 import { TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { useToast } from "@/components/ui/Toast";
 import { normalizePersian } from "@/lib/format/persian";
 import type { AssetRenderSpec, CampaignAsset } from "@/types/domain";
+import { ASSET_REWRITE_CHIPS, RewriteChips } from "./RewriteChips";
 
 /** Text stays editable before export (spec §15). */
 export function EditTextSheet({
@@ -56,6 +58,7 @@ function EditTextForm({
   const [price, setPrice] = useState(spec.price_text ?? "");
   const [cta, setCta] = useState(spec.cta_fa ?? "");
   const [saving, setSaving] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
 
   async function handleSave() {
     setSaving(true);
@@ -73,6 +76,22 @@ function EditTextForm({
       toast(toPersianError(caught), "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRewrite(intent: RewriteIntent) {
+    setRewriting(true);
+    try {
+      const updated = await api.rewriteAssetText(campaignId, asset.id, intent);
+      const next = updated.metadata_json as AssetRenderSpec;
+      setHeadline(next.headline_fa);
+      setCta(next.cta_fa ?? "");
+      onSaved();
+      toast("متن جدید آماده شد");
+    } catch (caught) {
+      toast(toPersianError(caught), "error");
+    } finally {
+      setRewriting(false);
     }
   }
 
@@ -102,6 +121,12 @@ function EditTextForm({
         optional
         value={cta}
         onChange={(event) => setCta(event.target.value)}
+      />
+
+      <RewriteChips
+        chips={ASSET_REWRITE_CHIPS}
+        onSelect={(intent) => void handleRewrite(intent)}
+        disabled={rewriting || saving}
       />
 
       <div className="mt-2 flex gap-2">

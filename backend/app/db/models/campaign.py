@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -8,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     text,
 )
@@ -174,9 +176,8 @@ class GenerationJob(Base):
     """
     Spec §22 generation_jobs.
 
-    Phase 2 runs no providers, so `provider`/`model`/cost columns stay null.
-    They exist because every expensive generation must be traceable to a job
-    (spec §31 rule 10) and Phase 4 fills them in.
+    Every LLM call is recorded here so we can inspect provider, model, tokens
+    and cost without building credits yet (spec §31 rule 10).
     """
 
     __tablename__ = "generation_jobs"
@@ -208,6 +209,12 @@ class GenerationJob(Base):
     input_json: Mapped[dict] = json_column("input_json")
     output_json: Mapped[dict] = json_column("output_json")
     error_message: Mapped[str | None] = text_column()
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actual_cost_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 8), nullable=True
+    )
     created_at: Mapped[datetime] = created_timestamp()
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
