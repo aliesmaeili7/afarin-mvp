@@ -1,11 +1,13 @@
 """Job lifecycle: idempotent start, staged progress, one materialization."""
 
 import uuid
+from collections import Counter
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
+from app.core.enums import VISUAL_FINAL_TYPES
 from app.db.models import CampaignAsset, GenerationJob
 from app.db.session import get_sessionmaker
 from app.services.campaigns.stages import STAGES, compute_progress
@@ -87,12 +89,18 @@ async def test_polling_after_completion_does_not_duplicate_assets(
         assert status.status_code == 200
 
     async with get_sessionmaker()() as session:
-        count = await session.scalar(
-            select(func.count(CampaignAsset.id)).where(
-                CampaignAsset.campaign_id == uuid.UUID(campaign_id)
+        types = (
+            await session.scalars(
+                select(CampaignAsset.asset_type).where(
+                    CampaignAsset.campaign_id == uuid.UUID(campaign_id)
+                )
             )
-        )
-    assert count == 5
+        ).all()
+    counts = Counter(types)
+    assert counts["feed_final"] == 1
+    assert counts["story_final"] == 1
+    assert counts["generated_background"] == 2
+    assert sum(counts[kind] for kind in VISUAL_FINAL_TYPES) == 5
 
 
 async def test_regenerating_concepts_changes_the_copy(

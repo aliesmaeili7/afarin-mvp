@@ -7,6 +7,7 @@ import type {
   CampaignDetail,
   CampaignStatusResponse,
   CampaignSummary,
+  CropRect,
   Product,
   ProductImage,
   Session,
@@ -96,6 +97,17 @@ export const httpApi: AfarinApi = {
     return request<ProductImage[]>(`/api/campaigns/${campaignId}/images/sample`, {
       method: "POST",
     });
+  },
+
+  updateProductCrop(
+    campaignId: string,
+    imageId: string,
+    crop: CropRect,
+  ): Promise<ProductImage> {
+    return request<ProductImage>(
+      `/api/campaigns/${campaignId}/images/${imageId}/crop`,
+      { method: "PATCH", body: crop },
+    );
   },
 
   generateConcepts(campaignId: string): Promise<CampaignConcept[]> {

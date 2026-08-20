@@ -65,6 +65,7 @@ class Settings(BaseSettings):
 
     # --- Behaviour ------------------------------------------------------
     content_provider: Literal["stub", "openrouter"] = "stub"
+    image_provider: Literal["stub", "openrouter"] = "stub"
     openrouter_api_key: str = ""
     llm_model: str = "openai/gpt-5-mini"
     llm_base_url: str = "https://openrouter.ai/api/v1"
@@ -72,6 +73,12 @@ class Settings(BaseSettings):
     llm_max_retries: int = 2
     llm_http_referer: str = "http://localhost:3000"
     llm_app_title: str = "Afarin"
+    # Empty scenes only. The product never goes through this model.
+    image_model: str = "bytedance-seed/seedream-4.5"
+    # Seedream 4.5 rejects 1K for 4:5 / 9:16 (under ~3.7MP). 2K is valid.
+    image_resolution: str = "2K"
+    image_timeout_seconds: float = 120
+    image_max_retries: int = 1
     # Phase 1 spent 900ms queued plus 13800ms of stages. Keeping the same total
     # means the progress screen behaves identically; tests set this to 0.
     generation_simulated_ms: int = 14700

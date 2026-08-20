@@ -15,6 +15,7 @@ import { ArrowBackIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
 import type { AssetRenderSpec } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
+import { productImagePath } from "@/features/campaign/productImagePath";
 import { useDraftCampaign } from "@/features/campaign/wizard/useDraftCampaign";
 import { WIZARD_TOTAL } from "@/features/campaign/wizard/wizardSteps";
 import { AuthForm } from "./AuthForm";
@@ -70,10 +71,11 @@ export function SignupGate() {
   }, [sessionLoaded, loading, detail, session, startGeneration, toast]);
 
   const selectedConcept = detail?.concepts.find((concept) => concept.selected);
-  const primaryImage =
-    detail?.product_images.find((image) => image.is_primary)?.storage_path ??
-    detail?.product_images[0]?.storage_path ??
+  const primary =
+    detail?.product_images.find((image) => image.is_primary) ??
+    detail?.product_images[0] ??
     null;
+  const primaryImage = productImagePath(primary);
 
   const waitingForSession = !sessionLoaded || Boolean(session);
 

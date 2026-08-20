@@ -13,7 +13,9 @@ from app.core.config import get_settings
 from app.db.models import APP_TABLES
 from app.db.session import dispose_engine, get_sessionmaker
 from app.main import create_app
+from app.providers.image import set_image_provider
 from app.providers.llm import set_content_provider
+from app.services.campaigns.cutout import PassthroughCutout, set_cutout
 from app.services.storage import StorageRef, set_storage
 
 # Generation is simulated, and the point of these tests is the persistence, not
@@ -23,6 +25,7 @@ TEST_SETTINGS_ENV = {
     "GENERATION_QUEUE_MS": "0",
     "DB_NULL_POOL": "true",
     "CONTENT_PROVIDER": "stub",
+    "IMAGE_PROVIDER": "stub",
 }
 
 
@@ -37,6 +40,9 @@ class InMemoryStorage:
 
     async def upload(self, ref: StorageRef, content: bytes, content_type: str) -> None:
         self.objects[f"{ref.bucket}/{ref.key}"] = content
+
+    async def download(self, ref: StorageRef) -> bytes | None:
+        return self.objects.get(f"{ref.bucket}/{ref.key}")
 
     async def remove(self, ref: StorageRef) -> None:
         self.objects.pop(f"{ref.bucket}/{ref.key}", None)
@@ -74,14 +80,18 @@ async def _fresh_engine() -> AsyncIterator[None]:
     yield
     await dispose_engine()
     set_content_provider(None)
+    set_image_provider(None)
+    set_cutout(None)
 
 
 @pytest.fixture
 def storage() -> InMemoryStorage:
     backend = InMemoryStorage()
     set_storage(backend)
+    set_cutout(PassthroughCutout())
     yield backend
     set_storage(None)
+    set_cutout(None)
 
 
 @pytest.fixture(autouse=True)

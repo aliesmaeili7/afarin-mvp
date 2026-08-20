@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/Toast";
 import { toPersianDigits } from "@/lib/format/persian";
 import type { AssetRenderSpec, CampaignConcept } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
+import { productImagePath } from "@/features/campaign/productImagePath";
 import { useSessionStore } from "@/features/auth/sessionStore";
 import { useDraftCampaign } from "../useDraftCampaign";
 import { useWizardGuard } from "../useWizardGuard";
@@ -37,10 +38,11 @@ export function ConceptsStep() {
   }, [sessionLoaded, loadSession]);
 
   const concepts = detail?.concepts ?? [];
-  const primaryImage =
-    detail?.product_images.find((image) => image.is_primary)?.storage_path ??
-    detail?.product_images[0]?.storage_path ??
+  const primary =
+    detail?.product_images.find((image) => image.is_primary) ??
+    detail?.product_images[0] ??
     null;
+  const primaryImage = productImagePath(primary);
 
   const briefKey = [
     campaignId,

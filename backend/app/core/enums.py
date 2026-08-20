@@ -60,7 +60,23 @@ BRAND_ASSET_TYPES = ("logo", "reference_image", "product_reference")
 
 JOB_STATUSES = ("queued", "processing", "succeeded", "failed", "cancelled")
 
-JOB_TYPES = ("campaign_generation", "concept_generation", "copy_rewrite")
+JOB_TYPES = (
+    "campaign_generation",
+    "concept_generation",
+    "copy_rewrite",
+    "image_generation",
+)
+
+VISUAL_FINAL_TYPES = (
+    "feed_final",
+    "story_final",
+    "carousel_1",
+    "carousel_2",
+    "carousel_3",
+)
+
+FEED_SCENE_TYPES = ("feed_final", "carousel_1", "carousel_2", "carousel_3")
+STORY_SCENE_TYPES = ("story_final",)
 
 REWRITE_INTENTS = (
     "informal",

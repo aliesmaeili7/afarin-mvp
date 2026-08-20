@@ -36,6 +36,7 @@ export function AdCanvas({
   const template = getTemplate(spec.template_id);
   const background = getBackground(spec.background_id);
   const productUrl = useResolvedAssetUrl(spec.product_image_path);
+  const sceneUrl = useResolvedAssetUrl(spec.scene_image_path ?? null);
   const renderedUrl = useResolvedAssetUrl(storagePath ?? null);
 
   const containerStyle: CSSProperties = {
@@ -168,7 +169,7 @@ export function AdCanvas({
       style={containerStyle}
       className={cn("relative w-full overflow-hidden", className)}
     >
-      <BackgroundLayer background={background} />
+      <BackgroundLayer background={background} sceneUrl={sceneUrl} />
 
       <div
         className="absolute inset-0 flex flex-col"

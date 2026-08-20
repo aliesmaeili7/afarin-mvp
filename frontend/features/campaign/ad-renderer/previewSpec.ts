@@ -1,5 +1,6 @@
 import { backgroundsForStyle } from "@/lib/content/backgrounds";
 import type { AssetRenderSpec, CampaignDetail, VisualStyle } from "@/types/domain";
+import { productImagePath } from "@/features/campaign/productImagePath";
 
 /**
  * Builds a render spec so the style step can preview a visual style using the
@@ -27,6 +28,6 @@ export function buildStylePreviewSpec(
     cta_fa: null,
     price_text: product?.price_text ?? null,
     brand_name: null,
-    product_image_path: primaryImage?.storage_path ?? null,
+    product_image_path: productImagePath(primaryImage),
   };
 }

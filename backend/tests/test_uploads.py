@@ -37,7 +37,10 @@ async def test_upload_is_stored_privately_and_marked_primary(
     image = response.json()[0]
     assert image["is_primary"] is True
     assert image["storage_path"].endswith(".png")
-    assert len(storage.objects) == 1
+    assert len(storage.objects) == 2
+    assert any("/crops/" in key for key in storage.objects)
+    assert image["crop"]["width"] > 0
+    assert image["crop_storage_path"]
 
 
 async def test_fourth_image_is_refused(client: AsyncClient, storage) -> None:
@@ -116,8 +119,8 @@ async def test_deleting_the_primary_promotes_the_next_image(
         f"/api/campaigns/{campaign_id}/images/{first.json()[0]['id']}"
     )
     assert deleted.status_code == 204
-    # The object is removed from storage too, not just the row.
-    assert len(storage.objects) == 1
+    # Original plus crop of the remaining photo.
+    assert len(storage.objects) == 2
 
     detail = await client.get(f"/api/campaigns/{campaign_id}")
     images = detail.json()["product_images"]

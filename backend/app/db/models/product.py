@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import (
     Base,
     created_timestamp,
+    json_column,
     pk,
     text_column,
     updated_timestamp,
@@ -54,4 +55,13 @@ class ProductImage(Base):
     is_primary: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    crop_json: Mapped[dict] = json_column("crop_json")
+    crop_storage_path: Mapped[str | None] = text_column()
     created_at: Mapped[datetime] = created_timestamp()
+
+    @property
+    def crop(self) -> dict:
+        raw = self.crop_json or {}
+        if not raw.get("width") or not raw.get("height"):
+            return {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0}
+        return raw

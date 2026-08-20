@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { api, toPersianError } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,9 @@ import { CloseIcon, ImageIcon, SparkleIcon, UploadIcon } from "@/components/ui/i
 import { useToast } from "@/components/ui/Toast";
 import { ACCEPTED_MIME_TYPES } from "@/lib/storage/imageStore";
 import { useResolvedAssetUrl } from "@/features/campaign/ad-renderer/useResolvedAssetUrl";
+import type { CropRect, ProductImage } from "@/types/domain";
+import { CropEditor } from "../CropEditor";
+import { FULL_CROP } from "../cropMath";
 import { useDraftCampaign } from "../useDraftCampaign";
 import { WizardShell } from "../WizardShell";
 import { WIZARD_STEPS } from "../wizardSteps";
@@ -23,9 +26,33 @@ export function UploadStep() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [cropByImage, setCropByImage] = useState<Record<string, CropRect>>({});
 
   const images = detail?.product_images ?? [];
+  const primary = images.find((image) => image.is_primary) ?? images[0];
   const canContinue = images.length > 0;
+  const campaignId = detail?.campaign.id;
+  const imageId = primary?.id;
+  const cropDraft = primary
+    ? (cropByImage[primary.id] ?? primary.crop ?? FULL_CROP)
+    : null;
+
+  const setCropDraft = useCallback((next: CropRect) => {
+    if (!imageId) return;
+    setCropByImage((current) => ({ ...current, [imageId]: next }));
+  }, [imageId]);
+
+  const persistCrop = useCallback(
+    async (rect: CropRect) => {
+      if (!campaignId || !imageId) return;
+      try {
+        await api.updateProductCrop(campaignId, imageId, rect);
+      } catch (caught) {
+        toast(toPersianError(caught), "error");
+      }
+    },
+    [campaignId, imageId, toast],
+  );
 
   async function handleFiles(files: FileList | File[]) {
     const list = Array.from(files).slice(0, MAX_IMAGES - images.length);
@@ -72,11 +99,24 @@ export function UploadStep() {
     }
   }
 
+  async function handleContinue() {
+    if (!detail || !primary || !cropDraft) return;
+    setBusy(true);
+    try {
+      await api.updateProductCrop(detail.campaign.id, primary.id, cropDraft);
+      router.push("/create/product");
+    } catch (caught) {
+      toast(toPersianError(caught), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <WizardShell
       step={WIZARD_STEPS[0]}
       heading="عکس محصولت رو آپلود کن"
-      description="یه عکس معمولی با موبایل هم کافیه. می‌تونی تا ۳ عکس اضافه کنی."
+      description="یه عکس معمولی با موبایل هم کافیه. بعد کادر محصول رو تنظیم کن."
       footer={
         <>
           <Button
@@ -84,7 +124,7 @@ export function UploadStep() {
             size="lg"
             disabled={!canContinue}
             loading={busy}
-            onClick={() => router.push("/create/product")}
+            onClick={() => void handleContinue()}
           >
             ادامه
           </Button>
@@ -147,16 +187,28 @@ export function UploadStep() {
             </button>
           ) : null}
 
-          {images.length > 0 ? (
+          {primary && cropDraft ? (
+            <PrimaryCrop
+              image={primary}
+              crop={cropDraft}
+              onChange={setCropDraft}
+              onCommit={(rect) => void persistCrop(rect)}
+              onRemove={() => handleRemove(primary.id)}
+            />
+          ) : null}
+
+          {images.length > 1 ? (
             <div className="grid grid-cols-3 gap-3">
-              {images.map((image) => (
-                <ImageThumb
-                  key={image.id}
-                  storagePath={image.storage_path}
-                  isPrimary={image.is_primary}
-                  onRemove={() => handleRemove(image.id)}
-                />
-              ))}
+              {images
+                .filter((image) => image.id !== primary?.id)
+                .map((image) => (
+                  <ImageThumb
+                    key={image.id}
+                    storagePath={image.storage_path}
+                    isPrimary={false}
+                    onRemove={() => handleRemove(image.id)}
+                  />
+                ))}
             </div>
           ) : null}
 
@@ -172,6 +224,38 @@ export function UploadStep() {
         </div>
       )}
     </WizardShell>
+  );
+}
+
+function PrimaryCrop({
+  image,
+  crop,
+  onChange,
+  onCommit,
+  onRemove,
+}: {
+  image: ProductImage;
+  crop: CropRect;
+  onChange: (crop: CropRect) => void;
+  onCommit: (crop: CropRect) => void;
+  onRemove: () => void;
+}) {
+  const url = useResolvedAssetUrl(image.storage_path);
+  if (!url) {
+    return <Skeleton className="h-72 w-full" />;
+  }
+  return (
+    <div className="relative">
+      <CropEditor src={url} crop={crop} onChange={onChange} onCommit={onCommit} />
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="حذف عکس"
+        className="absolute top-3 end-3 grid size-10 place-items-center rounded-full bg-ink-900/70 text-white transition-colors hover:bg-coral-600"
+      >
+        <CloseIcon width={14} height={14} />
+      </button>
+    </div>
   );
 }
 

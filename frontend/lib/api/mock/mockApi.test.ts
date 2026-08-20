@@ -189,6 +189,21 @@ describe("mock campaign journey", () => {
     expect(await mockApi.resolveAssetUrl(null)).toBeNull();
   });
 
+  it("persists a product crop without replacing the original upload", async () => {
+    const campaign = await mockApi.createCampaign({});
+    const images = await mockApi.useSampleProduct(campaign.id);
+    const cropped = await mockApi.updateProductCrop(campaign.id, images[0].id, {
+      x: 0.1,
+      y: 0.2,
+      width: 0.7,
+      height: 0.6,
+    });
+    expect(cropped.storage_path).toBe(images[0].storage_path);
+    expect(cropped.crop).toEqual({ x: 0.1, y: 0.2, width: 0.7, height: 0.6 });
+    const detail = await mockApi.getCampaign(campaign.id);
+    expect(detail.product_images[0].crop.height).toBe(0.6);
+  });
+
   it("rewrites caption and headline through closed intents", async () => {
     const campaignId = await completeBrief();
     const concepts = await mockApi.generateConcepts(campaignId);

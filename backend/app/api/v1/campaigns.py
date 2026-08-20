@@ -3,14 +3,18 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, File, Request, Response, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.v1.session import ensure_anonymous_owner
-from app.content.backgrounds import backgrounds_for_style
 from app.core import messages
 from app.core.deps import PrincipalDep, SessionDep, SettingsDep
-from app.core.enums import ASSET_REWRITE_INTENTS, COPY_REWRITE_INTENTS
-from app.core.errors import ApiError, generation_failed, invalid, not_found
+from app.core.enums import (
+    ASSET_REWRITE_INTENTS,
+    COPY_REWRITE_INTENTS,
+    STORY_SCENE_TYPES,
+    VISUAL_FINAL_TYPES,
+)
+from app.core.errors import ApiError, conflict, generation_failed, invalid, not_found
 from app.db.models import (
     Brand,
     Campaign,
@@ -20,6 +24,7 @@ from app.db.models import (
     Product,
     ProductImage,
 )
+from app.providers.image import get_image_provider
 from app.providers.llm import get_content_provider
 from app.schemas.domain import (
     CampaignAssetOut,
@@ -34,6 +39,7 @@ from app.schemas.domain import (
 from app.schemas.requests import (
     AssetTextIn,
     CreateCampaignIn,
+    CropIn,
     ProductIn,
     RewriteIn,
     UpdateCampaignIn,
@@ -42,7 +48,10 @@ from app.schemas.requests import (
 from app.services.campaigns import jobs as job_records
 from app.services.campaigns import materialize as materializer
 from app.services.campaigns import queries, summaries
+from app.services.campaigns import visuals as visualizer
+from app.services.campaigns.crop import parse_crop
 from app.services.campaigns.ownership import get_owned_campaign
+from app.services.campaigns.product_media import assign_suggested_crop, save_crop
 from app.services.storage import (
     StorageRef,
     get_storage,
@@ -257,11 +266,38 @@ async def upload_product_images(
         )
         await storage.upload(ref, content, upload.content_type or "image/webp")
         image.storage_path = ref.to_path()
+        await assign_suggested_crop(session, campaign, image, content)
         created.append(image)
 
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
     return created
+
+
+@router.patch("/{campaign_id}/images/{image_id}/crop", response_model=ProductImageOut)
+async def update_product_crop(
+    campaign_id: uuid.UUID,
+    image_id: uuid.UUID,
+    body: CropIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> ProductImage:
+    campaign = await get_owned_campaign(session, principal, campaign_id)
+    image = await session.scalar(
+        select(ProductImage).where(ProductImage.id == image_id)
+    )
+    if image is None or (
+        campaign.product_id is not None and image.product_id != campaign.product_id
+    ):
+        raise not_found(messages.IMAGE_NOT_FOUND)
+    try:
+        rect = parse_crop(body.model_dump())
+    except ValueError as error:
+        raise invalid(messages.CROP_INVALID) from error
+    await save_crop(session, campaign, image, rect)
+    campaign.updated_at = datetime.now(UTC)
+    await session.flush()
+    return image
 
 
 @router.delete("/{campaign_id}/images/{image_id}", status_code=204)
@@ -282,6 +318,7 @@ async def delete_product_image(
         raise not_found(messages.IMAGE_NOT_FOUND)
 
     storage_path = image.storage_path
+    crop_path = image.crop_storage_path
     was_primary = image.is_primary
     await session.delete(image)
     await session.flush()
@@ -291,9 +328,11 @@ async def delete_product_image(
         if remaining:
             remaining[0].is_primary = True
 
-    ref = parse(storage_path)
-    if ref is not None:
-        await get_storage().remove(ref)
+    storage = get_storage()
+    for path in (storage_path, crop_path):
+        ref = parse(path) if path else None
+        if ref is not None:
+            await storage.remove(ref)
 
     await session.flush()
 
@@ -306,9 +345,11 @@ async def use_sample_product(
     product = await _ensure_product(session, campaign)
 
     for image in await queries.images_of(session, campaign):
-        ref = parse(image.storage_path)
-        if ref is not None:
-            await get_storage().remove(ref)
+        storage = get_storage()
+        for path in (image.storage_path, image.crop_storage_path):
+            ref = parse(path) if path else None
+            if ref is not None:
+                await storage.remove(ref)
         await session.delete(image)
     await session.flush()
 
@@ -316,6 +357,8 @@ async def use_sample_product(
         product_id=product.id, storage_path=SAMPLE_IMAGE_PATH, is_primary=True
     )
     session.add(image)
+    await session.flush()
+    await assign_suggested_crop(session, campaign, image, b"")
 
     # Prefill the brief so the demo path shows a complete example.
     product.name = product.name or "زعفران ممتاز"
@@ -558,24 +601,71 @@ async def regenerate_asset(
     campaign = await get_owned_campaign(session, principal, campaign_id)
     asset = await _owned_asset(session, campaign.id, asset_id)
 
-    spec = dict(asset.metadata_json or {})
-    options = backgrounds_for_style(campaign.visual_style)
+    active = await session.scalar(
+        select(GenerationJob).where(
+            GenerationJob.campaign_id == campaign.id,
+            GenerationJob.job_type.in_(("campaign_generation", "image_generation")),
+            GenerationJob.status.in_(("queued", "processing")),
+        )
+    )
+    if active is not None:
+        raise conflict(messages.GENERATION_BUSY)
+
+    aspect = (
+        visualizer.ASPECT_9X16
+        if asset.asset_type in STORY_SCENE_TYPES
+        else visualizer.ASPECT_4X5
+    )
+    previous = await session.scalar(
+        select(func.count(GenerationJob.id)).where(
+            GenerationJob.campaign_id == campaign.id,
+            GenerationJob.job_type == "image_generation",
+        )
+    )
+    variation = int(previous or 0) + 1
+
+    job = GenerationJob(
+        campaign_id=campaign.id,
+        user_id=principal.user_id,
+        job_type="image_generation",
+        status="processing",
+        started_at=datetime.now(UTC),
+        input_json={
+            "aspect": aspect,
+            "asset_type": asset.asset_type,
+            "variation": variation,
+        },
+    )
+    session.add(job)
+    await session.flush()
+
+    provider_name = get_image_provider().name
     try:
-        current = options.index(spec.get("background_id", ""))
-    except ValueError:
-        current = -1
-    spec["background_id"] = options[(current + 1) % len(options)]
-    spec["failed"] = False
-    asset.metadata_json = spec
+        usage = await visualizer.regenerate_scene(
+            session, campaign, aspect=aspect, variation=variation
+        )
+    except Exception as error:
+        job_records.mark_image_failed(job, error, provider=provider_name)
+        await session.commit()
+        if isinstance(error, ApiError):
+            raise
+        raise generation_failed() from error
 
-    # Retrying the failed asset repairs the campaign as a whole.
-    if campaign.status == "partial_failed":
-        remaining = await queries.assets_of(session, campaign.id)
-        if not any((item.metadata_json or {}).get("failed") for item in remaining):
-            campaign.status = "ready"
+    if usage is None:
+        job_records.mark_image_failed(
+            job,
+            RuntimeError("scene generation returned nothing"),
+            provider=provider_name,
+        )
+        await session.commit()
+        raise generation_failed()
 
+    job_records.mark_image_succeeded(
+        job, usage, provider=provider_name, output={"aspect": aspect}
+    )
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
+    await session.refresh(asset)
     return asset
 
 
@@ -601,6 +691,8 @@ async def update_asset_text(
 async def _sync_asset_cta(session, campaign_id: uuid.UUID, cta_fa: str) -> None:
     assets = await queries.assets_of(session, campaign_id)
     for asset in assets:
+        if asset.asset_type not in VISUAL_FINAL_TYPES:
+            continue
         spec = dict(asset.metadata_json or {})
         spec["cta_fa"] = cta_fa
         asset.metadata_json = spec

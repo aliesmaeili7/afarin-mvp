@@ -8,6 +8,7 @@ import type {
   CampaignObjective,
   CampaignStatusResponse,
   CampaignSummary,
+  CropRect,
   Product,
   ProductImage,
   Session,
@@ -45,6 +46,12 @@ export interface AfarinApi {
   deleteProductImage(campaignId: string, imageId: string): Promise<void>;
   // POST /api/campaigns/{id}/images/sample
   useSampleProduct(campaignId: string): Promise<ProductImage[]>;
+  // PATCH /api/campaigns/{id}/images/{image_id}/crop
+  updateProductCrop(
+    campaignId: string,
+    imageId: string,
+    crop: CropRect,
+  ): Promise<ProductImage>;
 
   // POST /api/campaigns/{id}/concepts/generate
   generateConcepts(campaignId: string): Promise<CampaignConcept[]>;

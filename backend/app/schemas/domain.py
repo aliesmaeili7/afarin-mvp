@@ -67,6 +67,8 @@ class ProductImageOut(Model):
     product_id: Id
     storage_path: str
     is_primary: bool
+    crop: dict[str, float]
+    crop_storage_path: str | None
     created_at: Timestamp
 
 

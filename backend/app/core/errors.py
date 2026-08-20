@@ -64,6 +64,10 @@ def generation_failed(message_fa: str | None = None) -> ApiError:
     return ApiError("generation_failed", message_fa or messages.GENERATION_FAILED)
 
 
+def conflict(message_fa: str) -> ApiError:
+    return ApiError("conflict", message_fa)
+
+
 def _payload(code: str, message_fa: str) -> dict[str, str]:
     return {"code": code, "message_fa": message_fa}
 

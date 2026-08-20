@@ -89,6 +89,31 @@ describe("request handling", () => {
 
     await expect(httpApi.deleteProductImage("c1", "i1")).resolves.toBeUndefined();
   });
+
+  it("saves a product crop", async () => {
+    const httpApi = await loadApi();
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        id: "i1",
+        crop: { x: 0.1, y: 0.2, width: 0.6, height: 0.5 },
+      }),
+    );
+
+    await httpApi.updateProductCrop("c1", "i1", {
+      x: 0.1,
+      y: 0.2,
+      width: 0.6,
+      height: 0.5,
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toContain("/api/campaigns/c1/images/i1/crop");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      x: 0.1,
+      y: 0.2,
+      width: 0.6,
+      height: 0.5,
+    });
+  });
 });
 
 describe("asset resolution", () => {

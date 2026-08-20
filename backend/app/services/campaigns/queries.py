@@ -47,7 +47,7 @@ async def primary_image_path(session: AsyncSession, campaign: Campaign) -> str |
     if not images:
         return None
     primary = next((image for image in images if image.is_primary), images[0])
-    return primary.storage_path
+    return primary.crop_storage_path or primary.storage_path
 
 
 async def concepts_of(

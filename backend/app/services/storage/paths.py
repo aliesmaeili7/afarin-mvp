@@ -76,5 +76,18 @@ def product_image_key(campaign_id: uuid.UUID, image_id: uuid.UUID, ext: str) -> 
     return f"campaigns/{campaign_id}/products/{image_id}.{ext}"
 
 
+def scene_image_key(campaign_id: uuid.UUID, aspect: str, token: str) -> str:
+    slug = "9x16" if aspect == "9:16" else "4x5"
+    return f"campaigns/{campaign_id}/generated/scene-{slug}-{token}.jpg"
+
+
+def product_cutout_key(campaign_id: uuid.UUID, image_id: uuid.UUID) -> str:
+    return f"campaigns/{campaign_id}/cutouts/{image_id}.png"
+
+
+def product_crop_key(campaign_id: uuid.UUID, image_id: uuid.UUID) -> str:
+    return f"campaigns/{campaign_id}/crops/{image_id}.jpg"
+
+
 def brand_asset_key(brand_id: uuid.UUID, asset_id: uuid.UUID, ext: str) -> str:
     return f"brands/{brand_id}/{asset_id}.{ext}"

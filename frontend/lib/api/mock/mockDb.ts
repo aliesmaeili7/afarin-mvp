@@ -21,7 +21,7 @@ import type {
  */
 
 const STORAGE_KEY = "afarin.mock_db";
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 export interface MockGenerationJob {
   id: string;
@@ -194,6 +194,8 @@ function seed(db: MockDbShape): MockDbShape {
     product_id: SAMPLE_PRODUCT_ID,
     storage_path: SAMPLE_IMAGE_PATH,
     is_primary: true,
+    crop: { x: 0, y: 0, width: 1, height: 1 },
+    crop_storage_path: null,
     created_at: createdAt,
   });
 

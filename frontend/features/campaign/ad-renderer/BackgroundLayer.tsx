@@ -8,9 +8,31 @@ import type { BackgroundDefinition } from "@/lib/content/backgrounds";
  */
 export function BackgroundLayer({
   background,
+  sceneUrl,
 }: {
   background: BackgroundDefinition;
+  sceneUrl?: string | null;
 }) {
+  if (sceneUrl) {
+    return (
+      <div className="absolute inset-0" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={sceneUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.22), rgba(0,0,0,0) 45%)",
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className="absolute inset-0"

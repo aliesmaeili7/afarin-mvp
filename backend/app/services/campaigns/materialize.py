@@ -2,10 +2,9 @@
 Produces the campaign output rows.
 
 The single definition of "what a finished campaign contains", ported from
-materializeCampaign in the Phase 1 mock. Phase 4/5 will additionally render real
-images and fill in `storage_path`; until then `metadata_json` carries an
-AssetRenderSpec and the browser composes from it, which is precisely what keeps
-CampaignSummary.thumbnail_spec working.
+materializeCampaign in the Phase 1 mock. Phase 4 writes empty scenes and a
+local product cutout, then AdCanvas composites them with Persian type.
+`storage_path` on the five finals stays null until Phase 5 baked export.
 """
 
 import uuid
@@ -20,6 +19,7 @@ from app.content.context import CopyContext
 from app.db.models import Campaign, CampaignAsset, CampaignConcept, CampaignCopy
 from app.providers.llm import get_content_provider
 from app.services.campaigns import queries
+from app.services.campaigns import visuals as visualizer
 
 
 def concept_background_id(concept: CampaignConcept | None, campaign: Campaign) -> str:
@@ -97,10 +97,22 @@ async def materialize(
     session: AsyncSession, campaign: Campaign, *, partial_failure: bool = False
 ) -> str:
     """
-    Writes every copy and asset row for a campaign and returns its new status.
+    Writes copy, asset specs and (when possible) real scenes.
 
     Called when a generation job completes, and lazily for the seeded sample, so
     there is exactly one definition of a finished campaign.
+    """
+    await materialize_copy(session, campaign, partial_failure=partial_failure)
+    status, _usage, _failures = await visualizer.attach_visuals(session, campaign)
+    return status
+
+
+async def materialize_copy(
+    session: AsyncSession, campaign: Campaign, *, partial_failure: bool = False
+) -> None:
+    """
+    Commits Persian copy and five AssetRenderSpecs. Does not call an image
+    model, so a later visual failure can keep this text.
     """
     provider = get_content_provider()
     ctx = await queries.build_copy_context(session, campaign)
@@ -148,6 +160,7 @@ async def materialize(
         "price_text": ctx.price_text,
         "brand_name": brand.name if brand else ctx.brand_name,
         "product_image_path": await queries.primary_image_path(session, campaign),
+        "scene_image_path": None,
     }
 
     await session.execute(
@@ -207,9 +220,7 @@ async def materialize(
         ),
     )
 
-    campaign.status = "partial_failed" if partial_failure else "ready"
     await session.flush()
-    return campaign.status
 
 
 def _add_copy(
@@ -241,8 +252,7 @@ def _add_asset(
         CampaignAsset(
             campaign_id=campaign_id,
             asset_type=asset_type,
-            # Phase 1 composed in the browser and Phase 2 still does; Phase 4/5
-            # will fill this in.
+            # Finals stay path-less so AdCanvas keeps drawing type (Phase 5).
             storage_path=None,
             width=width,
             height=height,

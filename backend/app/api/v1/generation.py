@@ -9,17 +9,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import messages
 from app.core.config import Settings
 from app.core.deps import PrincipalDep, SessionDep, SettingsDep
+from app.core.enums import VISUAL_FINAL_TYPES
 from app.core.errors import ApiError, invalid
-from app.db.models import Campaign, GenerationJob
+from app.db.models import Campaign, CampaignCopy, GenerationJob
+from app.providers.image import get_image_provider
 from app.schemas.domain import CampaignStatusOut
 from app.services.campaigns import jobs as job_records
 from app.services.campaigns import materialize as materializer
+from app.services.campaigns import queries
+from app.services.campaigns import visuals as visualizer
 from app.services.campaigns.ownership import get_owned_campaign
 from app.services.campaigns.stages import compute_progress
 
 router = APIRouter(prefix="/api/campaigns", tags=["generation"])
 
 _TERMINAL = ("ready", "partial_failed", "failed")
+_VISUAL_JOBS = ("campaign_generation", "image_generation")
 
 
 def _status(
@@ -54,7 +59,7 @@ async def start_generation(
     if campaign.status in ("ready", "partial_failed"):
         return _status(campaign, None, 100, None)
 
-    active = await _active_job(session, campaign.id)
+    active = await _active_visual_job(session, campaign.id)
     if active is not None or campaign.status in ("queued", "generating"):
         return _status(campaign, "planning", 1, messages.QUEUED)
 
@@ -97,15 +102,20 @@ async def get_campaign_status(
         from app.services.campaigns import summaries
 
         await summaries.ensure_materialized(session, campaign)
+        failed = await visualizer.failed_visual_types(session, campaign.id)
         return _status(
             campaign,
             None,
             0 if campaign.status == "failed" else 100,
             None,
-            ["story_final"] if campaign.status == "partial_failed" else [],
+            failed,
         )
 
-    job = await _latest_job(session, campaign.id)
+    image_job = await _active_job_of(session, campaign.id, "image_generation")
+    if image_job is not None:
+        return await _run_images(session, campaign, image_job)
+
+    job = await _latest_job(session, campaign.id, "campaign_generation")
     if job is None or job.status == "succeeded":
         return _status(campaign, None, 0, None)
 
@@ -119,11 +129,9 @@ async def _advance(
     settings: Settings,
 ) -> CampaignStatusOut:
     """
-    Derives progress from the job's start time and materializes once it elapses.
-
-    Elapsed time is still simulated so the progress screen matches Phase 1; the
-    completing poll awaits the LLM copy package. Concurrent polls cannot both
-    materialize because of the row lock.
+    Derives progress from the job's start time, commits copy, then generates
+    empty scenes. Copy is flushed to the database before any image HTTP so a
+    visual failure cannot take the captions with it.
     """
     started = job.started_at or datetime.now(UTC)
     elapsed_ms = (datetime.now(UTC) - started).total_seconds() * 1000
@@ -134,7 +142,7 @@ async def _advance(
         return _status(campaign, None, 1, messages.QUEUED)
 
     progress = compute_progress(
-        elapsed_ms - settings.generation_queue_ms, settings.generation_simulated_ms
+        elapsed_ms - settings.generation_queue_ms, _simulated_ms(settings)
     )
 
     if not progress.done:
@@ -143,69 +151,194 @@ async def _advance(
         await session.flush()
         return _status(campaign, progress.stage, progress.percent, progress.message_fa)
 
-    # Lock the job so two concurrent polls cannot both materialize.
     locked = await session.scalar(
         select(GenerationJob).where(GenerationJob.id == job.id).with_for_update()
     )
     if locked is not None and locked.status in ("succeeded", "failed"):
         await session.refresh(campaign)
+        image_job = await _active_job_of(session, campaign.id, "image_generation")
+        if image_job is not None:
+            return await _run_images(session, campaign, image_job)
+        failed = await visualizer.failed_visual_types(session, campaign.id)
         return _status(
             campaign,
             None,
             0 if campaign.status == "failed" else 100,
             None,
+            failed,
         )
 
+    if not await _has_copy(session, campaign.id):
+        try:
+            await materializer.materialize_copy(session, campaign)
+        except Exception as error:
+            if locked is not None:
+                job_records.mark_failed(locked, error)
+            campaign.status = "failed"
+            campaign.updated_at = datetime.now(UTC)
+            await session.flush()
+            message = (
+                error.message_fa
+                if isinstance(error, ApiError)
+                else messages.GENERATION_FAILED
+            )
+            return _status(campaign, None, 0, message)
+
+        if locked is not None:
+            job_records.mark_succeeded(locked)
+        campaign.status = "generating"
+        campaign.updated_at = datetime.now(UTC)
+        await session.flush()
+
+    image_job = await _ensure_image_job(session, campaign, job)
+    await session.commit()
+    return await _run_images(session, campaign, image_job)
+
+
+async def _run_images(
+    session: AsyncSession,
+    campaign: Campaign,
+    job: GenerationJob,
+) -> CampaignStatusOut:
+    locked = await session.scalar(
+        select(GenerationJob).where(GenerationJob.id == job.id).with_for_update()
+    )
+    if locked is not None and locked.status in ("succeeded", "failed"):
+        await session.refresh(campaign)
+        failed = await visualizer.failed_visual_types(session, campaign.id)
+        return _status(
+            campaign,
+            None,
+            0 if campaign.status == "failed" else 100,
+            None,
+            failed,
+        )
+
+    campaign.status = "generating"
+    if locked is not None:
+        locked.status = "processing"
+    await session.flush()
+
+    provider_name = get_image_provider().name
     try:
-        final_status = await materializer.materialize(session, campaign)
+        final_status, usage, failures = await visualizer.attach_visuals(
+            session, campaign
+        )
     except Exception as error:
         if locked is not None:
-            job_records.mark_failed(locked, error)
-        campaign.status = "failed"
+            job_records.mark_image_failed(locked, error, provider=provider_name)
+        campaign.status = "partial_failed"
         campaign.updated_at = datetime.now(UTC)
+        await _mark_finals_failed(session, campaign.id)
         await session.flush()
         message = (
             error.message_fa
             if isinstance(error, ApiError)
             else messages.GENERATION_FAILED
         )
-        return _status(campaign, None, 0, message)
+        failed = await visualizer.failed_visual_types(session, campaign.id)
+        return _status(campaign, None, 0, message, failed)
 
+    image_output = {"image_errors": failures} if failures else None
     if locked is not None:
-        job_records.mark_succeeded(locked)
+        if final_status == "partial_failed":
+            job_records.mark_image_failed(
+                locked,
+                RuntimeError("one or more scenes failed"),
+                usage,
+                provider=provider_name,
+                output=image_output,
+            )
+        else:
+            job_records.mark_image_succeeded(
+                locked, usage, provider=provider_name, output=image_output
+            )
 
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
+    failed = await visualizer.failed_visual_types(session, campaign.id)
+    return _status(campaign, None, 100, None, failed)
 
-    return _status(
-        campaign,
-        None,
-        100,
-        None,
-        ["story_final"] if final_status == "partial_failed" else [],
+
+async def _ensure_image_job(
+    session: AsyncSession, campaign: Campaign, copy_job: GenerationJob
+) -> GenerationJob:
+    existing = await _latest_job(session, campaign.id, "image_generation")
+    if existing is not None and existing.status in ("queued", "processing"):
+        return existing
+
+    job = GenerationJob(
+        campaign_id=campaign.id,
+        user_id=copy_job.user_id,
+        job_type="image_generation",
+        status="processing",
+        started_at=datetime.now(UTC),
+        provider=None,
+        model=None,
+        input_json={"objective": campaign.objective, "style": campaign.visual_style},
     )
+    session.add(job)
+    await session.flush()
+    return job
 
 
-async def _active_job(
+async def _mark_finals_failed(session: AsyncSession, campaign_id: uuid.UUID) -> None:
+    for asset in await queries.assets_of(session, campaign_id):
+        if asset.asset_type not in VISUAL_FINAL_TYPES:
+            continue
+        spec = dict(asset.metadata_json or {})
+        spec["failed"] = True
+        asset.metadata_json = spec
+
+
+async def _has_copy(session: AsyncSession, campaign_id: uuid.UUID) -> bool:
+    row = await session.scalar(
+        select(CampaignCopy.id)
+        .where(CampaignCopy.campaign_id == campaign_id)
+        .limit(1)
+    )
+    return row is not None
+
+
+def _simulated_ms(settings: Settings) -> int:
+    # Real image latency should not sit on top of the Phase 1 theatre timer.
+    if settings.image_provider != "stub":
+        return 0
+    return settings.generation_simulated_ms
+
+
+async def _active_visual_job(
     session: AsyncSession, campaign_id: uuid.UUID
 ) -> GenerationJob | None:
     return await session.scalar(
         select(GenerationJob).where(
             GenerationJob.campaign_id == campaign_id,
-            GenerationJob.job_type == "campaign_generation",
+            GenerationJob.job_type.in_(_VISUAL_JOBS),
+            GenerationJob.status.in_(("queued", "processing")),
+        )
+    )
+
+
+async def _active_job_of(
+    session: AsyncSession, campaign_id: uuid.UUID, job_type: str
+) -> GenerationJob | None:
+    return await session.scalar(
+        select(GenerationJob).where(
+            GenerationJob.campaign_id == campaign_id,
+            GenerationJob.job_type == job_type,
             GenerationJob.status.in_(("queued", "processing")),
         )
     )
 
 
 async def _latest_job(
-    session: AsyncSession, campaign_id: uuid.UUID
+    session: AsyncSession, campaign_id: uuid.UUID, job_type: str
 ) -> GenerationJob | None:
     return await session.scalar(
         select(GenerationJob)
         .where(
             GenerationJob.campaign_id == campaign_id,
-            GenerationJob.job_type == "campaign_generation",
+            GenerationJob.job_type == job_type,
         )
         .order_by(GenerationJob.started_at.desc())
         .limit(1)

@@ -10,6 +10,7 @@ import type {
   CampaignStatusResponse,
   CampaignSummary,
   CopyType,
+  CropRect,
   Product,
   ProductImage,
   Session,
@@ -28,6 +29,7 @@ import {
 } from "@/lib/api/types";
 import { backgroundsForStyle } from "@/lib/content/backgrounds";
 import * as imageStore from "@/lib/storage/imageStore";
+import { FULL_CROP } from "@/features/campaign/wizard/cropMath";
 import {
   buildConcepts,
   buildSubheadline,
@@ -92,7 +94,7 @@ function primaryImagePath(db: MockDbShape, campaign: Campaign): string | null {
     (image) => image.product_id === campaign.product_id,
   );
   const primary = images.find((image) => image.is_primary) ?? images[0];
-  return primary?.storage_path ?? null;
+  return primary?.crop_storage_path || primary?.storage_path || null;
 }
 
 function brandOf(db: MockDbShape, campaign: Campaign): Brand | null {
@@ -286,6 +288,7 @@ function materializeCampaign(
     price_text: ctx.priceText,
     brand_name: brand?.name ?? ctx.brandName,
     product_image_path: primaryImagePath(db, campaign),
+    scene_image_path: null,
   };
 
   const failureMode = getFailureMode();
@@ -703,6 +706,8 @@ export const mockApi: AfarinApi = {
           product_id: product.id,
           storage_path: storagePath,
           is_primary: existing.length === 0 && index === 0,
+          crop: { ...FULL_CROP },
+          crop_storage_path: null,
           created_at: nowIso(),
         };
         return image;
@@ -755,6 +760,8 @@ export const mockApi: AfarinApi = {
         product_id: product.id,
         storage_path: SAMPLE_IMAGE_PATH,
         is_primary: true,
+        crop: { ...FULL_CROP },
+        crop_storage_path: null,
         created_at: nowIso(),
       };
       db.product_images.push(image);
@@ -768,6 +775,29 @@ export const mockApi: AfarinApi = {
 
       campaign.updated_at = nowIso();
       return [image];
+    });
+  },
+
+  async updateProductCrop(
+    campaignId: string,
+    imageId: string,
+    crop: CropRect,
+  ): Promise<ProductImage> {
+    await delay(LATENCY.write);
+    return mutateDb((db) => {
+      const campaign = findCampaign(db, campaignId);
+      assertOwnership(db, campaign);
+      const image = db.product_images.find((item) => item.id === imageId);
+      if (!image) throw new ApiError("not_found", "این عکس پیدا نشد.");
+      if (crop.width < 0.12 || crop.height < 0.12) {
+        throw new ApiError(
+          "validation_error",
+          "کادر محصول رو یک مقدار بزرگ‌تر انتخاب کن.",
+        );
+      }
+      image.crop = crop;
+      campaign.updated_at = nowIso();
+      return { ...image };
     });
   },
 

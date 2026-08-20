@@ -22,6 +22,8 @@ class StorageBackend(Protocol):
         self, ref: StorageRef, content: bytes, content_type: str
     ) -> None: ...
 
+    async def download(self, ref: StorageRef) -> bytes | None: ...
+
     async def remove(self, ref: StorageRef) -> None: ...
 
     async def sign(self, ref: StorageRef, ttl_seconds: int) -> str | None: ...
@@ -73,6 +75,18 @@ class SupabaseStorage:
                 "storage upload failed: %s %s", response.status_code, response.text
             )
             raise ApiError("upload_failed", messages.UPLOAD_FAILED)
+
+    async def download(self, ref: StorageRef) -> bytes | None:
+        async with await self._client() as client:
+            response = await client.get(f"{self._base}/object/{ref.bucket}/{ref.key}")
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200:
+            logger.warning(
+                "storage download failed: %s %s", response.status_code, response.text
+            )
+            return None
+        return response.content
 
     async def remove(self, ref: StorageRef) -> None:
         async with await self._client() as client:

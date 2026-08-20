@@ -9,7 +9,10 @@ from app.services.storage.paths import (
     brand_asset_key,
     is_public,
     parse,
+    product_crop_key,
+    product_cutout_key,
     product_image_key,
+    scene_image_key,
 )
 from app.services.storage.supabase import (
     StorageBackend,
@@ -30,7 +33,10 @@ __all__ = [
     "get_storage",
     "is_public",
     "parse",
+    "product_cutout_key",
+    "product_crop_key",
     "product_image_key",
+    "scene_image_key",
     "resolve_paths",
     "set_storage",
     "validate_upload",

@@ -8,6 +8,7 @@ from app.api.v1 import assets, brands, campaigns, generation, session
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.db.session import dispose_engine
+from app.services.campaigns.cutout import rembg_available
 from app.services.storage import get_storage
 
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +29,15 @@ async def lifespan(_: FastAPI):
                 logger.warning("could not ensure bucket %s: %s", bucket, error)
     else:
         logger.warning("SUPABASE_SERVICE_ROLE_KEY is not set; uploads will fail")
+
+    if rembg_available():
+        logger.info("product cutout is active (rembg)")
+    else:
+        logger.warning(
+            "rembg is not installed; campaigns will composite the seller's "
+            "approved crop instead of a transparent cutout. "
+            "Install with: uv sync --extra cutout"
+        )
 
     yield
     await dispose_engine()

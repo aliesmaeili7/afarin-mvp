@@ -189,7 +189,10 @@ class GenerationJob(Base):
             "uq_generation_jobs_active",
             "campaign_id",
             unique=True,
-            postgresql_where=text("status in ('queued', 'processing')"),
+            postgresql_where=text(
+                "status in ('queued', 'processing') "
+                "AND job_type in ('campaign_generation', 'image_generation')"
+            ),
         ),
     )
 

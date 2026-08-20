@@ -107,7 +107,16 @@ export interface ProductImage {
   product_id: string;
   storage_path: string;
   is_primary: boolean;
+  crop: CropRect;
+  crop_storage_path: string | null;
   created_at: string;
+}
+
+export interface CropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface Campaign {
@@ -176,6 +185,13 @@ export interface AssetRenderSpec {
   price_text: string | null;
   brand_name: string | null;
   product_image_path: string | null;
+  /** Generated empty scene. CSS background_id is the fallback when this is null. */
+  scene_image_path?: string | null;
+  /**
+   * cutout = rembg PNG; crop = seller-approved rectangle (rembg unavailable);
+   * original = bundled sample. Never a silent full-screenshot fallback.
+   */
+  product_source?: "cutout" | "crop" | "original";
   slide_label_fa?: string | null;
   /** Set when this particular asset failed while the rest of the campaign succeeded. */
   failed?: boolean;

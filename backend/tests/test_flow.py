@@ -225,13 +225,21 @@ async def test_full_anonymous_to_dashboard_journey(
 
     final = await client.get(f"/api/campaigns/{campaign_id}", headers=headers)
     payload = final.json()
-    assert {asset["asset_type"] for asset in payload["assets"]} == {
+    assert {asset["asset_type"] for asset in payload["assets"]} >= {
         "feed_final",
         "story_final",
         "carousel_1",
         "carousel_2",
         "carousel_3",
+        "generated_background",
+        "product_cutout",
     }
+    feed = next(
+        asset for asset in payload["assets"] if asset["asset_type"] == "feed_final"
+    )
+    assert feed["storage_path"] is None
+    assert feed["metadata_json"]["scene_image_path"]
+    assert feed["metadata_json"]["product_image_path"] != stored_path
     copy_types = {copy["copy_type"] for copy in payload["copies"]}
     assert {"caption_short", "caption_friendly", "caption_persuasive"} <= copy_types
     assert "story" in copy_types and "hashtags" in copy_types

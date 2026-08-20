@@ -55,6 +55,13 @@ export function CampaignResult({
               ? `پکیج تبلیغاتی «${detail.product.name}» شامل پست، استوری، کاروسل، کپشن و ایده ریلز.`
               : "پکیج تبلیغاتی اینستاگرام شامل پست، استوری، کاروسل، کپشن و ایده ریلز."}
           </p>
+          {(feed?.metadata_json as { product_source?: string } | undefined)
+            ?.product_source === "crop" ? (
+            <p className="mt-3 rounded-2xl bg-brand-50 px-4 py-3 text-sm leading-7 text-ink-600">
+              پس‌زمینه عکس حذف نشد؛ محصول از همان کادری که انتخاب کردی روی صحنه
+              گذاشته شد.
+            </p>
+          ) : null}
         </header>
 
         {feed ? (
@@ -75,6 +82,7 @@ export function CampaignResult({
             title="استوری"
             description="نسبت ۹:۱۶، جداگانه برای حالت عمودی چیده شده."
             previewClassName="mx-auto w-full max-w-[16rem] p-4"
+            allowRegenerate
             onChanged={onChanged}
           />
         ) : null}

@@ -57,3 +57,10 @@ class RewriteIn(BaseModel):
 
 class ResolveAssetsIn(BaseModel):
     paths: list[str]
+
+
+class CropIn(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float

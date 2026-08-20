@@ -2,6 +2,7 @@ import json
 from decimal import Decimal
 
 from app.core.errors import ApiError
+from app.providers.image.base import ImageRequest, ImageResult, ImageUsage
 from app.providers.llm.base import LlmUsage
 from app.providers.llm.openrouter.client import CompletionResult
 
@@ -104,3 +105,49 @@ def copy_package() -> dict:
 FAILED = ApiError(
     "generation_failed", "ساخت این بخش الان ممکن نشد. لطفاً دوباره امتحان کن."
 )
+
+
+class FakeImageProvider:
+    """Returns queued scene bytes. Never touches the network."""
+
+    name = "fake"
+    model = "fake-scene"
+
+    def __init__(
+        self,
+        results: list[ImageResult | Exception] | Exception | None = None,
+    ) -> None:
+        self.results = list(results) if isinstance(results, list) else []
+        self.error = results if isinstance(results, Exception) else None
+        self.calls: list[ImageRequest] = []
+
+    async def generate(self, request: ImageRequest) -> ImageResult:
+        self.calls.append(request)
+        if self.error is not None:
+            raise self.error
+        if self.results:
+            item = self.results.pop(0)
+            if isinstance(item, BaseException):
+                raise item
+            return item
+        return ImageResult(
+            content=_tiny_jpeg(len(self.calls)),
+            media_type="image/jpeg",
+            usage=ImageUsage(
+                latency_ms=4,
+                cost_usd=Decimal("0.04"),
+                model=self.model,
+            ),
+        )
+
+
+def _tiny_jpeg(variant: int = 0) -> bytes:
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    color = ((30 + variant * 47) % 256, (40 + variant * 19) % 256, 50)
+    Image.new("RGB", (8, 10), color).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
