@@ -1,8 +1,8 @@
-import { StyleStep } from "@/features/campaign/wizard/steps/StyleStep";
+import { redirect } from "next/navigation";
 import { localeMetadata } from "@/lib/i18n/metadata";
 
-export const generateMetadata = () => localeMetadata("meta.wizardStyle");
+export const generateMetadata = () => localeMetadata("meta.wizardBrief");
 
 export default function Page() {
-  return <StyleStep />;
+  redirect("/create/brief");
 }

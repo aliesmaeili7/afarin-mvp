@@ -180,9 +180,11 @@ def test_strict_schema_requires_defaulted_fields() -> None:
     schema = strict_schema(LlmPlannerResult)
     dumped = json.dumps(schema)
     assert "default" not in dumped
-    recipe = schema["properties"]["recommended_recipes"]["items"]
+    recipe = schema["properties"]["directions"]["items"]
     assert "warning_fa" in recipe["required"]
     assert "identity_constraints" in recipe["required"]
+    assert "style_id" in recipe["required"]
+    assert "headline_fa" in recipe["required"]
     quality = schema["properties"]["input_quality"]
     assert "reasons" in quality["required"]
 

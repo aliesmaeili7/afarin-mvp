@@ -9,7 +9,7 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from tests.conftest import auth_header, png_bytes
+from tests.conftest import auth_header, attach_sample_image, png_bytes
 
 
 async def _draft_campaign(client: AsyncClient) -> str:
@@ -19,6 +19,7 @@ async def _draft_campaign(client: AsyncClient) -> str:
 
 
 async def _complete_brief(client: AsyncClient, campaign_id: str) -> None:
+    await attach_sample_image(client, campaign_id)
     product = await client.post(
         f"/api/campaigns/{campaign_id}/product",
         json={
@@ -148,6 +149,7 @@ async def test_signed_in_user_can_generate_a_second_campaign(
     second_id = (await client.post("/api/campaigns", json={}, headers=headers)).json()[
         "id"
     ]
+    await attach_sample_image(client, second_id, headers)
     await client.post(
         f"/api/campaigns/{second_id}/product",
         headers=headers,

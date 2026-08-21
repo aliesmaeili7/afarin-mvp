@@ -2,10 +2,15 @@
 
 Accurate empty-scene prompts stay in prompts.py. Persian type is never
 requested from the image model.
+
+CREATIVE_PROMPT_VERSION is a comparison label for eval runs. Changing prompt
+text is a separate product decision — bump the label when that happens.
 """
 
 from app.content.visual_catalog import style_by_id, template_by_id
 from app.db.models import Campaign, CampaignConcept
+
+CREATIVE_PROMPT_VERSION = "v1"
 
 VARIATIONS = (
     "variation A: slightly higher camera, cooler rim light, extra "

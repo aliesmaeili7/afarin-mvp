@@ -83,6 +83,7 @@ class CampaignOut(Model):
     visual_style: str | None
     visual_creation_mode: str | None = None
     visual_recipe_json: dict[str, Any] = Field(default_factory=dict)
+    planner_result_json: dict[str, Any] = Field(default_factory=dict)
     current_visual_attempt_id: OptionalId = None
     selected_concept_id: OptionalId
     status: str

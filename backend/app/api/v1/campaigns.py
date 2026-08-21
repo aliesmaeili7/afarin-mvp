@@ -177,8 +177,6 @@ async def update_campaign(
         if mode is not None and mode not in ("accurate", "creative"):
             raise invalid(messages.VISUAL_MODE_REQUIRED)
         campaign.visual_creation_mode = mode
-        if mode == "accurate":
-            campaign.visual_recipe_json = {}
     if "brand_id" in provided:
         changed = changed or body.brand_id != campaign.brand_id
         campaign.brand_id = body.brand_id
@@ -406,33 +404,28 @@ async def generate_concepts(
     campaign.concept_round = (
         0 if campaign.concept_round is None else campaign.concept_round + 1
     )
-    ctx = await queries.build_copy_context(session, campaign)
-
-    job = GenerationJob(
-        campaign_id=campaign.id,
-        user_id=principal.user_id,
-        job_type="concept_generation",
-        status="processing",
-        started_at=datetime.now(UTC),
-        input_json={
-            "objective": campaign.objective,
-            "style": campaign.visual_style,
-            "round": campaign.concept_round,
-        },
-    )
-    session.add(job)
-    await session.flush()
 
     try:
-        created = await materializer.write_concepts(session, campaign, ctx)
+        result = await visual_planner.plan_directions(
+            session, campaign, principal.user_id
+        )
     except Exception as error:
-        job_records.mark_failed(job, error)
+        campaign.concept_round = (
+            None if campaign.concept_round == 0 else campaign.concept_round - 1
+        )
         await session.commit()
         if isinstance(error, ApiError):
             raise
         raise generation_failed() from error
 
-    job_records.mark_succeeded(job, {"count": len(created)})
+    if not result.input_quality.ok:
+        campaign.concept_round = (
+            None if campaign.concept_round == 0 else campaign.concept_round - 1
+        )
+        await session.flush()
+        raise invalid(messages.INPUT_QUALITY_NEEDS_FIX)
+
+    created = await visual_planner.write_directions(session, campaign, result)
 
     campaign.selected_concept_id = None
     campaign.status = "concepts_ready"
@@ -454,38 +447,23 @@ async def select_concept(
     if not any(concept.id == concept_id for concept in concepts):
         raise not_found(messages.CONCEPT_NOT_FOUND)
 
+    chosen = None
     for concept in concepts:
         concept.selected = concept.id == concept_id
+        if concept.selected:
+            chosen = concept
 
     campaign.selected_concept_id = concept_id
     campaign.status = "concept_selected"
+    if chosen is not None:
+        recipe = visual_planner.recipe_for_concept(
+            chosen, planner=campaign.planner_result_json or {}
+        )
+        if recipe is not None:
+            campaign.visual_recipe_json = recipe
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
     return campaign
-
-
-@router.post("/{campaign_id}/visual/plan")
-async def plan_visuals(
-    campaign_id: uuid.UUID,
-    session: SessionDep,
-    principal: PrincipalDep,
-) -> dict:
-    campaign = await get_owned_campaign(session, principal, campaign_id)
-    result = await visual_planner.propose_recipes(
-        session, campaign, principal.user_id
-    )
-    await session.flush()
-    return {
-        "input_quality": {
-            "status": result.input_quality.status,
-            "reasons": list(result.input_quality.reasons),
-        },
-        "product_type": result.product_type,
-        "visual_identity": list(result.visual_identity),
-        "unsuitable_style_ids": list(result.unsuitable_style_ids),
-        "unsuitable_template_ids": list(result.unsuitable_template_ids),
-        "recipes": visual_planner.public_proposals(result),
-    }
 
 
 @router.post("/{campaign_id}/visual/recipe", response_model=CampaignOut)
@@ -496,19 +474,32 @@ async def save_visual_recipe(
     principal: PrincipalDep,
 ) -> Campaign:
     campaign = await get_owned_campaign(session, principal, campaign_id)
-    if campaign.visual_creation_mode != "creative":
-        campaign.visual_creation_mode = "creative"
+    existing = campaign.visual_recipe_json or {}
+    recommended = recipe_builder.recommended_from(existing)
+    if body.source == "smart" and not recommended:
+        recommended = {"style_id": body.style_id, "template_id": body.template_id}
     campaign.visual_recipe_json = recipe_builder.recipe_from_ids(
         body.style_id,
         body.template_id,
         source=body.source if body.source in ("smart", "custom") else "custom",
-        scene_direction=body.scene_direction,
-        identity_constraints=body.identity_constraints,
-        title_fa=body.title_fa,
-        description_fa=body.description_fa,
-        warning_fa=body.warning_fa,
-        text_safe_area=body.text_safe_area,
+        scene_direction=body.scene_direction or str(existing.get("scene_direction") or ""),
+        identity_constraints=(
+            body.identity_constraints
+            if body.identity_constraints is not None
+            else list(existing.get("identity_constraints") or [])
+        ),
+        title_fa=body.title_fa or existing.get("title_fa"),
+        description_fa=body.description_fa or existing.get("description_fa"),
+        warning_fa=body.warning_fa or str(existing.get("warning_fa") or ""),
+        text_safe_area=body.text_safe_area or existing.get("text_safe_area"),
+        planner=existing.get("planner") if isinstance(existing.get("planner"), dict) else {},
+        recommended=recommended or {
+            "style_id": body.style_id,
+            "template_id": body.template_id,
+        },
     )
+    if campaign.visual_creation_mode != "creative":
+        campaign.visual_creation_mode = "creative"
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
     return campaign

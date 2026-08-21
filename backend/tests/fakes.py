@@ -89,6 +89,60 @@ def three_concepts() -> dict:
     }
 
 
+def three_directions() -> dict:
+    base = {
+        "identity_constraints": ["keep colors"],
+        "warning_fa": "",
+        "text_safe_area": "bottom",
+        "background_prompt": "empty studio, no text",
+    }
+    return {
+        "product_visual_analysis": "a visible product on a clean crop",
+        "product_type": "hoodie",
+        "visual_identity": ["navy fabric"],
+        "identity_constraints": ["keep silhouette"],
+        "unsuitable_style_ids": [],
+        "unsuitable_template_ids": [],
+        "input_quality": {"status": "ok", "reasons": []},
+        "directions": [
+            {
+                **base,
+                "title_fa": "واقعی و واضح",
+                "description_fa": "محصول در مرکز",
+                "angle": "editorial hero",
+                "headline_fa": "کیفیتی که فرقش حس می‌شه",
+                "visual_direction": "نور استودیویی",
+                "style_id": "photoreal_commercial",
+                "template_id": "hero_product",
+                "image_direction": "clean studio hero",
+            },
+            {
+                **base,
+                "title_fa": "تصویرسازی",
+                "description_fa": "صحنه کشیده‌شده",
+                "angle": "illustrated lifestyle",
+                "headline_fa": "یه حال و هوای تازه",
+                "visual_direction": "تصویرسازی رنگی",
+                "style_id": "anime",
+                "template_id": "illustrated_scene",
+                "image_direction": "illustrated scene around the product",
+            },
+            {
+                **base,
+                "title_fa": "ایده غیرمنتظره",
+                "description_fa": "مقیاس سوررئال",
+                "angle": "surreal scale",
+                "headline_fa": "بزرگ‌تر از چیزی که فکر می‌کنی",
+                "visual_direction": "غول در شهر کوچک",
+                "style_id": "surreal",
+                "template_id": "giant_miniature_world",
+                "image_direction": "giant product in a miniature city",
+            },
+        ],
+        "forbidden_claims": [],
+    }
+
+
 def copy_package() -> dict:
     return {
         "caption_short": "زعفران ممتاز قائنات ✨\nهمین حالا سفارش بده",

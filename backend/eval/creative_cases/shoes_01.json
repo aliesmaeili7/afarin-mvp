@@ -1,0 +1,25 @@
+{
+  "case_id": "shoes_01",
+  "title": "Athletic sneaker",
+  "product_image": "../assets/shoes.png",
+  "product": {
+    "name": "کتانی سفید سرمه‌ای",
+    "description": "کتانی رانینگ سفید با نوار سرمه‌ای و زیره فوم",
+    "price_text": null,
+    "main_benefit": null
+  },
+  "brand_name": null,
+  "objective": "sell_product",
+  "audience": "خریداران کفش ورزشی روزمره",
+  "visual_style": "minimal",
+  "identity_constraints": [
+    "keep white upper",
+    "keep navy side graphic and lining",
+    "keep sneaker silhouette and sole shape"
+  ],
+  "fixed_recipes": [
+    { "style_id": "photoreal_commercial", "template_id": "hero_product" },
+    { "style_id": "fashion_editorial", "template_id": "model_using" },
+    { "style_id": "render_3d", "template_id": "floating_product" }
+  ]
+}

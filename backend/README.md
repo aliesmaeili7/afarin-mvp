@@ -144,6 +144,15 @@ OPENROUTER_API_KEY=... uv run pytest -m live
 
 Compare models later with `uv run python -m scripts.eval_llm`.
 
+Creative image/Director lab (dev only, never part of the wizard):
+
+```bash
+uv run python -m scripts.run_creative_eval --case sweatshirt_01 --mode fixed --dry-run
+```
+
+See `eval/README.md`.
+
+
 ## Notes for later phases
 
 - `generation_jobs` records provider, model, tokens, latency and cost for LLM

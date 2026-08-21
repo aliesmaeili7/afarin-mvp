@@ -15,6 +15,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.content.backgrounds import backgrounds_for_style
+from app.content.concepts import build_concepts as fixture_concepts
 from app.content.context import CopyContext
 from app.db.models import Campaign, CampaignAsset, CampaignConcept, CampaignCopy
 from app.providers.llm import get_content_provider
@@ -33,7 +34,8 @@ def concept_background_id(concept: CampaignConcept | None, campaign: Campaign) -
 async def write_concepts(
     session: AsyncSession, campaign: Campaign, ctx: CopyContext
 ) -> list[CampaignConcept]:
-    drafts = await get_content_provider().build_concepts(ctx)
+    """Deterministic fixtures for the seeded sample. The wizard uses the planner."""
+    drafts = fixture_concepts(ctx)
 
     await session.execute(
         delete(CampaignConcept).where(CampaignConcept.campaign_id == campaign.id)
@@ -127,7 +129,13 @@ async def materialize_copy(
         selected.selected = True
         campaign.selected_concept_id = selected.id
 
-    ctx = replace(ctx, selected_headline=selected.headline_fa)
+    raw = selected.raw_json or {}
+    ctx = replace(
+        ctx,
+        selected_headline=selected.headline_fa,
+        selected_angle=str(raw.get("angle") or selected.visual_direction or "") or None,
+        selected_description=selected.description_fa or None,
+    )
 
     await session.execute(
         delete(CampaignCopy).where(CampaignCopy.campaign_id == campaign.id)

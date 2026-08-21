@@ -143,7 +143,6 @@ async def generate_candidates(
         )
 
     attempt.status = "awaiting_selection"
-    campaign.status = "candidates_ready"
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
 

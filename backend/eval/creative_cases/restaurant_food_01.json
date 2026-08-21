@@ -1,0 +1,24 @@
+{
+  "case_id": "restaurant_food_01",
+  "title": "Restaurant dish",
+  "product_image": "../assets/restaurant_food.jpeg",
+  "product": {
+    "name": "جوجه کباب زعفرانی",
+    "description": "بشقاب جوجه با برنج و دورچین",
+    "price_text": null,
+    "main_benefit": null
+  },
+  "brand_name": null,
+  "objective": "promotion",
+  "audience": "مشتری‌های ناهار و شام بیرون",
+  "visual_style": "persian_traditional",
+  "identity_constraints": [
+    "keep dish identity",
+    "keep visible major components"
+  ],
+  "fixed_recipes": [
+    { "style_id": "photoreal_commercial", "template_id": "hero_product" },
+    { "style_id": "cinematic", "template_id": "cinematic_environment" },
+    { "style_id": "persian_miniature_inspired", "template_id": "illustrated_scene" }
+  ]
+}

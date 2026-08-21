@@ -1,0 +1,25 @@
+{
+  "case_id": "accessory_01",
+  "title": "Accessory / bag",
+  "product_image": "../assets/accessory.jpeg",
+  "product": {
+    "name": "کیف چرمی دستی",
+    "description": "کیف کوچک چرم قهوه‌ای با قفل طلایی",
+    "price_text": null,
+    "main_benefit": null
+  },
+  "brand_name": null,
+  "objective": "new_product",
+  "audience": "خریداران اکسسوری زنانه",
+  "visual_style": "minimal",
+  "identity_constraints": [
+    "keep leather color",
+    "keep bag silhouette",
+    "keep hardware finish"
+  ],
+  "fixed_recipes": [
+    { "style_id": "fashion_editorial", "template_id": "model_using" },
+    { "style_id": "photoreal_commercial", "template_id": "hero_product" },
+    { "style_id": "render_3d", "template_id": "floating_product" }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "case_id": "cosmetics_01",
+  "title": "Packaged beauty product",
+  "product_image": "../assets/cosmetics.jpeg",
+  "product": {
+    "name": "کرم مرطوب‌کننده روز",
+    "description": "کرم صورت در شیشه شیری با درب طلایی",
+    "price_text": null,
+    "main_benefit": "آبرسانی بدون چربی"
+  },
+  "brand_name": null,
+  "objective": "brand_awareness",
+  "audience": "خانم‌های ۲۵ تا ۴۰ ساله",
+  "visual_style": "luxury",
+  "identity_constraints": [
+    "keep jar silhouette",
+    "keep lid color",
+    "keep label placement"
+  ],
+  "fixed_recipes": [
+    { "style_id": "photoreal_commercial", "template_id": "hero_product" },
+    { "style_id": "watercolor_illustration", "template_id": "product_with_props" },
+    { "style_id": "fashion_editorial", "template_id": "magazine_cover" }
+  ]
+}

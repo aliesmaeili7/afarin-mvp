@@ -181,16 +181,56 @@ function blank(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
+const DIRECTION_PAIRS = [
+  [
+    {
+      style_id: "photoreal_commercial",
+      template_id: "hero_product",
+      angle: "editorial hero",
+    },
+    {
+      style_id: "anime",
+      template_id: "illustrated_scene",
+      angle: "illustrated lifestyle",
+    },
+    {
+      style_id: "surreal",
+      template_id: "giant_miniature_world",
+      angle: "surreal scale",
+    },
+  ],
+  [
+    {
+      style_id: "fashion_editorial",
+      template_id: "magazine_cover",
+      angle: "fashion editorial",
+    },
+    {
+      style_id: "watercolor_illustration",
+      template_id: "flat_lay",
+      angle: "watercolor story",
+    },
+    {
+      style_id: "neon",
+      template_id: "cinematic_environment",
+      angle: "neon night",
+    },
+  ],
+] as const;
+
 function writeConcepts(
   db: MockDbShape,
   campaign: Campaign,
   fixtures: ConceptFixture[],
+  round = 0,
 ): CampaignConcept[] {
   db.campaign_concepts = db.campaign_concepts.filter(
     (concept) => concept.campaign_id !== campaign.id,
   );
 
+  const pairs = DIRECTION_PAIRS[round % DIRECTION_PAIRS.length];
   const created = fixtures.map((fixture, index) => {
+    const pair = pairs[index] ?? pairs[0];
     const concept: CampaignConcept = {
       id: newId("cnc"),
       campaign_id: campaign.id,
@@ -200,7 +240,15 @@ function writeConcepts(
       description_fa: fixture.description_fa,
       visual_direction: fixture.visual_direction,
       background_prompt: fixture.background_prompt,
-      raw_json: { background_id: fixture.background_id },
+      raw_json: {
+        background_id: fixture.background_id,
+        style_id: pair.style_id,
+        template_id: pair.template_id,
+        angle: pair.angle,
+        identity_constraints: ["keep major colors", "keep silhouette"],
+        image_direction: fixture.visual_direction,
+        text_safe_area: "bottom",
+      },
       selected: false,
       created_at: nowIso(),
     };
@@ -583,9 +631,6 @@ export const mockApi: AfarinApi = {
       }
       if (patch.visual_creation_mode !== undefined) {
         campaign.visual_creation_mode = patch.visual_creation_mode;
-        if (patch.visual_creation_mode === "accurate") {
-          campaign.visual_recipe_json = {};
-        }
       }
       if (patch.brand_id !== undefined) campaign.brand_id = patch.brand_id;
 
@@ -843,6 +888,7 @@ export const mockApi: AfarinApi = {
         db,
         campaign,
         buildConcepts(buildCopyContext(db, campaign)),
+        round,
       );
 
       campaign.selected_concept_id = null;
@@ -867,6 +913,31 @@ export const mockApi: AfarinApi = {
       });
       campaign.selected_concept_id = conceptId;
       campaign.status = "concept_selected";
+      const styleId =
+        typeof target.raw_json?.style_id === "string"
+          ? target.raw_json.style_id
+          : "photoreal_commercial";
+      const templateId =
+        typeof target.raw_json?.template_id === "string"
+          ? target.raw_json.template_id
+          : "hero_product";
+      campaign.visual_recipe_json = {
+        style_id: styleId,
+        template_id: templateId,
+        source: "smart",
+        recommended: { style_id: styleId, template_id: templateId },
+        scene_direction:
+          typeof target.raw_json?.image_direction === "string"
+            ? target.raw_json.image_direction
+            : target.visual_direction,
+        identity_constraints: Array.isArray(target.raw_json?.identity_constraints)
+          ? (target.raw_json.identity_constraints as string[])
+          : [],
+        text_safe_area:
+          typeof target.raw_json?.text_safe_area === "string"
+            ? target.raw_json.text_safe_area
+            : "bottom",
+      };
       campaign.updated_at = nowIso();
       return { ...campaign };
     });
@@ -880,49 +951,23 @@ export const mockApi: AfarinApi = {
     return response.json();
   },
 
-  async planVisuals(campaignId: string) {
-    await delay(LATENCY.concepts);
-    const campaign = findCampaign(readDb(), campaignId);
-    assertOwnership(readDb(), campaign);
-    return {
-      input_quality: { status: "ok" as const, reasons: [] },
-      product_type: "product",
-      visual_identity: ["رنگ غالب محصول"],
-      unsuitable_style_ids: [],
-      unsuitable_template_ids: [],
-      recipes: [
-        {
-          style_id: "photoreal_commercial",
-          template_id: "hero_product",
-          source: "smart" as const,
-          title_fa: "واقعی و واضح",
-          description_fa: "محصول در مرکز، مناسب فروش.",
-        },
-        {
-          style_id: "anime",
-          template_id: "illustrated_scene",
-          source: "smart" as const,
-          title_fa: "تصویرسازی زنده",
-          description_fa: "همان محصول در یک صحنه رنگی.",
-        },
-        {
-          style_id: "surreal",
-          template_id: "giant_miniature_world",
-          source: "smart" as const,
-          title_fa: "ایده غیرمنتظره",
-          description_fa: "محصول غول‌پیکر در یک دنیای کوچک.",
-        },
-      ],
-    };
-  },
-
   async saveVisualRecipe(campaignId: string, recipe: VisualRecipe) {
     await delay(LATENCY.write);
     return mutateDb((db) => {
       const campaign = findCampaign(db, campaignId);
       assertOwnership(db, campaign);
-      campaign.visual_creation_mode = "creative";
-      campaign.visual_recipe_json = recipe;
+      const existing = (campaign.visual_recipe_json ?? {}) as Partial<VisualRecipe>;
+      const recommended =
+        existing.recommended ??
+        (existing.style_id && existing.template_id
+          ? { style_id: existing.style_id, template_id: existing.template_id }
+          : { style_id: recipe.style_id, template_id: recipe.template_id });
+      campaign.visual_recipe_json = {
+        ...existing,
+        ...recipe,
+        recommended,
+        source: recipe.source ?? "custom",
+      };
       campaign.updated_at = nowIso();
       return { ...campaign };
     });

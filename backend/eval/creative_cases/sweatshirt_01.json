@@ -1,0 +1,25 @@
+{
+  "case_id": "sweatshirt_01",
+  "title": "Oversized sweatshirt",
+  "product_image": "../assets/sweatshirt.jpeg",
+  "product": {
+    "name": "هودی اورسایز سرمه‌ای",
+    "description": "هودی نخی oversized با گرافیک جلو",
+    "price_text": null,
+    "main_benefit": null
+  },
+  "brand_name": null,
+  "objective": "sell_product",
+  "audience": "جوان‌هایی که استایل خیابانی می‌خرن",
+  "visual_style": "friendly",
+  "identity_constraints": [
+    "keep navy body color",
+    "keep oversized silhouette",
+    "keep front graphic identity"
+  ],
+  "fixed_recipes": [
+    { "style_id": "fashion_editorial", "template_id": "model_using" },
+    { "style_id": "anime", "template_id": "illustrated_scene" },
+    { "style_id": "cinematic", "template_id": "cinematic_environment" }
+  ]
+}

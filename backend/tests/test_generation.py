@@ -11,13 +11,14 @@ from app.core.enums import VISUAL_FINAL_TYPES
 from app.db.models import CampaignAsset, GenerationJob
 from app.db.session import get_sessionmaker
 from app.services.campaigns.stages import STAGES, compute_progress
-from tests.conftest import auth_header
+from tests.conftest import auth_header, attach_sample_image
 
 
 async def _ready_to_generate(client: AsyncClient, headers: dict[str, str]) -> str:
     campaign_id = (
         await client.post("/api/campaigns", json={}, headers=headers)
     ).json()["id"]
+    await attach_sample_image(client, campaign_id, headers)
     await client.post(
         f"/api/campaigns/{campaign_id}/product",
         headers=headers,

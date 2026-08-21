@@ -17,26 +17,43 @@ class InputQuality:
 
 
 @dataclass(frozen=True, slots=True)
-class RecipeProposal:
+class PreviousDirection:
+    title_fa: str
+    angle: str
     style_id: str
     template_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignDirection:
     title_fa: str
     description_fa: str
-    scene_direction: str
-    text_safe_area: str
+    angle: str
+    headline_fa: str
+    visual_direction: str
+    style_id: str
+    template_id: str
     identity_constraints: tuple[str, ...] = ()
     warning_fa: str = ""
+    image_direction: str = ""
+    background_prompt: str = ""
+    text_safe_area: str = "bottom"
+
+    @property
+    def scene_direction(self) -> str:
+        return self.image_direction
 
 
 @dataclass(frozen=True, slots=True)
 class PlannerResult:
+    product_visual_analysis: str
     product_type: str
     visual_identity: tuple[str, ...]
     identity_constraints: tuple[str, ...]
     unsuitable_style_ids: tuple[str, ...]
     unsuitable_template_ids: tuple[str, ...]
     input_quality: InputQuality
-    recommended_recipes: tuple[RecipeProposal, ...]
+    directions: tuple[CampaignDirection, ...]
     forbidden_claims: tuple[str, ...] = ()
     usage: LlmUsage | None = None
 
@@ -69,9 +86,10 @@ class PlannerContext:
     audience: str | None
     objective: str
     visual_style: str
-    concept_title_fa: str
-    concept_headline_fa: str
-    concept_visual_direction: str
+    concept_title_fa: str = ""
+    concept_headline_fa: str = ""
+    concept_visual_direction: str = ""
+    previous_directions: tuple[PreviousDirection, ...] = ()
     recipe: dict = field(default_factory=dict)
 
 
@@ -79,7 +97,7 @@ class VisualPlanner(Protocol):
     name: str
     model: str | None
 
-    async def plan_recipes(
+    async def plan_directions(
         self, image: bytes, context: PlannerContext
     ) -> PlannerResult: ...
 

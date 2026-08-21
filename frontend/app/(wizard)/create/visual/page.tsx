@@ -1,8 +1,8 @@
-import { VisualStep } from "@/features/campaign/wizard/steps/VisualStep";
+import { redirect } from "next/navigation";
 import { localeMetadata } from "@/lib/i18n/metadata";
 
-export const generateMetadata = () => localeMetadata("meta.wizardVisual");
+export const generateMetadata = () => localeMetadata("meta.wizardDirections");
 
 export default function Page() {
-  return <VisualStep />;
+  redirect("/create/directions");
 }

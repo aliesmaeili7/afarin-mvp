@@ -30,3 +30,4 @@ verify-ui-failure.png
 
 # LLM eval output
 backend/eval/out/
+backend/eval/creative_runs/

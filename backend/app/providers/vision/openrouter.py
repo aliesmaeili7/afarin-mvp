@@ -15,12 +15,12 @@ from app.providers.llm.base import LlmUsage
 from app.providers.llm.openrouter.client import LlmClient, parse_json_object
 from app.providers.llm.openrouter.schemas import strict_schema
 from app.providers.vision.base import (
+    CampaignDirection,
     CandidateQuality,
     InputQuality,
     PlannerContext,
     PlannerResult,
     QualityReport,
-    RecipeProposal,
 )
 from app.providers.vision.prompts import (
     QUALITY_SYSTEM,
@@ -45,11 +45,11 @@ class OpenRouterVisualPlanner:
     def model(self) -> str | None:
         return self._settings.planner_model
 
-    async def plan_recipes(
+    async def plan_directions(
         self, image: bytes, context: PlannerContext
     ) -> PlannerResult:
         payload = await self._complete(
-            schema_name="visual_planner",
+            schema_name="creative_director",
             schema=strict_schema(LlmPlannerResult),
             model=LlmPlannerResult,
             system=planner_system(),
@@ -60,22 +60,28 @@ class OpenRouterVisualPlanner:
             status=payload.input_quality.status,
             reasons=tuple(payload.input_quality.reasons),
         )
-        recipes = tuple(
-            RecipeProposal(
-                style_id=_known_style(item.style_id),
-                template_id=_known_template(item.template_id),
+        directions = tuple(
+            CampaignDirection(
                 title_fa=item.title_fa.strip(),
                 description_fa=item.description_fa.strip(),
-                scene_direction=item.scene_direction.strip(),
-                text_safe_area=item.text_safe_area.strip() or "bottom",
+                angle=item.angle.strip(),
+                headline_fa=item.headline_fa.strip(),
+                visual_direction=item.visual_direction.strip(),
+                style_id=_known_style(item.style_id),
+                template_id=_known_template(item.template_id),
                 identity_constraints=tuple(
                     row.strip() for row in item.identity_constraints if row.strip()
                 ),
                 warning_fa=item.warning_fa.strip(),
+                image_direction=item.image_direction.strip(),
+                background_prompt=_ensure_no_text(item.background_prompt.strip()),
+                text_safe_area=item.text_safe_area.strip() or "bottom",
             )
-            for item in payload.recommended_recipes
+            for item in payload.directions
         )
         return PlannerResult(
+            product_visual_analysis=payload.product_visual_analysis.strip()
+            or "visible product",
             product_type=payload.product_type.strip() or "product",
             visual_identity=tuple(
                 row.strip() for row in payload.visual_identity if row.strip()
@@ -92,7 +98,7 @@ class OpenRouterVisualPlanner:
                 if row in template_ids()
             ),
             input_quality=quality,
-            recommended_recipes=recipes,
+            directions=directions,
             forbidden_claims=tuple(
                 row.strip() for row in payload.forbidden_claims if row.strip()
             ),
@@ -102,8 +108,16 @@ class OpenRouterVisualPlanner:
     async def check_input_quality(
         self, image: bytes, context: PlannerContext
     ) -> InputQuality:
-        planned = await self.plan_recipes(image, context)
-        return planned.input_quality
+        del context
+        if not image:
+            return InputQuality("needs_fix", ("empty",))
+        try:
+            frame = Image.open(io.BytesIO(image))
+        except Exception:
+            return InputQuality("needs_fix", ("unreadable",))
+        if min(frame.size) < 256:
+            return InputQuality("needs_fix", ("too small",))
+        return InputQuality("ok")
 
     async def score_candidates(
         self,
@@ -204,6 +218,12 @@ def _known_style(value: str) -> str:
 
 def _known_template(value: str) -> str:
     return value if value in template_ids() else "hero_product"
+
+
+def _ensure_no_text(prompt: str) -> str:
+    if "no text" in prompt.lower():
+        return prompt
+    return f"{prompt.rstrip(',')}, no text"
 
 
 _VISION_EDGE = 1024

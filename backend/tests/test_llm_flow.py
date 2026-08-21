@@ -12,8 +12,10 @@ from app.db.models import Campaign, CampaignCopy, GenerationJob
 from app.db.session import get_sessionmaker
 from app.providers.llm import get_content_provider, set_content_provider
 from app.providers.llm.openrouter.provider import OpenRouterContentProvider
-from tests.conftest import auth_header
-from tests.fakes import FAILED, FakeLlmClient, copy_package, three_concepts
+from app.providers.vision import set_visual_planner
+from app.providers.vision.openrouter import OpenRouterVisualPlanner
+from tests.conftest import auth_header, attach_sample_image
+from tests.fakes import FAILED, FakeLlmClient, copy_package, three_directions
 
 
 def _provider(*payloads: dict | Exception) -> OpenRouterContentProvider:
@@ -30,6 +32,7 @@ async def _brief(client: AsyncClient, headers: dict[str, str]) -> str:
     campaign_id = (
         await client.post("/api/campaigns", json={}, headers=headers)
     ).json()["id"]
+    await attach_sample_image(client, campaign_id, headers)
     await client.post(
         f"/api/campaigns/{campaign_id}/product",
         headers=headers,
@@ -43,8 +46,25 @@ async def _brief(client: AsyncClient, headers: dict[str, str]) -> str:
     return campaign_id
 
 
+def _planner(*payloads: dict | Exception) -> OpenRouterVisualPlanner:
+    settings = Settings(
+        content_provider="openrouter",
+        openrouter_api_key="sk-test",
+        visual_planner_model="openai/gpt-5-mini",
+        llm_max_retries=0,
+    )
+    return OpenRouterVisualPlanner(FakeLlmClient(list(payloads)), settings)
+
+
+def _user_text(call: dict) -> str:
+    content = call["messages"][1]["content"]
+    if isinstance(content, list):
+        return next(part["text"] for part in content if part.get("type") == "text")
+    return str(content)
+
+
 async def test_concepts_persist_three_rows(client: AsyncClient, storage) -> None:
-    set_content_provider(_provider(three_concepts()))
+    set_visual_planner(_planner(three_directions()))
     headers = auth_header(uuid.uuid4())
     await client.post("/api/session/adopt", headers=headers)
     campaign_id = await _brief(client, headers)
@@ -55,14 +75,20 @@ async def test_concepts_persist_three_rows(client: AsyncClient, storage) -> None
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 3
-    assert "زعفران ممتاز قائنات" in body[0]["headline_fa"]
+    assert body[0]["raw_json"]["style_id"] == "photoreal_commercial"
+    assert body[0]["raw_json"]["template_id"] == "hero_product"
     assert body[0]["raw_json"]["background_id"] in ("luxury_night", "luxury_velvet")
+    assert {row["raw_json"]["style_id"] for row in body} == {
+        "photoreal_commercial",
+        "anime",
+        "surreal",
+    }
 
     async with get_sessionmaker()() as session:
         job = await session.scalar(
             select(GenerationJob).where(
                 GenerationJob.campaign_id == uuid.UUID(campaign_id),
-                GenerationJob.job_type == "concept_generation",
+                GenerationJob.job_type == "visual_planner",
             )
         )
         assert job is not None
@@ -73,7 +99,7 @@ async def test_concepts_persist_three_rows(client: AsyncClient, storage) -> None
 
 
 async def test_materialize_writes_nine_copy_rows(client: AsyncClient, storage) -> None:
-    set_content_provider(_provider(three_concepts(), copy_package()))
+    set_content_provider(_provider(copy_package()))
     headers = auth_header(uuid.uuid4())
     await client.post("/api/session/adopt", headers=headers)
     campaign_id = await _brief(client, headers)
@@ -107,8 +133,8 @@ async def test_materialize_writes_nine_copy_rows(client: AsyncClient, storage) -
 
 
 async def test_failed_llm_marks_campaign_failed(client: AsyncClient, storage) -> None:
-    set_content_provider(
-        OpenRouterContentProvider(
+    set_visual_planner(
+        OpenRouterVisualPlanner(
             FakeLlmClient(FAILED),
             Settings(content_provider="openrouter", openrouter_api_key="sk-test"),
         )
@@ -134,7 +160,7 @@ async def test_failed_llm_marks_campaign_failed(client: AsyncClient, storage) ->
 
 
 async def test_failed_copy_marks_campaign_failed(client: AsyncClient, storage) -> None:
-    set_content_provider(_provider(three_concepts(), FAILED))
+    set_content_provider(_provider(FAILED))
     headers = auth_header(uuid.uuid4())
     await client.post("/api/session/adopt", headers=headers)
     campaign_id = await _brief(client, headers)
@@ -170,7 +196,6 @@ async def test_rewrite_updates_copy_and_writes_a_job(
 ) -> None:
     set_content_provider(
         _provider(
-            three_concepts(),
             copy_package(),
             {"text_fa": "سفارش بده الان"},
             {"text_fa": "زعفران ممتاز قائنات، انتخاب هوشمندانه‌تر"},
@@ -238,14 +263,14 @@ async def test_openrouter_without_key_does_not_stub(monkeypatch) -> None:
 async def test_regenerating_concepts_sends_previous_ideas(
     client: AsyncClient, storage
 ) -> None:
-    fake = FakeLlmClient([three_concepts(), three_concepts()])
-    set_content_provider(
-        OpenRouterContentProvider(
+    fake = FakeLlmClient([three_directions(), three_directions()])
+    set_visual_planner(
+        OpenRouterVisualPlanner(
             fake,
             Settings(
                 content_provider="openrouter",
                 openrouter_api_key="sk-test",
-                llm_model="openai/gpt-5-mini",
+                visual_planner_model="openai/gpt-5-mini",
                 llm_max_retries=0,
             ),
         )
@@ -263,11 +288,9 @@ async def test_regenerating_concepts_sends_previous_ideas(
     )
     assert again.status_code == 200
 
-    first_prompt = fake.calls[0]["messages"][1]["content"]
-    second_prompt = fake.calls[1]["messages"][1]["content"]
-    assert "هدیه شبانه" not in first_prompt
-    assert "هدیه شبانه" in second_prompt
-    assert "پس‌زمینه تیره و نور طلایی" in second_prompt
-    assert "بازنویسی" in second_prompt
-    assert "تخفیف" in fake.calls[0]["messages"][0]["content"]
-    assert "واتساپ" in fake.calls[0]["messages"][0]["content"]
+    first_prompt = _user_text(fake.calls[0])
+    second_prompt = _user_text(fake.calls[1])
+    assert "واقعی و واضح" not in first_prompt
+    assert "واقعی و واضح" in second_prompt
+    assert "photoreal_commercial" in second_prompt
+    assert "Do not paraphrase" in second_prompt

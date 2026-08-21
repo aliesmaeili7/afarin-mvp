@@ -6,8 +6,11 @@ import { api } from "@/lib/api";
 import { track } from "@/lib/analytics/track";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Feedback";
+import { TextAreaField, TextField } from "@/components/ui/Field";
 import { CloseIcon, ImageIcon, SparkleIcon, UploadIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
+import { normalizePersian } from "@/lib/format/persian";
+import { useHydratedForm } from "@/lib/hooks/useHydratedForm";
 import { ACCEPTED_MIME_TYPES } from "@/lib/storage/imageStore";
 import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
 import { useResolvedAssetUrl } from "@/features/campaign/ad-renderer/useResolvedAssetUrl";
@@ -17,6 +20,22 @@ import { FULL_CROP } from "../cropMath";
 import { useDraftCampaign } from "../useDraftCampaign";
 import { WizardShell } from "../WizardShell";
 import { WIZARD_STEPS } from "../wizardSteps";
+
+interface ProductForm {
+  name: string;
+  description: string;
+  price_text: string;
+  main_benefit: string;
+  brand_name: string;
+}
+
+const EMPTY_PRODUCT: ProductForm = {
+  name: "",
+  description: "",
+  price_text: "",
+  main_benefit: "",
+  brand_name: "",
+};
 
 const MAX_IMAGES = 3;
 
@@ -33,7 +52,28 @@ export function UploadStep() {
 
   const images = detail?.product_images ?? [];
   const primary = images.find((image) => image.is_primary) ?? images[0];
-  const canContinue = images.length > 0;
+  const [form, setForm] = useHydratedForm<ProductForm>(
+    detail
+      ? `${detail.campaign.id}:${detail.product?.name ?? ""}:${primary?.id ?? ""}`
+      : null,
+    () => ({
+      name: detail?.product?.name ?? "",
+      description: detail?.product?.description ?? "",
+      price_text: detail?.product?.price_text ?? "",
+      main_benefit: detail?.product?.main_benefit ?? "",
+      brand_name: detail?.brand?.name ?? "",
+    }),
+    EMPTY_PRODUCT,
+  );
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const hasExtras = Boolean(
+    form.description.trim() ||
+      form.price_text.trim() ||
+      form.main_benefit.trim() ||
+      form.brand_name.trim(),
+  );
+  const canContinue = images.length > 0 && Boolean(form.name.trim());
   const campaignId = detail?.campaign.id;
   const imageId = primary?.id;
   const cropDraft = primary
@@ -104,10 +144,21 @@ export function UploadStep() {
 
   async function handleContinue() {
     if (!detail || !primary || !cropDraft) return;
+    if (!form.name.trim()) {
+      setNameError(t("errors.productNameRequired"));
+      return;
+    }
     setBusy(true);
     try {
       await api.updateProductCrop(detail.campaign.id, primary.id, cropDraft);
-      router.push("/create/product");
+      await api.saveProduct(detail.campaign.id, {
+        name: normalizePersian(form.name),
+        description: normalizePersian(form.description),
+        price_text: normalizePersian(form.price_text),
+        main_benefit: normalizePersian(form.main_benefit),
+        brand_name: normalizePersian(form.brand_name),
+      });
+      router.push("/create/brief");
     } catch (caught) {
       toast(displayError(caught), "error");
     } finally {
@@ -210,6 +261,85 @@ export function UploadStep() {
                     onRemove={() => handleRemove(image.id)}
                   />
                 ))}
+            </div>
+          ) : null}
+
+          {primary ? (
+            <div className="flex flex-col gap-4">
+              <TextField
+                label={t("wizard.productName")}
+                placeholder={t("wizard.productNamePlaceholder")}
+                value={form.name}
+                error={nameError}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setForm((current) => ({ ...current, name: value }));
+                  if (value.trim()) setNameError(null);
+                }}
+              />
+              {showDetails || hasExtras ? (
+                <>
+                  <TextAreaField
+                    label={t("wizard.productDesc")}
+                    optional
+                    placeholder={t("wizard.productDescPlaceholder")}
+                    value={form.description}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                  />
+                  <TextField
+                    label={t("wizard.productPrice")}
+                    optional
+                    placeholder={t("wizard.productPricePlaceholder")}
+                    hint={t("wizard.productPriceHint")}
+                    value={form.price_text}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        price_text: event.target.value,
+                      }))
+                    }
+                  />
+                  <TextAreaField
+                    label={t("wizard.productBenefit")}
+                    optional
+                    rows={2}
+                    placeholder={t("wizard.productBenefitPlaceholder")}
+                    value={form.main_benefit}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        main_benefit: event.target.value,
+                      }))
+                    }
+                  />
+                  <TextField
+                    label={t("wizard.productBrand")}
+                    optional
+                    placeholder={t("wizard.productBrandPlaceholder")}
+                    hint={t("wizard.productBrandHint")}
+                    value={form.brand_name}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        brand_name: event.target.value,
+                      }))
+                    }
+                  />
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowDetails(true)}
+                  className="-mx-2 flex h-11 items-center self-start rounded-xl px-2 text-sm font-semibold text-brand-700 underline-offset-4 hover:underline"
+                >
+                  {t("wizard.moreDetails")}
+                </button>
+              )}
             </div>
           ) : null}
 

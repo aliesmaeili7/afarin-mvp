@@ -148,3 +148,17 @@ def png_bytes(width: int = 64, height: int = 64) -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (width, height), (200, 120, 60)).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+async def attach_sample_image(
+    client: AsyncClient,
+    campaign_id: str,
+    headers: dict[str, str] | None = None,
+) -> None:
+    kwargs: dict = {
+        "files": [("files", ("product.png", png_bytes(320, 400), "image/png"))]
+    }
+    if headers:
+        kwargs["headers"] = headers
+    response = await client.post(f"/api/campaigns/{campaign_id}/images", **kwargs)
+    assert response.status_code == 200

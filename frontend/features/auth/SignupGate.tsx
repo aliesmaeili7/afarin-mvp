@@ -25,10 +25,10 @@ import { useSessionStore } from "./sessionStore";
 
 /**
  * Spec §11 — the account is only asked for once the user has seen their
- * concepts and picked one, and signing up continues straight into generation
+ * directions and picked one, and signing up continues straight into generation
  * instead of dropping the user on an empty dashboard.
  *
- * Returning users never see this screen: VisualStep starts generation
+ * Returning users never see this screen: DirectionsStep starts generation
  * directly when a session already exists.
  */
 export function SignupGate() {
@@ -51,12 +51,19 @@ export function SignupGate() {
   useEffect(() => {
     if (loading || !detail) return;
     if (!detail.campaign.selected_concept_id) {
-      router.replace("/create/concepts");
+      router.replace("/create/directions");
       return;
     }
     if (!detail.campaign.visual_creation_mode) {
-      router.replace("/create/visual");
+      router.replace("/create/directions");
       return;
+    }
+    if (
+      detail.campaign.visual_creation_mode === "creative" &&
+      !(detail.campaign.visual_recipe_json as { style_id?: string } | undefined)
+        ?.style_id
+    ) {
+      router.replace("/create/directions");
     }
   }, [loading, detail, router]);
 
@@ -101,7 +108,7 @@ export function SignupGate() {
       <header className="border-b border-border bg-surface">
         <Container size="sm" className="pt-safe">
           <div className="flex h-14 items-center justify-between gap-2">
-            <Link href="/create/concepts" aria-label={t("common.previousStep")}>
+            <Link href="/create/directions" aria-label={t("common.previousStep")}>
               <Button variant="ghost" size="sm" className="size-11 p-0 sm:size-9">
                 <ArrowBackIcon width={18} height={18} />
               </Button>

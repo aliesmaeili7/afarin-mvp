@@ -7,14 +7,10 @@ export interface WizardStep {
   titleKey: TranslationKey;
 }
 
-/** Spec §7 plus Phase 4B visual mode/recipe. */
 export const WIZARD_STEPS: readonly WizardStep[] = [
   { index: 1, path: "/create", titleKey: "wizard.photo" },
-  { index: 2, path: "/create/product", titleKey: "wizard.product" },
-  { index: 3, path: "/create/objective", titleKey: "wizard.objective" },
-  { index: 4, path: "/create/style", titleKey: "wizard.style" },
-  { index: 5, path: "/create/concepts", titleKey: "wizard.concepts" },
-  { index: 6, path: "/create/visual", titleKey: "wizard.visual" },
+  { index: 2, path: "/create/brief", titleKey: "wizard.brief" },
+  { index: 3, path: "/create/directions", titleKey: "wizard.directions" },
 ];
 
 export const WIZARD_TOTAL = WIZARD_STEPS.length;
@@ -26,15 +22,17 @@ export function furthestAllowedStep(detail: CampaignDetail | null): number {
   if (!hasImage) return 1;
 
   const hasName = Boolean(detail.product?.name?.trim());
-  if (!hasName) return 2;
+  if (!hasName) return 1;
 
-  if (!detail.campaign.objective) return 3;
-  if (!detail.campaign.visual_style) return 4;
-  if (!detail.campaign.selected_concept_id) return 5;
+  if (!detail.campaign.objective || !detail.campaign.visual_style) return 2;
 
-  return 6;
+  return 3;
 }
 
 export function stepByPath(path: string): WizardStep {
   return WIZARD_STEPS.find((step) => step.path === path) ?? WIZARD_STEPS[0];
+}
+
+export function isLegacyDirection(raw: Record<string, unknown> | undefined): boolean {
+  return !raw?.style_id;
 }

@@ -78,7 +78,8 @@ class Settings(BaseSettings):
     # Until credits exist: initial creative generation + this many minus one
     # user-requested «سه نسخه جدید» rounds.
     max_creative_attempts_per_campaign: int = 3
-    # Empty scenes only in accurate mode. Creative mode may send references.
+    # Empty = dedicated 4:5 + Story outputs. `master_916` is evaluation-only.
+    image_compose_strategy: Literal["dedicated", "master_916"] = "dedicated"
     image_model: str = "bytedance-seed/seedream-4.5"
     # Seedream 4.5 rejects 1K for 4:5 / 9:16 (under ~3.7MP). 2K is valid.
     image_resolution: str = "2K"

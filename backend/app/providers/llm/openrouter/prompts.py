@@ -96,6 +96,7 @@ def brief_payload(ctx: CopyContext) -> dict[str, str | int | None]:
         "style_fa": STYLE_FA.get(ctx.style, ctx.style),
         "round": ctx.round,
         "selected_headline": ctx.selected_headline,
+        "selected_angle": ctx.selected_angle,
     }
 
 
@@ -149,6 +150,8 @@ def concepts_user_prompt(ctx: CopyContext) -> str:
 
 def copy_user_prompt(ctx: CopyContext, *, headline_fa: str | None = None) -> str:
     headline = headline_fa or ctx.selected_headline or "—"
+    angle = ctx.selected_angle or "—"
+    explanation = ctx.selected_description or "—"
     return (
         "برای این کمپین یک بسته متن بساز:\n"
         "- سه کپشن با لحن‌های کوتاه / صمیمی / تبلیغاتی\n"
@@ -161,6 +164,8 @@ def copy_user_prompt(ctx: CopyContext, *, headline_fa: str | None = None) -> str
         "نگه می‌دارد؛ scenes_fa سه نما به زبان ساده (چه چیزی فیلم گرفته شود)؛ "
         "cta_fa و متن گوینده. داخل متن فارسی از واژهٔ انگلیسی استفاده نکن.\n\n"
         f"تیتر انتخاب‌شده: {headline}\n"
+        f"زاویهٔ کمپین: {angle}\n"
+        f"توضیح کوتاه جهت: {explanation}\n"
         f"{facts_block(ctx)}"
     )
 

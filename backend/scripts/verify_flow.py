@@ -141,6 +141,14 @@ def main() -> int:
     check("three concepts generated", len(concepts) == 3)
     check("copy is Persian", all(c["headline_fa"].strip() for c in concepts))
     check(
+        "directions include catalog ids",
+        all(
+            isinstance(c.get("raw_json", {}).get("style_id"), str)
+            and isinstance(c.get("raw_json", {}).get("template_id"), str)
+            for c in concepts
+        ),
+    )
+    check(
         "internal creative direction is not shown as a headline",
         all("زعفران" in c["headline_fa"] or c["headline_fa"] for c in concepts),
     )

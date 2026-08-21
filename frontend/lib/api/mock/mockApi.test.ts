@@ -51,6 +51,8 @@ describe("mock campaign journey", () => {
     expect(concepts).toHaveLength(3);
     expect(new Set(concepts.map((c) => c.title_fa)).size).toBe(3);
     expect(concepts[0].headline_fa).toContain("زعفران ممتاز");
+    expect(concepts[0].raw_json.style_id).toBe("photoreal_commercial");
+    expect(concepts[0].raw_json.template_id).toBe("hero_product");
 
     const secondRound = await mockApi.generateConcepts(campaignId);
     expect(secondRound.map((c) => c.title_fa)).not.toEqual(
@@ -59,6 +61,30 @@ describe("mock campaign journey", () => {
 
     const selected = await mockApi.selectConcept(campaignId, secondRound[0].id);
     expect(selected.status).toBe("concept_selected");
+    expect(selected.visual_recipe_json).toMatchObject({
+      style_id: "fashion_editorial",
+      source: "smart",
+      recommended: { style_id: "fashion_editorial" },
+    });
+
+    const accurate = await mockApi.updateCampaign(campaignId, {
+      visual_creation_mode: "accurate",
+    });
+    expect(accurate.visual_recipe_json).toMatchObject({
+      style_id: "fashion_editorial",
+      recommended: { style_id: "fashion_editorial" },
+    });
+
+    const overridden = await mockApi.saveVisualRecipe(campaignId, {
+      style_id: "neon",
+      template_id: "cinematic_environment",
+      source: "custom",
+    });
+    expect(overridden.visual_recipe_json).toMatchObject({
+      style_id: "neon",
+      source: "custom",
+      recommended: { style_id: "fashion_editorial" },
+    });
 
     // The signup gate is enforced by the API, not only by the UI.
     await expect(mockApi.startGeneration(campaignId)).rejects.toBeInstanceOf(

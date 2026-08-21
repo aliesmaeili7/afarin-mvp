@@ -15,7 +15,6 @@ import type {
   TextLayer,
   VisualCatalog,
   VisualCreationMode,
-  VisualPlanResponse,
   VisualRecipe,
   VisualStyle,
 } from "@/types/domain";
@@ -64,7 +63,6 @@ export interface AfarinApi {
   selectConcept(campaignId: string, conceptId: string): Promise<Campaign>;
 
   getVisualCatalog(): Promise<VisualCatalog>;
-  planVisuals(campaignId: string): Promise<VisualPlanResponse>;
   saveVisualRecipe(campaignId: string, recipe: VisualRecipe): Promise<Campaign>;
   selectVisualCandidate(
     campaignId: string,

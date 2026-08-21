@@ -53,59 +53,45 @@ await page.getByRole("button", { name: "ادامه" }).waitFor({ state: "visible
 await page.waitForTimeout(1200);
 await shot("02-upload");
 
-console.log("\n3. wizard step 2 — product brief");
-await page.getByRole("button", { name: "ادامه" }).click();
-await page.waitForURL("**/create/product");
+console.log("\n3. wizard step 2 — product on the same page");
+await page.getByLabel("اسم محصول").waitFor({ state: "visible" });
 await page.waitForTimeout(800);
 await shot("03-product");
 log(`prefilled name: ${await page.getByLabel("اسم محصول").inputValue()}`);
 
-console.log("\n4. wizard step 3 — objective");
+console.log("\n4. wizard step 2 — campaign brief");
 await page.getByRole("button", { name: "ادامه" }).click();
-await page.waitForURL("**/create/objective");
+await page.waitForURL("**/create/brief");
 await page.waitForTimeout(600);
 await page.getByRole("button", { name: /فروش محصول/ }).click();
 await page.getByText("مطمئن نیستم — خودت پیشنهاد بده").click();
-await shot("04-objective");
-
-console.log("\n5. wizard step 4 — style");
-await page.getByRole("button", { name: "ادامه" }).click();
-await page.waitForURL("**/create/style");
-await page.waitForTimeout(600);
 await page.getByRole("button", { name: /لوکس/ }).click();
-await shot("05-style");
+await shot("04-brief");
 
-console.log("\n6. wizard step 5 — concepts");
+console.log("\n5. wizard step 3 — directions");
 await page.getByRole("button", { name: "ادامه" }).click();
-await page.waitForURL("**/create/concepts");
+await page.waitForURL("**/create/directions");
 await page
-  .getByRole("button", { name: "این رو انتخاب کن" })
+  .getByRole("button", { name: /واقعی و واضح|هدیه لوکس|ایده/ })
   .first()
   .waitFor({ timeout: 15000 });
 await page.waitForTimeout(600);
-await shot("06-concepts");
-const conceptTitles = await page.locator("h3").allInnerTexts();
-log(`concepts: ${conceptTitles.join(" | ")}`);
+await shot("05-directions");
+const conceptTitles = await page.locator("h3, [class*='font-bold']").allInnerTexts();
+log(`directions: ${conceptTitles.slice(0, 6).join(" | ")}`);
 
-console.log("\n7. regenerate concepts");
-await page.getByRole("button", { name: "سه ایده جدید بده" }).click();
+console.log("\n6. regenerate directions");
+await page.getByRole("button", { name: "سه پیشنهاد جدید بده" }).click();
 await page.waitForTimeout(3000);
-const newTitles = await page.locator("h3").allInnerTexts();
-log(`new concepts: ${newTitles.join(" | ")}`);
-if (JSON.stringify(newTitles) === JSON.stringify(conceptTitles)) {
-  problems.push("regenerate produced identical concepts");
-}
 
-console.log("\n8. wizard step 6 — visual mode");
-await page.getByRole("button", { name: "این رو انتخاب کن" }).first().click();
-await page.waitForURL("**/create/visual");
-await page.waitForTimeout(600);
-await shot("07-visual");
+console.log("\n7. pick a direction and accurate mode");
+await page.getByRole("button", { pressed: false }).nth(0).click();
+await page.waitForTimeout(400);
 await page.getByRole("button", { name: /دقیق/ }).click();
 await page.waitForTimeout(400);
 await page.getByRole("button", { name: "ساخت کمپین" }).click();
 
-console.log("\n9. signup gate");
+console.log("\n8. signup gate");
 await page.waitForURL("**/create/signup");
 await page.waitForTimeout(800);
 await shot("07-signup");

@@ -88,6 +88,28 @@ async def start_generation(
         refreshed = await get_owned_campaign(session, principal, campaign_id)
         return _status(refreshed, "planning", 1, messages.QUEUED)
 
+    session.add(
+        GenerationJob(
+            campaign_id=campaign.id,
+            user_id=user_id,
+            job_type="image_generation",
+            status="queued",
+            started_at=datetime.now(UTC),
+            provider=None,
+            model=None,
+            input_json={
+                "objective": campaign.objective,
+                "style": campaign.visual_style,
+            },
+        )
+    )
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        refreshed = await get_owned_campaign(session, principal, campaign_id)
+        return _status(refreshed, "planning", 1, messages.QUEUED)
+
     campaign.status = "queued"
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
@@ -117,14 +139,14 @@ async def get_campaign_status(
         )
 
     image_job = await _active_job_of(session, campaign.id, "image_generation")
-    if image_job is not None:
-        return await _run_images(session, campaign, image_job)
+    copy_job = await _latest_job(session, campaign.id, "campaign_generation")
+    if copy_job is None or copy_job.status == "failed":
+        if campaign.status not in _TERMINAL:
+            return _status(campaign, None, 0, None)
+        failed = await visualizer.failed_visual_types(session, campaign.id)
+        return _status(campaign, None, 0, None, failed)
 
-    job = await _latest_job(session, campaign.id, "campaign_generation")
-    if job is None or job.status == "succeeded":
-        return _status(campaign, None, 0, None)
-
-    return await _advance(session, campaign, job, settings)
+    return await _advance(session, campaign, copy_job, settings, image_job)
 
 
 async def _advance(
@@ -132,11 +154,12 @@ async def _advance(
     campaign: Campaign,
     job: GenerationJob,
     settings: Settings,
+    image_job: GenerationJob | None = None,
 ) -> CampaignStatusOut:
     """
-    Derives progress from the job's start time, commits copy, then generates
-    empty scenes. Copy is flushed to the database before any image HTTP so a
-    visual failure cannot take the captions with it.
+    Theatre timer, then copy package and images. Both jobs are queued at
+    start so they can coexist; copy still commits first so a visual failure
+    cannot take the captions with it.
     """
     started = job.started_at or datetime.now(UTC)
     elapsed_ms = (datetime.now(UTC) - started).total_seconds() * 1000
@@ -153,49 +176,41 @@ async def _advance(
     if not progress.done:
         campaign.status = "generating"
         job.status = "processing"
+        if image_job is not None and image_job.status == "queued":
+            image_job.status = "processing"
         await session.flush()
         return _status(campaign, progress.stage, progress.percent, progress.message_fa)
 
     locked = await session.scalar(
         select(GenerationJob).where(GenerationJob.id == job.id).with_for_update()
     )
-    if locked is not None and locked.status in ("succeeded", "failed"):
+    if locked is not None and locked.status == "failed":
         await session.refresh(campaign)
-        image_job = await _active_job_of(session, campaign.id, "image_generation")
-        if image_job is not None:
-            return await _run_images(session, campaign, image_job)
         failed = await visualizer.failed_visual_types(session, campaign.id)
-        return _status(
-            campaign,
-            None,
-            0 if campaign.status == "failed" else 100,
-            None,
-            failed,
-        )
+        return _status(campaign, None, 0, messages.GENERATION_FAILED, failed)
 
-    if not await _has_copy(session, campaign.id):
-        try:
-            await materializer.materialize_copy(session, campaign)
-        except Exception as error:
-            if locked is not None:
+    if locked is not None and locked.status != "succeeded":
+        if not await _has_copy(session, campaign.id):
+            try:
+                await materializer.materialize_copy(session, campaign)
+            except Exception as error:
                 job_records.mark_failed(locked, error)
-            campaign.status = "failed"
+                campaign.status = "failed"
+                campaign.updated_at = datetime.now(UTC)
+                await session.flush()
+                message = (
+                    error.message_fa
+                    if isinstance(error, ApiError)
+                    else messages.GENERATION_FAILED
+                )
+                return _status(campaign, None, 0, message)
+
+            job_records.mark_succeeded(locked)
+            campaign.status = "generating"
             campaign.updated_at = datetime.now(UTC)
             await session.flush()
-            message = (
-                error.message_fa
-                if isinstance(error, ApiError)
-                else messages.GENERATION_FAILED
-            )
-            return _status(campaign, None, 0, message)
 
-        if locked is not None:
-            job_records.mark_succeeded(locked)
-        campaign.status = "generating"
-        campaign.updated_at = datetime.now(UTC)
-        await session.flush()
-
-    image_job = await _ensure_image_job(session, campaign, job)
+    image_job = image_job or await _ensure_image_job(session, campaign, job)
     await session.commit()
     return await _run_images(session, campaign, image_job)
 
@@ -270,6 +285,8 @@ async def _run_images(
             job_records.mark_image_succeeded(
                 locked, usage, provider=provider_name, output=output
             )
+            if await _has_copy(session, campaign.id):
+                campaign.status = "candidates_ready"
         elif final_status == "partial_failed":
             job_records.mark_image_failed(
                 locked,

@@ -17,7 +17,7 @@ from app.providers.image.openrouter.provider import OpenRouterImageProvider
 from app.providers.llm import set_content_provider
 from app.providers.llm.openrouter.provider import OpenRouterContentProvider
 from tests.conftest import auth_header
-from tests.fakes import FakeLlmClient, copy_package, three_concepts
+from tests.fakes import FakeLlmClient, copy_package
 from tests.test_visuals import _generate, _ready_campaign
 
 PIXEL_ERROR = (
@@ -188,7 +188,7 @@ async def test_campaign_job_records_openrouter_400(
     )
     set_content_provider(
         OpenRouterContentProvider(
-            FakeLlmClient([three_concepts(), copy_package()]),
+            FakeLlmClient([copy_package()]),
             Settings(content_provider="openrouter", openrouter_api_key="sk-test"),
         )
     )

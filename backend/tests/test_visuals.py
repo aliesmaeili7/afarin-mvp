@@ -21,7 +21,6 @@ from tests.fakes import (
     FakeImageProvider,
     FakeLlmClient,
     copy_package,
-    three_concepts,
 )
 
 
@@ -195,7 +194,7 @@ async def test_image_failure_keeps_copy_and_marks_partial_failed(
 async def test_regenerate_feed_is_image_only_and_updates_carousel(
     client: AsyncClient, storage
 ) -> None:
-    llm = FakeLlmClient([three_concepts(), copy_package()])
+    llm = FakeLlmClient([copy_package()])
     set_content_provider(
         OpenRouterContentProvider(
             llm,

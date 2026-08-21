@@ -177,6 +177,8 @@ def _cache_key(ctx: CopyContext) -> tuple:
         ctx.style,
         ctx.round,
         ctx.selected_headline,
+        ctx.selected_angle,
+        ctx.selected_description,
     )
 
 

@@ -93,6 +93,7 @@ class Campaign(Base):
     visual_style: Mapped[str | None] = text_column()
     visual_creation_mode: Mapped[str | None] = text_column()
     visual_recipe_json: Mapped[dict] = json_column("visual_recipe_json")
+    planner_result_json: Mapped[dict] = json_column("planner_result_json")
     current_visual_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(
@@ -212,6 +213,7 @@ class GenerationJob(Base):
         Index(
             "uq_generation_jobs_active",
             "campaign_id",
+            "job_type",
             unique=True,
             postgresql_where=text(
                 "status in ('queued', 'processing') "

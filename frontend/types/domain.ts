@@ -63,6 +63,7 @@ export interface VisualRecipe {
   scene_direction?: string;
   identity_constraints?: string[];
   text_safe_area?: string;
+  recommended?: { style_id: string; template_id: string };
 }
 
 export interface VisualCatalogEntry {
@@ -98,15 +99,6 @@ export interface VisualAttempt {
   auto_repair_used: boolean;
   selected_candidate_id: string | null;
   recipe_json: VisualRecipe;
-}
-
-export interface VisualPlanResponse {
-  input_quality: { status: "ok" | "needs_fix"; reasons: string[] };
-  product_type: string;
-  visual_identity: string[];
-  unsuitable_style_ids: string[];
-  unsuitable_template_ids: string[];
-  recipes: VisualRecipe[];
 }
 
 export interface Profile {
@@ -189,6 +181,7 @@ export interface Campaign {
   visual_style: VisualStyle | null;
   visual_creation_mode?: VisualCreationMode | null;
   visual_recipe_json?: VisualRecipe | Record<string, unknown>;
+  planner_result_json?: Record<string, unknown>;
   current_visual_attempt_id?: string | null;
   selected_concept_id: string | null;
   status: CampaignStatus;

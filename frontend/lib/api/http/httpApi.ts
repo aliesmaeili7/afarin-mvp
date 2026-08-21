@@ -12,7 +12,6 @@ import type {
   ProductImage,
   Session,
   VisualCatalog,
-  VisualPlanResponse,
   VisualRecipe,
 } from "@/types/domain";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -132,12 +131,6 @@ export const httpApi: AfarinApi = {
 
   getVisualCatalog(): Promise<VisualCatalog> {
     return request<VisualCatalog>("/api/visual-catalog");
-  },
-
-  planVisuals(campaignId: string): Promise<VisualPlanResponse> {
-    return request<VisualPlanResponse>(`/api/campaigns/${campaignId}/visual/plan`, {
-      method: "POST",
-    });
   },
 
   saveVisualRecipe(campaignId: string, recipe: VisualRecipe): Promise<Campaign> {

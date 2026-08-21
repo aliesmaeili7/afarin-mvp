@@ -29,6 +29,8 @@ class CopyContext:
     # Increments each time the seller asks for fresh output.
     round: int
     selected_headline: str | None = None
+    selected_angle: str | None = None
+    selected_description: str | None = None
     previous_concepts: tuple[PreviousConcept, ...] = ()
 
 
