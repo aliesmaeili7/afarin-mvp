@@ -1,6 +1,7 @@
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
+import type { SummaryObservation } from "./types";
 
 export function runsRoot(): string {
   return join(process.cwd(), "..", "backend", "eval", "creative_runs");
@@ -79,22 +80,19 @@ export async function writeJson(
   await writeFile(dest, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
-export async function recipeSummaries(): Promise<Record<string, unknown>[]> {
+function parseRecipeFolder(folder: string): { style_id: string; template_id: string } {
+  const rest = folder.replace(/^\d+_/, "");
+  const [style_id, template_id] = rest.split("__");
+  return { style_id: style_id || folder, template_id: template_id || "" };
+}
+
+export async function listObservations(): Promise<SummaryObservation[]> {
   const root = runsRoot();
   if (!existsSync(root)) {
     return [];
   }
   const names = await readdir(root, { withFileTypes: true });
-  type Bucket = {
-    recipe: string;
-    n: number;
-    overall: number;
-    identity: number;
-    commercial: number;
-    hardFail: number;
-    hardFailN: number;
-  };
-  const buckets = new Map<string, Bucket>();
+  const rows: SummaryObservation[] = [];
   for (const entry of names) {
     if (!entry.isDirectory()) {
       continue;
@@ -103,47 +101,98 @@ export async function recipeSummaries(): Promise<Record<string, unknown>[]> {
     if (!existsSync(ratingsPath)) {
       continue;
     }
+    let meta: Record<string, unknown> = { run_id: entry.name };
+    try {
+      meta = JSON.parse(await readFile(join(root, entry.name, "run_meta.json"), "utf8"));
+    } catch {
+      /* old or incomplete run */
+    }
     const ratings = JSON.parse(await readFile(ratingsPath, "utf8")) as {
       candidates?: Record<string, { overall?: number; identity?: number; commercial?: number }>;
     };
     for (const [key, row] of Object.entries(ratings.candidates ?? {})) {
       const recipeKey = key.includes(":") ? key.slice(0, key.lastIndexOf(":")) : key;
-      const bucket = buckets.get(recipeKey) ?? {
-        recipe: recipeKey,
-        n: 0,
-        overall: 0,
-        identity: 0,
-        commercial: 0,
-        hardFail: 0,
-        hardFailN: 0,
-      };
-      if (typeof row.overall === "number") {
-        bucket.n += 1;
-        bucket.overall += row.overall;
-        if (typeof row.identity === "number") {
-          bucket.identity += row.identity;
-        }
-        if (typeof row.commercial === "number") {
-          bucket.commercial += row.commercial;
-        }
-      }
       const slot = Number(key.split(":").at(-1) ?? "1");
+      const recipePath = join(root, entry.name, "recipes", recipeKey, "recipe.json");
+      let style_id = "";
+      let template_id = "";
+      if (existsSync(recipePath)) {
+        const recipe = JSON.parse(await readFile(recipePath, "utf8")) as {
+          style_id?: string;
+          template_id?: string;
+        };
+        style_id = String(recipe.style_id ?? "");
+        template_id = String(recipe.template_id ?? "");
+      } else {
+        const parsed = parseRecipeFolder(recipeKey);
+        style_id = parsed.style_id;
+        template_id = parsed.template_id;
+      }
+      let hard_failed: boolean | null = null;
       const qualityPath = join(root, entry.name, "recipes", recipeKey, "quality.json");
       if (existsSync(qualityPath)) {
         const quality = JSON.parse(await readFile(qualityPath, "utf8")) as {
           candidates?: { slot: number; hard_failed?: boolean }[];
         };
-        for (const item of quality.candidates ?? []) {
-          if (item.slot === slot) {
-            bucket.hardFailN += 1;
-            if (item.hard_failed) {
-              bucket.hardFail += 1;
-            }
-          }
+        const hit = quality.candidates?.find((item) => item.slot === slot);
+        if (hit) {
+          hard_failed = Boolean(hit.hard_failed);
         }
       }
-      buckets.set(recipeKey, bucket);
+      rows.push({
+        run_id: String(meta.run_id ?? entry.name),
+        case_id: String(meta.case_id ?? ""),
+        category: typeof meta.category === "string" ? meta.category : null,
+        style_id,
+        template_id,
+        recipe: style_id && template_id ? `${style_id}:${template_id}` : recipeKey,
+        label: typeof meta.label === "string" ? meta.label : null,
+        prompt_version: typeof meta.prompt_version === "string" ? meta.prompt_version : null,
+        mode: String(meta.mode ?? ""),
+        image_model: typeof meta.image_model === "string" ? meta.image_model : null,
+        overall: typeof row.overall === "number" ? row.overall : null,
+        identity: typeof row.identity === "number" ? row.identity : null,
+        commercial: typeof row.commercial === "number" ? row.commercial : null,
+        hard_failed,
+      });
     }
+  }
+  return rows;
+}
+
+export async function recipeSummaries(): Promise<Record<string, unknown>[]> {
+  const observations = await listObservations();
+  const buckets = new Map<
+    string,
+    { recipe: string; n: number; overall: number; identity: number; commercial: number; hardFail: number; hardFailN: number }
+  >();
+  for (const row of observations) {
+    const bucket = buckets.get(row.recipe) ?? {
+      recipe: row.recipe,
+      n: 0,
+      overall: 0,
+      identity: 0,
+      commercial: 0,
+      hardFail: 0,
+      hardFailN: 0,
+    };
+    if (row.overall != null) {
+      bucket.n += 1;
+      bucket.overall += row.overall;
+      if (row.identity != null) {
+        bucket.identity += row.identity;
+      }
+      if (row.commercial != null) {
+        bucket.commercial += row.commercial;
+      }
+    }
+    if (row.hard_failed != null) {
+      bucket.hardFailN += 1;
+      if (row.hard_failed) {
+        bucket.hardFail += 1;
+      }
+    }
+    buckets.set(row.recipe, bucket);
   }
   return [...buckets.values()].map((bucket) => ({
     recipe: bucket.recipe,

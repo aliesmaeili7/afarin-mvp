@@ -1,6 +1,7 @@
 {
   "case_id": "shoes_01",
   "title": "Athletic sneaker",
+  "category": "footwear",
   "product_image": "../assets/shoes.png",
   "product": {
     "name": "کتانی سفید سرمه‌ای",

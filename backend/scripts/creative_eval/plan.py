@@ -21,6 +21,7 @@ class EvalPlan:
     provider: str
     paid: bool
     label: str | None = None
+    experiment_id: str | None = None
     concurrency: int = 2
     director_llm_calls: int = 0
     qc_llm_calls: int = 0
@@ -62,6 +63,7 @@ def build_plan(
     paid: bool,
     label: str | None,
     concurrency: int = 2,
+    experiment_id: str | None = None,
 ) -> EvalPlan:
     count = len(recipes)
     story_on = story or master_crop
@@ -77,6 +79,7 @@ def build_plan(
         provider=provider,
         paid=paid,
         label=label,
+        experiment_id=experiment_id,
         concurrency=max(1, min(3, concurrency)),
         director_llm_calls=1 if mode == "director" else 0,
         qc_llm_calls=count if quality_check and candidates > 0 else 0,

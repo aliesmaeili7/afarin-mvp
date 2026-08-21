@@ -15,6 +15,13 @@ type RecipeBundle = {
   files: string[];
 };
 
+type DirectionRating = {
+  strategic_fit?: number;
+  recipe_suitability?: number;
+  overall?: number;
+  note?: string;
+};
+
 type RatingsState = {
   candidates: Record<string, CandidateRating>;
   director: {
@@ -23,7 +30,7 @@ type RatingsState = {
     directions_different?: number;
     recipe_fit?: number;
     note?: string;
-    per_direction?: Record<string, { overall?: number; note?: string }>;
+    per_direction?: Record<string, DirectionRating>;
   };
 };
 
@@ -78,6 +85,10 @@ export function RunReview({
       <p className="text-sm text-muted">
         <Link href="/dev/creative-eval" className="underline">
           All runs
+        </Link>{" "}
+        ·{" "}
+        <Link href="/dev/creative-eval/compare" className="underline">
+          Compare
         </Link>{" "}
         ·{" "}
         <Link href="/dev/creative-eval/summary" className="underline">
@@ -144,6 +155,12 @@ export function RunReview({
             onChange={(directorNext) => persist({ ...ratings, director: directorNext })}
           />
         </section>
+      ) : null}
+
+      {recipes.length === 0 && director ? (
+        <p className="mt-8 text-sm text-muted">
+          No candidate images in this run. Director ratings above still apply.
+        </p>
       ) : null}
 
       <div className="mt-10 space-y-16">
@@ -323,6 +340,31 @@ function QcBlock({ qc }: { qc: Record<string, unknown> | null }) {
   );
 }
 
+function ScoreSelect({
+  value,
+  onChange,
+}: {
+  value: number | undefined;
+  onChange: (next: number | undefined) => void;
+}) {
+  return (
+    <select
+      className="rounded-md border border-border bg-surface px-2 py-1"
+      value={value ?? ""}
+      onChange={(event) =>
+        onChange(event.target.value ? Number(event.target.value) : undefined)
+      }
+    >
+      <option value="">—</option>
+      {[1, 2, 3, 4, 5].map((score) => (
+        <option key={score} value={score}>
+          {score}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function DirectorRatings({
   value,
   directions,
@@ -332,75 +374,74 @@ function DirectorRatings({
   directions: Record<string, unknown>[];
   onChange: (next: RatingsState["director"]) => void;
 }) {
-  const fields = [
-    ["overall", "Overall Director"],
-    ["analysis_correct", "Visual analysis correct"],
-    ["directions_different", "3 directions different"],
-    ["recipe_fit", "Recipes fit product / objective"],
-  ] as const;
   return (
-    <div className="mt-4 grid gap-3 md:grid-cols-2">
-      {fields.map(([key, label]) => (
-        <label key={key} className="flex items-center justify-between text-sm">
-          {label}
-          <select
-            className="rounded-md border border-border bg-surface px-2 py-1"
-            value={value[key] ?? ""}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                [key]: event.target.value ? Number(event.target.value) : undefined,
-              })
-            }
-          >
-            <option value="">—</option>
-            {[1, 2, 3, 4, 5].map((score) => (
-              <option key={score} value={score}>
-                {score}
-              </option>
-            ))}
-          </select>
+    <div className="mt-4 space-y-6">
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="flex items-center justify-between text-sm">
+          Product visual analysis correctness
+          <ScoreSelect
+            value={value.analysis_correct}
+            onChange={(analysis_correct) => onChange({ ...value, analysis_correct })}
+          />
         </label>
-      ))}
+        <label className="flex items-center justify-between text-sm">
+          Diversity of the 3 directions
+          <ScoreSelect
+            value={value.directions_different}
+            onChange={(directions_different) =>
+              onChange({ ...value, directions_different })
+            }
+          />
+        </label>
+      </div>
       {directions.map((item, index) => {
         const key = String(index + 1);
         const row = value.per_direction?.[key] ?? {};
+        function patch(next: DirectionRating) {
+          onChange({
+            ...value,
+            per_direction: { ...value.per_direction, [key]: { ...row, ...next } },
+          });
+        }
         return (
-          <label key={key} className="flex items-center justify-between text-sm">
-            Direction {key} ({String(item.style_id)} × {String(item.template_id)})
-            <select
-              className="rounded-md border border-border bg-surface px-2 py-1"
-              value={row.overall ?? ""}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  per_direction: {
-                    ...value.per_direction,
-                    [key]: {
-                      ...row,
-                      overall: event.target.value ? Number(event.target.value) : undefined,
-                    },
-                  },
-                })
-              }
-            >
-              <option value="">—</option>
-              {[1, 2, 3, 4, 5].map((score) => (
-                <option key={score} value={score}>
-                  {score}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div key={key} className="rounded-xl border border-border p-3">
+            <p className="mb-2 text-sm font-semibold">
+              Direction {key}: {String(item.style_id ?? "—")} ×{" "}
+              {String(item.template_id ?? "—")}
+            </p>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="flex items-center justify-between text-sm">
+                Strategic fit
+                <ScoreSelect
+                  value={row.strategic_fit}
+                  onChange={(strategic_fit) => patch({ strategic_fit })}
+                />
+              </label>
+              <label className="flex items-center justify-between text-sm">
+                Recipe suitability
+                <ScoreSelect
+                  value={row.recipe_suitability}
+                  onChange={(recipe_suitability) => patch({ recipe_suitability })}
+                />
+              </label>
+              <label className="flex items-center justify-between text-sm">
+                Overall
+                <ScoreSelect
+                  value={row.overall}
+                  onChange={(overall) => patch({ overall })}
+                />
+              </label>
+            </div>
+            <textarea
+              className="mt-3 w-full rounded-md border border-border bg-surface p-2 text-sm"
+              rows={2}
+              placeholder="Optional note"
+              value={row.note ?? ""}
+              onChange={(event) => patch({ note: event.target.value })}
+            />
+          </div>
         );
       })}
-      <textarea
-        className="md:col-span-2 rounded-md border border-border bg-surface p-2 text-sm"
-        rows={2}
-        placeholder="Director note"
-        value={value.note ?? ""}
-        onChange={(event) => onChange({ ...value, note: event.target.value })}
-      />
     </div>
   );
 }

@@ -60,6 +60,11 @@ def validate_case(data: dict[str, Any], *, path: Path) -> dict[str, Any]:
         raise FixtureError(
             f"{path}: visual_style must be one of {sorted(VISUAL_STYLES)}"
         )
+    category = data.get("category")
+    if category is not None and (
+        not isinstance(category, str) or not category.strip()
+    ):
+        raise FixtureError(f"{path}: category must be a non-empty string")
     image_field = data.get("product_image")
     if not isinstance(image_field, str) or not image_field.strip():
         raise FixtureError(f"{path}: product_image is required")

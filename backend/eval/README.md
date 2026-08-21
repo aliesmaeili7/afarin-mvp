@@ -9,6 +9,7 @@ The production wizard stays frozen. Use this lab to compare Creative Director re
 ```
 backend/eval/
   creative_cases/     fixture JSON (committed)
+  experiments/        batch experiment manifests (committed)
   assets/             product photos (replace placeholders)
   creative_runs/      immutable outputs (gitignored)
   briefs/             older LLM-copy eval briefs (unchanged)
@@ -33,7 +34,7 @@ See `creative_cases/*.json`. Required:
 - `objective`: `sell_product` | `new_product` | `promotion` | `brand_awareness`
 - `visual_style`: `luxury` | `minimal` | `friendly` | `bold` | `persian_traditional` | `modern`
 
-Optional: description, price, benefit, brand, audience, identity constraints, `fixed_recipes`.
+Optional: `category` (for summary filters), description, price, benefit, brand, audience, identity constraints, `fixed_recipes`.
 
 Style and template IDs must exist in `app/content/visual_catalog.json`.
 
@@ -66,11 +67,38 @@ Useful flags: `--story`, `--master-crop`, `--repair none|production`, `--label i
 
 `--dry-run` makes **zero** provider calls.
 
+## Batch experiments
+
+Committed manifests live in `eval/experiments/`. Each case still writes a normal immutable run folder.
+
+```bash
+uv run python -m scripts.run_creative_eval \
+  --experiment baseline-v1 \
+  --provider stub \
+  --dry-run
+
+uv run python -m scripts.run_creative_eval \
+  --experiment baseline-v1 \
+  --provider openrouter \
+  --paid \
+  --confirm
+```
+
+Before any paid call the CLI prints TOTAL LLM calls, paid image outputs, estimated cost, cases, and recipes. Paid batches also require `--confirm`. `--provider openrouter` without `--paid` is still refused.
+
+Director-only (no image spend):
+
+```bash
+uv run python -m scripts.run_creative_eval \
+  --case sweatshirt_01 --mode director --candidates 0 --provider stub
+```
+
 ## Paid-call protection
 
 - Default provider is `stub` (fake JPEGs, $0).
 - `--provider openrouter` without `--paid` is refused.
 - `--all-styles` / `--all-templates` also need `--confirm`.
+- Paid `--experiment` batches also need `--confirm`.
 - Pytest forces stub providers. This module is not imported by `app.main`.
 - Normal CI therefore cannot spend image budget.
 
@@ -95,11 +123,16 @@ Start the frontend, then open:
 
 - http://localhost:3000/dev/creative-eval
 - http://localhost:3000/dev/creative-eval/{runId}
+- http://localhost:3000/dev/creative-eval/compare
 - http://localhost:3000/dev/creative-eval/summary
 
 `--open` tries the run URL. The pages 404 in production builds and are not in seller navigation.
 
-Rate candidates 1–5 (overall, identity, attractiveness, style match, template match, commercial usefulness) plus flags. Ratings stay in that run’s `ratings.json`, not in campaign tables.
+Rate candidates 1–5 (overall, identity, attractiveness, style match, template match, commercial usefulness) plus flags. Director-only runs (`--candidates 0`) can still rate analysis correctness, direction diversity, and per-direction strategic fit / recipe suitability / overall. Ratings stay in that run’s `ratings.json`, not in campaign tables.
+
+Compare two runs of the **same case** at `/dev/creative-eval/compare`. Matching recipes are shown side by side (image, human scores, AUTO QC, prompt version, model, latency/cost). There is no automatic winner.
+
+Summary filters/groups by case, category, style, template, label/prompt version, fixed vs director, and image model. Default grouping is case + recipe so clothing scores are not averaged with food.
 
 AUTO QC and human scores sit side by side so you can see whether QC rejects good images or accepts bad ones. Thresholds are not auto-tuned.
 

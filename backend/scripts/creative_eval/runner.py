@@ -22,6 +22,7 @@ from app.services.campaigns.creative_core import (
 from app.services.campaigns.planner import planner_snapshot
 from app.services.campaigns.recipes import recipe_from_direction, recipe_from_ids
 from scripts.creative_eval.cases import FixtureError, resolve_image
+from scripts.creative_eval.meta import reproducibility
 from scripts.creative_eval.plan import EvalPlan
 from scripts.creative_eval.ratings import empty_ratings
 from scripts.creative_eval.sanitize import sanitize
@@ -453,14 +454,19 @@ async def execute_run(
             "provider": plan.provider,
             "image_model": provider.model,
             "planner_model": getattr(planner, "model", None),
+            "director_model": getattr(planner, "model", None),
+            "qc_model": getattr(planner, "model", None),
             "candidates": plan.candidates,
             "quality_check": plan.quality_check,
             "repair": plan.repair,
             "story": plan.story,
             "master_crop": plan.master_crop,
             "paid": plan.paid,
+            "experiment_id": plan.experiment_id,
+            "category": case.get("category"),
             "created_at": timestamp,
             "recipes": summaries,
+            **reproducibility(case=case, provider=provider, planner=planner),
         },
     )
     return run_dir

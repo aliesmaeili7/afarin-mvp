@@ -1,6 +1,7 @@
 {
   "case_id": "sweatshirt_01",
   "title": "Oversized sweatshirt",
+  "category": "clothing",
   "product_image": "../assets/sweatshirt.jpeg",
   "product": {
     "name": "هودی اورسایز سرمه‌ای",

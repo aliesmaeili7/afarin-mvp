@@ -42,13 +42,18 @@ def load_ratings(run_dir: Path) -> dict[str, Any]:
         return empty_ratings()
     data.setdefault("candidates", {})
     data.setdefault("director", {})
+    if isinstance(data["director"], dict):
+        data["director"].setdefault("per_direction", {})
     return data
 
 
 def save_ratings(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    raw_director = payload.get("director") or {}
+    director = dict(raw_director) if isinstance(raw_director, dict) else {}
+    director.setdefault("per_direction", {})
     cleaned = {
         "candidates": payload.get("candidates") or {},
-        "director": payload.get("director") or {},
+        "director": director,
     }
     write_json(run_dir / "ratings.json", cleaned)
     return cleaned

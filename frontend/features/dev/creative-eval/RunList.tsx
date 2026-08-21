@@ -10,9 +10,14 @@ export function RunList({ runs }: { runs: Record<string, unknown>[] }) {
           <p className="text-sm text-muted">Internal only</p>
           <h1 className="text-3xl font-bold">Creative eval</h1>
         </div>
-        <Link href="/dev/creative-eval/summary" className="text-sm text-primary underline">
-          Recipe summary
-        </Link>
+        <div className="flex gap-4 text-sm">
+          <Link href="/dev/creative-eval/compare" className="text-primary underline">
+            Compare
+          </Link>
+          <Link href="/dev/creative-eval/summary" className="text-primary underline">
+            Recipe summary
+          </Link>
+        </div>
       </header>
       {runs.length === 0 ? (
         <p className="text-muted">

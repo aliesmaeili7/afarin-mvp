@@ -2,6 +2,7 @@
 
     uv run python -m scripts.run_creative_eval --case sweatshirt_01 --mode fixed
     uv run python -m scripts.run_creative_eval --case sweatshirt_01 --mode director
+    uv run python -m scripts.run_creative_eval --experiment baseline-v1 --dry-run
 """
 
 from scripts.creative_eval.cli import main

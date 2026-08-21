@@ -1,6 +1,7 @@
 {
   "case_id": "accessory_01",
   "title": "Accessory / bag",
+  "category": "accessory",
   "product_image": "../assets/accessory.jpeg",
   "product": {
     "name": "کیف چرمی دستی",

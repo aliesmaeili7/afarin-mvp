@@ -1,6 +1,7 @@
 {
   "case_id": "restaurant_food_01",
   "title": "Restaurant dish",
+  "category": "food",
   "product_image": "../assets/restaurant_food.jpeg",
   "product": {
     "name": "جوجه کباب زعفرانی",

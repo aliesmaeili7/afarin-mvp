@@ -1,0 +1,19 @@
+{
+  "experiment_id": "baseline-v1",
+  "quality_check": true,
+  "repair": "none",
+  "cases": [
+    {
+      "case": "sweatshirt_01",
+      "mode": "fixed",
+      "recipes": ["fashion_editorial:model_using"],
+      "candidates": 1
+    },
+    {
+      "case": "cosmetics_01",
+      "mode": "fixed",
+      "recipes": ["photoreal_commercial:product_pedestal"],
+      "candidates": 1
+    }
+  ]
+}

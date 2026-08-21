@@ -1,6 +1,7 @@
 {
   "case_id": "cosmetics_01",
   "title": "Packaged beauty product",
+  "category": "cosmetics",
   "product_image": "../assets/cosmetics.jpeg",
   "product": {
     "name": "کرم مرطوب‌کننده روز",

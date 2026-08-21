@@ -397,6 +397,17 @@ def test_stub_cli_writes_run(tmp_path: Path) -> None:
     meta = json.loads((runs[0] / "run_meta.json").read_text(encoding="utf-8"))
     assert meta["provider"] == "stub"
     assert meta["prompt_version"] == CREATIVE_PROMPT_VERSION
+    assert meta["git"]["commit"]
+    assert "dirty" in meta["git"]
+    assert meta["image_model"]
+    assert "director_model" in meta
+    assert "qc_model" in meta
+    assert meta["fixture_sha256"]
+    assert meta["catalog_sha256"]
+    assert meta["provider_params"]["seed_supported"] is False
+    blob = json.dumps(meta)
+    assert "sk-" not in blob
+    assert "OPENROUTER" not in blob
     assert (runs[0] / "reference_product.jpg").is_file()
     summary = json.loads(
         next((runs[0] / "recipes").glob("*/provider_request_summary.json")).read_text(
@@ -405,6 +416,135 @@ def test_stub_cli_writes_run(tmp_path: Path) -> None:
     )
     assert "api_key" not in json.dumps(summary)
     assert summary["seed_supported"] is False
+
+
+def test_experiment_manifest_and_paid_gates(tmp_path: Path) -> None:
+    from scripts.creative_eval.experiments import load_experiment
+
+    experiment = load_experiment("baseline-v1")
+    assert experiment["experiment_id"] == "baseline-v1"
+    assert len(experiment["cases"]) == 2
+
+    dry = main(
+        [
+            "--experiment",
+            "baseline-v1",
+            "--provider",
+            "openrouter",
+            "--paid",
+            "--dry-run",
+        ]
+    )
+    assert dry == 0
+    assert list(tmp_path.iterdir()) == []
+
+    unpaid = main(
+        [
+            "--experiment",
+            "baseline-v1",
+            "--provider",
+            "openrouter",
+            "--runs-dir",
+            str(tmp_path),
+        ]
+    )
+    assert unpaid == 2
+    assert list(tmp_path.iterdir()) == []
+
+    unconfirmed = main(
+        [
+            "--experiment",
+            "baseline-v1",
+            "--provider",
+            "openrouter",
+            "--paid",
+            "--runs-dir",
+            str(tmp_path),
+        ]
+    )
+    assert unconfirmed == 2
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_experiment_batch_writes_individual_runs(tmp_path: Path) -> None:
+    code = main(
+        [
+            "--experiment",
+            "baseline-v1",
+            "--provider",
+            "stub",
+            "--runs-dir",
+            str(tmp_path),
+        ]
+    )
+    assert code == 0
+    runs = sorted(path for path in tmp_path.iterdir() if path.is_dir())
+    assert len(runs) == 2
+    cases = {
+        json.loads((run / "run_meta.json").read_text(encoding="utf-8"))["case_id"]
+        for run in runs
+    }
+    assert cases == {"sweatshirt_01", "cosmetics_01"}
+    for run in runs:
+        meta = json.loads((run / "run_meta.json").read_text(encoding="utf-8"))
+        assert meta["experiment_id"] == "baseline-v1"
+        assert meta["label"] == "baseline-v1"
+
+
+def test_director_only_ratings_without_images(tmp_path: Path) -> None:
+    code = main(
+        [
+            "--case",
+            "sweatshirt_01",
+            "--mode",
+            "director",
+            "--candidates",
+            "0",
+            "--provider",
+            "stub",
+            "--runs-dir",
+            str(tmp_path),
+        ]
+    )
+    assert code == 0
+    run = next(tmp_path.iterdir())
+    assert (run / "director_output.json").is_file()
+    assert not list(run.glob("recipes/*/candidate-1.jpg"))
+    saved = save_ratings(
+        run,
+        {
+            "candidates": {},
+            "director": {
+                "analysis_correct": 4,
+                "directions_different": 5,
+                "per_direction": {
+                    "1": {
+                        "strategic_fit": 4,
+                        "recipe_suitability": 3,
+                        "overall": 4,
+                        "note": "fits clothing",
+                    }
+                },
+            },
+        },
+    )
+    loaded = load_ratings(run)
+    assert loaded["director"]["analysis_correct"] == 4
+    assert loaded["director"]["per_direction"]["1"]["strategic_fit"] == 4
+    assert loaded["candidates"] == {}
+    assert saved["director"]["directions_different"] == 5
+
+
+def test_old_ratings_json_still_loads(tmp_path: Path) -> None:
+    run = tmp_path / "legacy"
+    run.mkdir()
+    (run / "ratings.json").write_text(
+        json.dumps({"candidates": {"01_anime__illustrated_scene:1": {"overall": 3}}}),
+        encoding="utf-8",
+    )
+    loaded = load_ratings(run)
+    assert loaded["candidates"]["01_anime__illustrated_scene:1"]["overall"] == 3
+    assert loaded["director"]["per_direction"] == {}
 
 
 def _tiny_ref() -> bytes:
