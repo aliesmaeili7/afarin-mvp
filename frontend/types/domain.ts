@@ -74,6 +74,12 @@ export interface VisualCatalogEntry {
   default_text_safe_area?: string;
   needs_person?: boolean;
   allows_duplicate_products?: boolean;
+  person_affinity?: string;
+  human_requirement?: string;
+  preferred_templates?: string[];
+  discouraged_templates?: string[];
+  preferred_styles?: string[];
+  discouraged_styles?: string[];
 }
 
 export interface VisualCatalog {
@@ -160,6 +166,7 @@ export interface ProductImage {
   is_primary: boolean;
   crop: CropRect;
   crop_storage_path: string | null;
+  clean_reference_storage_path?: string | null;
   created_at: string;
 }
 

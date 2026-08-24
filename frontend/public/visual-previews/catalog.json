@@ -5,98 +5,247 @@
       "label_fa": "عکاسی تجاری واقعی",
       "description_fa": "نور استودیویی، بافت واقعی، حس فروشگاه آنلاین.",
       "preview_path": "/visual-previews/styles/photoreal_commercial.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "medium",
+      "preferred_templates": [
+        "hero_product",
+        "product_pedestal",
+        "flat_lay",
+        "product_with_props",
+        "model_using"
+      ],
+      "discouraged_templates": [
+        "illustrated_scene"
+      ]
     },
     {
       "id": "fashion_editorial",
       "label_fa": "ادیتوریال مد",
       "description_fa": "ژست و ترکیب‌بندی مجله‌ای، نور سینمایی.",
       "preview_path": "/visual-previews/styles/fashion_editorial.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "high",
+      "preferred_templates": [
+        "model_using",
+        "magazine_cover",
+        "character_poster",
+        "cinematic_environment"
+      ],
+      "discouraged_templates": [
+        "hero_product",
+        "product_pedestal",
+        "flat_lay",
+        "floating_product"
+      ]
     },
     {
       "id": "anime",
       "label_fa": "انیمه",
       "description_fa": "خط تمیز، رنگ‌های زنده، حس انیمیشن مدرن.",
       "preview_path": "/visual-previews/styles/anime.jpg",
-      "default_text_safe_area": "top"
+      "default_text_safe_area": "top",
+      "person_affinity": "high",
+      "preferred_templates": [
+        "illustrated_scene",
+        "character_poster",
+        "model_using",
+        "cinematic_environment"
+      ],
+      "discouraged_templates": [
+        "product_pedestal",
+        "flat_lay"
+      ]
     },
     {
       "id": "manga_illustrated",
       "label_fa": "مانگا و تصویرسازی",
       "description_fa": "جوهر، هاشور و حس صفحه کمیک.",
       "preview_path": "/visual-previews/styles/manga_illustrated.jpg",
-      "default_text_safe_area": "top"
+      "default_text_safe_area": "top",
+      "person_affinity": "high",
+      "preferred_templates": [
+        "illustrated_scene",
+        "character_poster",
+        "magazine_cover"
+      ],
+      "discouraged_templates": [
+        "flat_lay",
+        "product_pedestal"
+      ]
     },
     {
       "id": "render_3d",
       "label_fa": "رندر سه‌بعدی",
       "description_fa": "سطح براق، نورپردازی نرم سه‌بعدی.",
       "preview_path": "/visual-previews/styles/render_3d.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "low",
+      "preferred_templates": [
+        "hero_product",
+        "product_pedestal",
+        "floating_product",
+        "giant_miniature_world",
+        "surreal_scale"
+      ],
+      "discouraged_templates": [
+        "model_using",
+        "character_poster"
+      ]
     },
     {
       "id": "clay",
       "label_fa": "خمیری",
       "description_fa": "بافت دست‌ساز و حجم نرم خمیر.",
       "preview_path": "/visual-previews/styles/clay.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "low",
+      "preferred_templates": [
+        "hero_product",
+        "floating_product",
+        "giant_miniature_world",
+        "illustrated_scene"
+      ],
+      "discouraged_templates": [
+        "model_using",
+        "character_poster"
+      ]
     },
     {
       "id": "collage",
       "label_fa": "کلاژ",
       "description_fa": "لایه‌های بریده، کاغذ و بافت چاپی.",
       "preview_path": "/visual-previews/styles/collage.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "medium",
+      "preferred_templates": [
+        "hero_product",
+        "magazine_cover",
+        "character_poster",
+        "illustrated_scene"
+      ],
+      "discouraged_templates": [
+        "cinematic_environment"
+      ]
     },
     {
       "id": "surreal",
       "label_fa": "سوررئال",
       "description_fa": "مقیاس غیرعادی و فضای رویایی.",
       "preview_path": "/visual-previews/styles/surreal.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "medium",
+      "preferred_templates": [
+        "surreal_scale",
+        "giant_miniature_world",
+        "floating_product",
+        "cinematic_environment"
+      ],
+      "discouraged_templates": [
+        "flat_lay",
+        "product_pedestal"
+      ]
     },
     {
       "id": "cinematic",
       "label_fa": "سینمایی",
       "description_fa": "نور فیلم، عمق میدان و حس سکانس.",
       "preview_path": "/visual-previews/styles/cinematic.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "high",
+      "preferred_templates": [
+        "cinematic_environment",
+        "model_using",
+        "character_poster"
+      ],
+      "discouraged_templates": [
+        "hero_product",
+        "flat_lay",
+        "product_pedestal"
+      ]
     },
     {
       "id": "retro",
       "label_fa": "رترو",
       "description_fa": "رنگ و بافت دهه‌های گذشته، بدون کپی اثر مشخص.",
       "preview_path": "/visual-previews/styles/retro.jpg",
-      "default_text_safe_area": "top"
+      "default_text_safe_area": "top",
+      "person_affinity": "medium",
+      "preferred_templates": [
+        "magazine_cover",
+        "hero_product",
+        "model_using",
+        "product_with_props"
+      ],
+      "discouraged_templates": [
+        "illustrated_scene"
+      ]
     },
     {
       "id": "watercolor_illustration",
       "label_fa": "آبرنگ",
       "description_fa": "رنگ دانه، کاغذ مرطوب و حس نقاشی.",
       "preview_path": "/visual-previews/styles/watercolor_illustration.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "medium",
+      "preferred_templates": [
+        "illustrated_scene",
+        "product_with_props",
+        "hero_product"
+      ],
+      "discouraged_templates": [
+        "floating_product"
+      ]
     },
     {
       "id": "neon",
       "label_fa": "نئون",
       "description_fa": "شب شهری، نور نئون و کنتراست بالا.",
       "preview_path": "/visual-previews/styles/neon.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "medium",
+      "preferred_templates": [
+        "hero_product",
+        "floating_product",
+        "cinematic_environment"
+      ],
+      "discouraged_templates": [
+        "flat_lay"
+      ]
     },
     {
       "id": "persian_miniature_inspired",
       "label_fa": "الهام از نگارگری",
       "description_fa": "الگوی ایرانی، رنگ تخت و ترکیب تزئینی — نه کپی یک اثر.",
       "preview_path": "/visual-previews/styles/persian_miniature_inspired.jpg",
-      "default_text_safe_area": "bottom"
+      "default_text_safe_area": "bottom",
+      "person_affinity": "medium",
+      "preferred_templates": [
+        "illustrated_scene",
+        "hero_product",
+        "product_with_props",
+        "character_poster"
+      ],
+      "discouraged_templates": [
+        "cinematic_environment"
+      ]
     },
     {
       "id": "vintage_iranian_poster",
       "label_fa": "پوستر قدیمی ایرانی",
       "description_fa": "ترکیب پوستر میان‌قرن، بافت چاپ سنگی — نه بازسازی یک پوستر معروف.",
       "preview_path": "/visual-previews/styles/vintage_iranian_poster.jpg",
-      "default_text_safe_area": "top"
+      "default_text_safe_area": "top",
+      "person_affinity": "medium",
+      "preferred_templates": [
+        "magazine_cover",
+        "hero_product",
+        "character_poster",
+        "illustrated_scene"
+      ],
+      "discouraged_templates": [
+        "cinematic_environment",
+        "flat_lay"
+      ]
     }
   ],
   "templates": [
@@ -107,7 +256,18 @@
       "preview_path": "/visual-previews/templates/hero_product.jpg",
       "default_text_safe_area": "bottom",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "none",
+      "preferred_styles": [
+        "photoreal_commercial",
+        "render_3d",
+        "collage",
+        "retro"
+      ],
+      "discouraged_styles": [
+        "fashion_editorial",
+        "cinematic"
+      ]
     },
     {
       "id": "model_using",
@@ -116,7 +276,18 @@
       "preview_path": "/visual-previews/templates/model_using.jpg",
       "default_text_safe_area": "bottom",
       "needs_person": true,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "required",
+      "preferred_styles": [
+        "fashion_editorial",
+        "cinematic",
+        "photoreal_commercial",
+        "anime"
+      ],
+      "discouraged_styles": [
+        "render_3d",
+        "clay"
+      ]
     },
     {
       "id": "product_pedestal",
@@ -125,7 +296,16 @@
       "preview_path": "/visual-previews/templates/product_pedestal.jpg",
       "default_text_safe_area": "top",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "none",
+      "preferred_styles": [
+        "photoreal_commercial",
+        "render_3d",
+        "neon"
+      ],
+      "discouraged_styles": [
+        "fashion_editorial"
+      ]
     },
     {
       "id": "magazine_cover",
@@ -134,7 +314,15 @@
       "preview_path": "/visual-previews/templates/magazine_cover.jpg",
       "default_text_safe_area": "top",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "optional",
+      "preferred_styles": [
+        "fashion_editorial",
+        "retro",
+        "vintage_iranian_poster",
+        "collage"
+      ],
+      "discouraged_styles": []
     },
     {
       "id": "giant_miniature_world",
@@ -143,7 +331,17 @@
       "preview_path": "/visual-previews/templates/giant_miniature_world.jpg",
       "default_text_safe_area": "bottom",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "none",
+      "preferred_styles": [
+        "surreal",
+        "render_3d",
+        "clay",
+        "cinematic"
+      ],
+      "discouraged_styles": [
+        "photoreal_commercial"
+      ]
     },
     {
       "id": "cinematic_environment",
@@ -152,7 +350,17 @@
       "preview_path": "/visual-previews/templates/cinematic_environment.jpg",
       "default_text_safe_area": "bottom",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "optional",
+      "preferred_styles": [
+        "cinematic",
+        "fashion_editorial",
+        "neon",
+        "surreal"
+      ],
+      "discouraged_styles": [
+        "clay"
+      ]
     },
     {
       "id": "floating_product",
@@ -161,7 +369,17 @@
       "preview_path": "/visual-previews/templates/floating_product.jpg",
       "default_text_safe_area": "bottom",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "none",
+      "preferred_styles": [
+        "render_3d",
+        "neon",
+        "photoreal_commercial",
+        "clay"
+      ],
+      "discouraged_styles": [
+        "fashion_editorial"
+      ]
     },
     {
       "id": "flat_lay",
@@ -170,7 +388,17 @@
       "preview_path": "/visual-previews/templates/flat_lay.jpg",
       "default_text_safe_area": "bottom",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "none",
+      "preferred_styles": [
+        "photoreal_commercial",
+        "watercolor_illustration"
+      ],
+      "discouraged_styles": [
+        "cinematic",
+        "neon",
+        "fashion_editorial"
+      ]
     },
     {
       "id": "character_poster",
@@ -179,7 +407,19 @@
       "preview_path": "/visual-previews/templates/character_poster.jpg",
       "default_text_safe_area": "top",
       "needs_person": true,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "required",
+      "preferred_styles": [
+        "fashion_editorial",
+        "anime",
+        "manga_illustrated",
+        "vintage_iranian_poster",
+        "collage"
+      ],
+      "discouraged_styles": [
+        "render_3d",
+        "clay"
+      ]
     },
     {
       "id": "illustrated_scene",
@@ -188,7 +428,19 @@
       "preview_path": "/visual-previews/templates/illustrated_scene.jpg",
       "default_text_safe_area": "bottom",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "optional",
+      "preferred_styles": [
+        "anime",
+        "manga_illustrated",
+        "watercolor_illustration",
+        "persian_miniature_inspired",
+        "collage"
+      ],
+      "discouraged_styles": [
+        "photoreal_commercial",
+        "cinematic"
+      ]
     },
     {
       "id": "product_with_props",
@@ -197,7 +449,15 @@
       "preview_path": "/visual-previews/templates/product_with_props.jpg",
       "default_text_safe_area": "bottom",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "none",
+      "preferred_styles": [
+        "photoreal_commercial",
+        "watercolor_illustration",
+        "retro",
+        "persian_miniature_inspired"
+      ],
+      "discouraged_styles": []
     },
     {
       "id": "surreal_scale",
@@ -206,7 +466,16 @@
       "preview_path": "/visual-previews/templates/surreal_scale.jpg",
       "default_text_safe_area": "bottom",
       "needs_person": false,
-      "allows_duplicate_products": false
+      "allows_duplicate_products": false,
+      "human_requirement": "none",
+      "preferred_styles": [
+        "surreal",
+        "render_3d",
+        "cinematic"
+      ],
+      "discouraged_styles": [
+        "photoreal_commercial"
+      ]
     }
   ]
 }

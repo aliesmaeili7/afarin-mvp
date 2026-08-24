@@ -13,10 +13,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.db.models import Campaign, CampaignAsset, ProductImage
+from app.db.models import Campaign, CampaignAsset, CampaignConcept, ProductImage
 from app.services.campaigns.crop import (
     CropRect,
     apply_crop,
+    is_material_crop_change,
     parse_crop,
     suggest_crop,
 )
@@ -25,6 +26,7 @@ from app.services.storage import (
     get_storage,
     is_public,
     parse,
+    product_clean_reference_key,
     product_crop_key,
     product_cutout_key,
 )
@@ -58,6 +60,7 @@ async def save_crop(
     if is_public(image.storage_path):
         image.crop_storage_path = None
         await _delete_cutout(session, campaign.id)
+        await _clear_clean_reference(image)
         return
 
     source = original_bytes or await _download(image.storage_path)
@@ -74,17 +77,36 @@ async def save_crop(
     await get_storage().upload(ref, jpeg, "image/jpeg")
     image.crop_storage_path = ref.to_path()
     await _delete_cutout(session, campaign.id)
+    await _clear_clean_reference(image)
+    await _maybe_invalidate_director(session, campaign, rect)
     await session.flush()
+
+
+async def primary_image(
+    session: AsyncSession, campaign: Campaign
+) -> ProductImage | None:
+    images = await _images(session, campaign)
+    if not images:
+        return None
+    return next((image for image in images if image.is_primary), images[0])
+
+
+async def load_original_bytes(
+    session: AsyncSession, campaign: Campaign
+) -> bytes | None:
+    image = await primary_image(session, campaign)
+    if image is None or is_public(image.storage_path):
+        return None
+    return await _download(image.storage_path)
 
 
 async def load_reference_bytes(
     session: AsyncSession, campaign: Campaign
 ) -> tuple[bytes | None, str | None]:
     """Crop JPEG when present; never the uncropped screenshot."""
-    images = await _images(session, campaign)
-    if not images:
+    primary = await primary_image(session, campaign)
+    if primary is None:
         return None, None
-    primary = next((image for image in images if image.is_primary), images[0])
     path = primary.crop_storage_path or (
         primary.storage_path if is_public(primary.storage_path) else None
     )
@@ -96,6 +118,41 @@ async def load_reference_bytes(
         return buffer.getvalue(), path
     data = await _download(path)
     return data, path
+
+
+async def load_creative_reference_bytes(
+    session: AsyncSession, campaign: Campaign
+) -> tuple[bytes | None, str | None]:
+    """Cleaned JPEG only. Never the original upload."""
+    primary = await primary_image(session, campaign)
+    if primary is None:
+        return None, None
+    path = primary.clean_reference_storage_path
+    if not path and is_public(primary.storage_path):
+        return await load_reference_bytes(session, campaign)
+    if not path:
+        return None, None
+    data = await _download(path)
+    return data, path
+
+
+async def store_clean_reference(
+    session: AsyncSession,
+    campaign: Campaign,
+    jpeg: bytes,
+) -> str:
+    primary = await primary_image(session, campaign)
+    if primary is None:
+        raise RuntimeError("no product image for clean reference")
+    settings = get_settings()
+    ref = StorageRef(
+        bucket=settings.bucket_product_images,
+        key=product_clean_reference_key(campaign.id, primary.id),
+    )
+    await get_storage().upload(ref, jpeg, "image/jpeg")
+    primary.clean_reference_storage_path = ref.to_path()
+    await session.flush()
+    return ref.to_path()
 
 
 async def prepare_product_layer(
@@ -158,8 +215,9 @@ async def _ensure_cutout(
     if existing and existing.storage_path:
         return existing.storage_path
 
-    source_path = crop_path or primary.storage_path
-    source = await _download(source_path) if source_path else None
+    if not crop_path:
+        return None
+    source = await _download(crop_path)
     if source is None:
         return None
 
@@ -203,6 +261,36 @@ async def _delete_cutout(session: AsyncSession, campaign_id: uuid.UUID) -> None:
             CampaignAsset.asset_type == "product_cutout",
         )
     )
+
+
+async def _clear_clean_reference(image: ProductImage) -> None:
+    image.clean_reference_storage_path = None
+
+
+async def _maybe_invalidate_director(
+    session: AsyncSession, campaign: Campaign, rect: CropRect
+) -> None:
+    snapshot = campaign.planner_result_json or {}
+    previous = snapshot.get("analyzed_crop")
+    if not previous or campaign.status not in ("concepts_ready", "concept_selected"):
+        return
+    try:
+        old = parse_crop(previous)
+    except ValueError:
+        return
+    if not is_material_crop_change(old, rect):
+        return
+    await session.execute(
+        delete(CampaignConcept).where(CampaignConcept.campaign_id == campaign.id)
+    )
+    campaign.selected_concept_id = None
+    campaign.concept_round = None
+    campaign.planner_result_json = {}
+    campaign.visual_recipe_json = {}
+    if campaign.product_id and campaign.objective and campaign.visual_style:
+        campaign.status = "brief_complete"
+    else:
+        campaign.status = "draft"
 
 
 async def _images(session: AsyncSession, campaign: Campaign) -> list[ProductImage]:

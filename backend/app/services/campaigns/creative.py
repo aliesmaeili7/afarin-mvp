@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from PIL import Image
 from sqlalchemy import select
@@ -24,18 +26,29 @@ from app.db.models import (
     GenerationJob,
 )
 from app.providers.image import get_image_provider
-from app.providers.image.base import ImageApiError, ImageRequest, ImageResult
+from app.providers.image.base import ImageApiError, ImageRequest, ImageResult, ImageUsage
 from app.providers.image.creative_prompts import (
-    build_creative_prompt,
+    compile_architect_result,
     build_repair_prompt,
     build_story_prompt,
 )
-from app.providers.vision import get_visual_planner
+from app.providers.vision import get_prompt_architect, get_visual_planner
 from app.providers.vision.base import CandidateQuality, PlannerContext, QualityReport
 from app.services.campaigns import cost as budgets
 from app.services.campaigns import jobs as job_records
 from app.services.campaigns import queries
-from app.services.campaigns.product_media import load_reference_bytes
+from app.services.campaigns.creative_core import architect_context_for, quality_to_dict
+from app.services.campaigns.product_media import (
+    load_creative_reference_bytes,
+    load_original_bytes,
+    load_reference_bytes,
+    store_clean_reference,
+)
+from app.services.campaigns.reference_prep import (
+    assert_not_blocked,
+    decide_strategy,
+    prepare_clean_jpeg,
+)
 from app.services.storage import get_storage, visual_candidate_key, visual_story_key
 from app.services.storage.paths import StorageRef
 
@@ -58,7 +71,11 @@ async def generate_candidates(
         raise invalid(messages.VISUAL_RECIPE_REQUIRED)
 
     await budgets.assert_can_start_attempt(session, campaign)
-    reference = await _require_reference(session, campaign)
+    analysis = _analysis_of(campaign)
+    if decide_strategy(analysis) == "needs_user_action":
+        raise invalid(messages.INPUT_QUALITY_NEEDS_FIX)
+    cleaned = await _require_clean_reference(session, campaign, analysis)
+    original = await load_original_bytes(session, campaign)
     concept = await _selected_concept(session, campaign)
     context = await _planner_context(session, campaign, concept, recipe)
 
@@ -90,25 +107,30 @@ async def generate_candidates(
     campaign.current_visual_attempt_id = attempt.id
     await session.flush()
 
-    prompt = build_creative_prompt(
-        concept,
+    compiled = await _run_architect(
+        session,
         campaign,
-        recipe,
-        variation=attempt.attempt_number,
-        identity_constraints=list(recipe.get("identity_constraints") or []),
+        attempt,
+        job.user_id,
+        cleaned=cleaned,
+        original=original,
+        concept=concept,
+        recipe=recipe,
+        context=context,
+        analysis=analysis,
     )
-    result = await _generate_images(
+    prompts = [item.compiled_prompt for item in compiled.candidates]
+    attempt.prompt_architect_json = compiled.as_dict()
+    await session.flush()
+
+    frames = await _generate_slots(
         session,
         campaign,
         job,
-        prompt=prompt,
-        aspect=ASPECT_4X5,
-        role="candidate",
+        prompts=prompts,
         attempt_number=attempt.attempt_number,
-        n=3,
-        references=(reference,),
+        references=(cleaned,),
     )
-    frames = result.images()[:3]
     stored: list[CampaignVisualCandidate] = []
     for index, frame in enumerate(frames):
         stored.append(
@@ -124,7 +146,9 @@ async def generate_candidates(
             )
         )
 
-    report = await _score(reference, tuple(frames), context)
+    report = await _score_with_job(
+        session, campaign, job.user_id, cleaned, tuple(frames), context
+    )
     _apply_quality(stored, report)
 
     failed = [row for row in stored if row.hard_failed]
@@ -136,9 +160,8 @@ async def generate_candidates(
             attempt,
             stored,
             failed[0],
-            reference,
-            concept,
-            recipe,
+            cleaned,
+            prompts[failed[0].slot - 1],
             context,
         )
 
@@ -227,8 +250,7 @@ async def _repair_one(
     stored: list[CampaignVisualCandidate],
     failed: CampaignVisualCandidate,
     reference: bytes,
-    concept: CampaignConcept | None,
-    recipe: dict,
+    compiled_prompt: str,
     context: PlannerContext,
 ) -> None:
     del stored
@@ -243,15 +265,7 @@ async def _repair_one(
     await budgets.assert_auto_ceiling(
         session, campaign.id, attempt.attempt_number, 1
     )
-    prompt = build_repair_prompt(
-        build_creative_prompt(
-            concept,
-            campaign,
-            recipe,
-            variation=attempt.attempt_number + 10,
-            identity_constraints=list(recipe.get("identity_constraints") or []),
-        )
-    )
+    prompt = build_repair_prompt(compiled_prompt)
     result = await _generate_images(
         session,
         campaign,
@@ -281,6 +295,88 @@ async def _repair_one(
         failed.hidden = True
     attempt.auto_repair_used = True
     await session.flush()
+
+
+async def _generate_slots(
+    session: AsyncSession,
+    campaign: Campaign,
+    job: GenerationJob,
+    *,
+    prompts: list[str],
+    attempt_number: int,
+    references: tuple[bytes, ...],
+) -> list[bytes]:
+    n = len(prompts)
+    already = await budgets.count_outputs(
+        session,
+        campaign.id,
+        attempt_number=attempt_number,
+        role="candidate",
+    )
+    budgets.assert_role_budget("candidate", already, n)
+    await budgets.assert_auto_ceiling(session, campaign.id, attempt_number, n)
+    settings = get_settings()
+    payload = dict(job.input_json or {})
+    payload["mode"] = "creative"
+    payload["attempt_number"] = attempt_number
+    payload["aspect"] = ASPECT_4X5
+    payload["role"] = "candidate"
+    payload["n"] = n
+    payload["output_count"] = n
+    payload["output_counts"] = {"candidate": n}
+    payload["roles"] = ["candidate"]
+    job.input_json = payload
+    requests = [
+        ImageRequest(
+            prompt=prompt,
+            aspect_ratio=ASPECT_4X5,
+            resolution=settings.image_resolution,
+            references=references,
+            n=1,
+        )
+        for prompt in prompts
+    ]
+    try:
+        results = await asyncio.gather(
+            *[get_image_provider().generate(request) for request in requests]
+        )
+    except ImageApiError:
+        raise
+    frames: list[bytes] = []
+    usage: ImageUsage | None = None
+    for result in results:
+        frames.append(result.images()[0])
+        usage = _merge_usage(usage, result.usage)
+    produced = len(frames)
+    job.input_json = {
+        **payload,
+        "output_counts": {"candidate": produced},
+        "output_count": produced,
+        "n": produced,
+    }
+    job_records.apply_image_usage(job, usage, provider=get_image_provider().name)
+    return frames
+
+
+def _merge_usage(
+    left: ImageUsage | None, right: ImageUsage | None
+) -> ImageUsage | None:
+    if left is None:
+        return right
+    if right is None:
+        return left
+    cost = None
+    if left.cost_usd is not None or right.cost_usd is not None:
+        cost = (left.cost_usd or Decimal("0")) + (right.cost_usd or Decimal("0"))
+    return ImageUsage(
+        latency_ms=left.latency_ms + right.latency_ms,
+        cost_usd=cost,
+        model=right.model or left.model,
+        prompt_tokens=(left.prompt_tokens or 0) + (right.prompt_tokens or 0) or None,
+        completion_tokens=(left.completion_tokens or 0)
+        + (right.completion_tokens or 0)
+        or None,
+    )
 
 
 async def _generate_images(
@@ -427,19 +523,135 @@ async def _apply_winner(
     await session.flush()
 
 
-async def _require_reference(session: AsyncSession, campaign: Campaign) -> bytes:
-    data, path = await load_reference_bytes(session, campaign)
-    if data is None:
-        raise invalid(messages.INPUT_QUALITY_NEEDS_FIX)
+async def _require_clean_reference(
+    session: AsyncSession, campaign: Campaign, analysis: dict
+) -> bytes:
+    existing, _ = await load_creative_reference_bytes(session, campaign)
+    if existing is not None:
+        try:
+            image = Image.open(io.BytesIO(existing))
+            if min(image.size) >= MIN_REFERENCE_PX:
+                return existing
+        except Exception:
+            pass
+    crop, _ = await load_reference_bytes(session, campaign)
+    original = await load_original_bytes(session, campaign)
+    result = await prepare_clean_jpeg(
+        original=original, crop_jpeg=crop, analysis=analysis
+    )
+    jpeg = assert_not_blocked(result)
+    await store_clean_reference(session, campaign, jpeg)
+    return jpeg
+
+
+def _analysis_of(campaign: Campaign) -> dict:
+    snapshot = campaign.planner_result_json or {}
+    raw = snapshot.get("reference_analysis")
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+async def _run_architect(
+    session: AsyncSession,
+    campaign: Campaign,
+    attempt: CampaignVisualAttempt,
+    user_id,
+    *,
+    cleaned: bytes,
+    original: bytes | None,
+    concept: CampaignConcept | None,
+    recipe: dict,
+    context: PlannerContext,
+    analysis: dict,
+):
+    architect = get_prompt_architect()
+    job = GenerationJob(
+        campaign_id=campaign.id,
+        user_id=user_id,
+        job_type="prompt_architect",
+        status="processing",
+        started_at=datetime.now(UTC),
+        input_json={
+            "style_id": recipe.get("style_id"),
+            "template_id": recipe.get("template_id"),
+            "attempt_id": str(attempt.id),
+        },
+    )
+    session.add(job)
+    await session.flush()
     try:
-        image = Image.open(io.BytesIO(data))
-        width, height = image.size
+        result = await architect.plan_candidates(
+            cleaned,
+            architect_context_for(
+                campaign=campaign,
+                concept=concept,
+                recipe=recipe,
+                planner_context=context,
+                analysis=analysis,
+            ),
+            original=original if original != cleaned else None,
+        )
     except Exception as error:
-        raise invalid(messages.INPUT_QUALITY_NEEDS_FIX) from error
-    if min(width, height) < MIN_REFERENCE_PX:
-        raise invalid(messages.INPUT_QUALITY_NEEDS_FIX)
-    del path
-    return data
+        job_records.mark_failed(job, error)
+        raise
+    compiled = compile_architect_result(
+        result,
+        identity_constraints=list(recipe.get("identity_constraints") or []),
+        text_safe_area=str(recipe.get("text_safe_area") or "bottom"),
+    )
+    job.provider = architect.name
+    job.model = architect.model
+    if compiled.usage is not None:
+        job_records.apply_llm_usage(job, compiled.usage)
+    job_records.mark_succeeded(
+        job,
+        {"slots": [item.slot for item in compiled.candidates]},
+        consume_llm=False,
+    )
+    return compiled
+
+
+async def _score_with_job(
+    session: AsyncSession,
+    campaign: Campaign,
+    user_id,
+    reference: bytes,
+    frames: tuple[bytes, ...],
+    context: PlannerContext,
+) -> QualityReport:
+    job = GenerationJob(
+        campaign_id=campaign.id,
+        user_id=user_id,
+        job_type="visual_quality_check",
+        status="processing",
+        started_at=datetime.now(UTC),
+        input_json={"count": len(frames)},
+    )
+    session.add(job)
+    await session.flush()
+    try:
+        report = await get_visual_planner().score_candidates(
+            reference, frames, context
+        )
+    except Exception as error:
+        logger.warning("visual quality scoring skipped: %s", error)
+        job_records.mark_failed(job, error)
+        return QualityReport(
+            candidates=tuple(
+                CandidateQuality(slot=index + 1, hard_failed=False)
+                for index in range(len(frames))
+            )
+        )
+    planner = get_visual_planner()
+    job.provider = planner.name
+    job.model = planner.model
+    if report.usage is not None:
+        job_records.apply_llm_usage(job, report.usage)
+    job_records.mark_succeeded(
+        job,
+        {"slots": [item.slot for item in report.candidates]},
+        consume_llm=False,
+    )
+    return report
 
 
 async def _score(
@@ -465,16 +677,7 @@ def _apply_quality(
         item = by_slot.get(row.slot) or by_slot.get(index + 1)
         if item is None:
             continue
-        row.quality_json = {
-            "hard_failed": item.hard_failed,
-            "reasons": list(item.reasons),
-            "identity_recognizable": item.identity_recognizable,
-            "no_random_text_or_logos": item.no_random_text_or_logos,
-            "no_severe_artifacts": item.no_severe_artifacts,
-            "no_unwanted_duplicates": item.no_unwanted_duplicates,
-            "ad_composition": item.ad_composition,
-            "text_safe_space": item.text_safe_space,
-        }
+        row.quality_json = quality_to_dict(item)
         row.hard_failed = item.hard_failed
         row.hidden = item.hard_failed
 

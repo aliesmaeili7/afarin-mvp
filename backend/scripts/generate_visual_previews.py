@@ -36,7 +36,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.content.visual_catalog import public_catalog, styles, templates
+from app.content.visual_catalog import preview_prompt_of, public_catalog, styles, templates
 from app.core.config import get_settings
 from app.providers.image import get_image_provider
 from app.providers.image.base import ImageProvider, ImageRequest
@@ -84,7 +84,7 @@ PREVIEW_NEGATIVES = HARD_NEGATIVES + (
     "no mastheads",
 )
 
-# Extra look notes on top of catalog prompt_atoms. Composition stays locked.
+# Extra look notes on top of catalog preview prompts. Composition stays locked.
 STYLE_DIRECTION = {
     "photoreal_commercial": (
         "clean seamless studio sweep, even catalog lighting, sharp materials"
@@ -142,7 +142,7 @@ STYLE_DIRECTION = {
     ),
 }
 
-# Extra scene notes on top of catalog prompt_atoms. Style stays photoreal.
+# Extra scene notes on top of catalog preview prompts. Style stays photoreal.
 TEMPLATE_DIRECTION = {
     "hero_product": (
         "centered hero on a seamless studio sweep, large in frame, soft grounded shadow"
@@ -213,7 +213,7 @@ def build_style_prompt(item: dict) -> str:
         "use the attached product photo as the identity reference",
         IDENTITY,
         STYLE_COMPOSITION,
-        item["prompt_atoms"],
+        preview_prompt_of(item),
         STYLE_DIRECTION[item["id"]],
         f"leave a clear empty {item['default_text_safe_area']} area "
         "for later typography overlay",
@@ -230,8 +230,8 @@ def build_template_prompt(item: dict) -> str:
         "use the attached product photo as the identity reference",
         IDENTITY,
         TEMPLATE_STYLE,
-        photoreal["prompt_atoms"],
-        item["prompt_atoms"],
+        preview_prompt_of(photoreal),
+        preview_prompt_of(item),
         TEMPLATE_DIRECTION[item["id"]],
         f"leave a clear empty {item['default_text_safe_area']} area "
         "for later typography overlay",

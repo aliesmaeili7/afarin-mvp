@@ -102,5 +102,9 @@ def product_crop_key(campaign_id: uuid.UUID, image_id: uuid.UUID) -> str:
     return f"campaigns/{campaign_id}/crops/{image_id}.jpg"
 
 
+def product_clean_reference_key(campaign_id: uuid.UUID, image_id: uuid.UUID) -> str:
+    return f"campaigns/{campaign_id}/references/{image_id}.jpg"
+
+
 def brand_asset_key(brand_id: uuid.UUID, asset_id: uuid.UUID, ext: str) -> str:
     return f"brands/{brand_id}/{asset_id}.{ext}"

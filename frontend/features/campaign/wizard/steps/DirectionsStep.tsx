@@ -15,15 +15,19 @@ import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
 import { ApiError } from "@/lib/api/types";
 import type {
   CampaignConcept,
+  CropRect,
+  ProductImage,
   VisualCatalog,
   VisualCreationMode,
   VisualRecipe,
 } from "@/types/domain";
 import { useSessionStore } from "@/features/auth/sessionStore";
+import { useResolvedAssetUrl } from "@/features/campaign/ad-renderer/useResolvedAssetUrl";
 import { useDraftCampaign } from "../useDraftCampaign";
 import { useWizardGuard } from "../useWizardGuard";
 import { WizardShell } from "../WizardShell";
 import { isLegacyDirection, WIZARD_STEPS } from "../wizardSteps";
+import { CropEditor } from "../CropEditor";
 import { CatalogPicker, PreviewPair, entryOf } from "./CatalogPicker";
 
 export function DirectionsStep() {
@@ -252,6 +256,15 @@ export function DirectionsStep() {
         <DirectionsLoading />
       ) : (
         <div className="flex flex-col gap-6">
+          <TighterCropBanner
+            campaignId={campaignId}
+            planner={detail?.campaign.planner_result_json}
+            image={
+              detail?.product_images.find((item) => item.is_primary) ??
+              detail?.product_images[0]
+            }
+            onSaved={() => void reload()}
+          />
           <div className="flex flex-col gap-3">
             {concepts.map((concept) => {
               const meta = directionMeta(concept);
@@ -423,4 +436,92 @@ function isInputQualityError(error: unknown): boolean {
     error instanceof ApiError &&
     error.messageFa.includes("کادر رو درست کن")
   );
+}
+
+function TighterCropBanner({
+  campaignId,
+  planner,
+  image,
+  onSaved,
+}: {
+  campaignId: string | null;
+  planner: Record<string, unknown> | undefined;
+  image: ProductImage | undefined;
+  onSaved: () => void;
+}) {
+  const { t } = useI18n();
+  const { toast } = useToast();
+  const displayError = useDisplayError();
+  const [dismissed, setDismissed] = useState(false);
+  const suggested = recommendedCropOf(planner);
+  const [crop, setCrop] = useState<CropRect | null>(suggested);
+  const url = useResolvedAssetUrl(image?.storage_path ?? "");
+
+  useEffect(() => {
+    setCrop(suggested);
+    setDismissed(false);
+  }, [suggested?.x, suggested?.y, suggested?.width, suggested?.height]);
+
+  if (
+    dismissed ||
+    !campaignId ||
+    !image ||
+    !planner?.offer_tighter_crop ||
+    !crop ||
+    !url
+  ) {
+    return null;
+  }
+
+  async function commit(next: CropRect) {
+    if (!campaignId || !image) return;
+    try {
+      await api.updateProductCrop(campaignId, image.id, next);
+      await onSaved();
+    } catch (caught) {
+      toast(displayError(caught), "error");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-3xl border border-brand-200 bg-brand-50/70 p-4">
+      <div>
+        <p className="text-sm font-bold text-ink-800">{t("wizard.tighterCropTitle")}</p>
+        <p className="mt-1 text-sm leading-7 text-muted">{t("wizard.tighterCropHelp")}</p>
+      </div>
+      <CropEditor src={url} crop={crop} onChange={setCrop} onCommit={(rect) => void commit(rect)} />
+      <div className="flex flex-col gap-2">
+        <Button
+          fullWidth
+          onClick={() => {
+            if (crop) void commit(crop);
+          }}
+        >
+          {t("wizard.tighterCropApply")}
+        </Button>
+        <Button fullWidth variant="outline" onClick={() => setDismissed(true)}>
+          {t("wizard.tighterCropSkip")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function recommendedCropOf(
+  planner: Record<string, unknown> | undefined,
+): CropRect | null {
+  if (!planner) return null;
+  const analysis = planner.reference_analysis;
+  const raw =
+    analysis && typeof analysis === "object"
+      ? (analysis as { recommended_crop?: unknown }).recommended_crop
+      : undefined;
+  if (!raw || typeof raw !== "object") return null;
+  const box = raw as Record<string, unknown>;
+  const x = Number(box.x);
+  const y = Number(box.y);
+  const width = Number(box.width);
+  const height = Number(box.height);
+  if (![x, y, width, height].every((value) => Number.isFinite(value))) return null;
+  return { x, y, width, height };
 }

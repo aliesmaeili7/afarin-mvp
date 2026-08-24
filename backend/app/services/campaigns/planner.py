@@ -19,11 +19,28 @@ from app.providers.vision.base import (
 )
 from app.services.campaigns import jobs as job_records
 from app.services.campaigns import queries
-from app.services.campaigns.product_media import load_reference_bytes
+from app.services.campaigns.crop import parse_crop, should_offer_tighter_crop
+from app.services.campaigns.product_media import load_original_bytes, load_reference_bytes
 from app.services.campaigns.recipes import recipe_from_direction
 
 
-def planner_snapshot(result: PlannerResult) -> dict:
+def planner_snapshot(result: PlannerResult, *, analyzed_crop: dict | None = None) -> dict:
+    crop = analyzed_crop or {}
+    analysis = result.reference_analysis.as_dict()
+    offer = False
+    rec = result.reference_analysis.recommended_crop
+    if (
+        result.reference_analysis.reference_strategy == "tighter_crop"
+        and rec is not None
+        and crop
+    ):
+        try:
+            offer = should_offer_tighter_crop(
+                parse_crop(crop),
+                parse_crop(rec.as_dict()),
+            )
+        except ValueError:
+            offer = False
     return {
         "product_visual_analysis": result.product_visual_analysis,
         "product_type": result.product_type,
@@ -33,6 +50,9 @@ def planner_snapshot(result: PlannerResult) -> dict:
             "status": result.input_quality.status,
             "reasons": list(result.input_quality.reasons),
         },
+        "reference_analysis": analysis,
+        "analyzed_crop": crop,
+        "offer_tighter_crop": offer,
         "unsuitable_style_ids": list(result.unsuitable_style_ids),
         "unsuitable_template_ids": list(result.unsuitable_template_ids),
         "forbidden_claims": list(result.forbidden_claims),
@@ -52,6 +72,7 @@ def direction_raw_json(
         "image_direction": direction.image_direction,
         "scene_direction": direction.image_direction,
         "text_safe_area": direction.text_safe_area,
+        "compatibility": direction.compatibility,
     }
 
 
@@ -81,7 +102,9 @@ async def write_directions(
         )
         session.add(concept)
         created.append(concept)
-    campaign.planner_result_json = planner_snapshot(result)
+    campaign.planner_result_json = planner_snapshot(
+        result, analyzed_crop=await crop_dict_of(session, campaign)
+    )
     await session.flush()
     return created
 
@@ -114,6 +137,8 @@ async def plan_directions(
     reference, _ = await load_reference_bytes(session, campaign)
     if reference is None:
         raise invalid(messages.INPUT_QUALITY_NEEDS_FIX)
+    original = await load_original_bytes(session, campaign)
+    crop = await crop_dict_of(session, campaign)
 
     existing = await queries.concepts_of(session, campaign.id)
     ctx = await queries.build_copy_context(session, campaign)
@@ -126,6 +151,7 @@ async def plan_directions(
         objective=ctx.objective,
         visual_style=ctx.style,
         previous_directions=previous_from_concepts(existing),
+        crop_json=crop,
     )
     planner = get_visual_planner()
     job = GenerationJob(
@@ -143,7 +169,9 @@ async def plan_directions(
     session.add(job)
     await session.flush()
     try:
-        result = await planner.plan_directions(reference, context)
+        result = await planner.plan_directions(
+            reference, context, original=original if original != reference else None
+        )
     except Exception as error:
         job_records.mark_failed(job, error)
         raise
@@ -193,5 +221,18 @@ def recipe_for_concept(
         ),
         background_prompt=concept.background_prompt,
         text_safe_area=str(raw.get("text_safe_area") or "bottom"),
+        compatibility=str(raw.get("compatibility") or "allowed"),
     )
     return recipe_from_direction(direction, planner=planner or {})
+
+
+async def crop_dict_of(session: AsyncSession, campaign: Campaign) -> dict:
+    from app.services.campaigns.product_media import primary_image
+
+    image = await primary_image(session, campaign)
+    if image is None:
+        return {}
+    try:
+        return parse_crop(image.crop_json).to_dict()
+    except ValueError:
+        return {}

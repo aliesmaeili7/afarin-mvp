@@ -95,6 +95,7 @@ def three_directions() -> dict:
         "warning_fa": "",
         "text_safe_area": "bottom",
         "background_prompt": "empty studio, no text",
+        "compatibility": "allowed",
     }
     return {
         "product_visual_analysis": "a visible product on a clean crop",
@@ -140,6 +141,22 @@ def three_directions() -> dict:
             },
         ],
         "forbidden_claims": [],
+        "reference_analysis": {
+            "cleanliness": "clean",
+            "product_visibility": "good",
+            "screenshot_ui_present": False,
+            "watermark_present": False,
+            "multiple_products": False,
+            "person_present": False,
+            "useful_context_present": False,
+            "contamination_description": [],
+            "reference_strategy": "direct_crop",
+            "recommended_crop": {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+            "has_recommended_crop": True,
+            "preserve_context_reason": "",
+            "blocking_reasons": [],
+            "brief_image_mismatch": False,
+        },
     }
 
 

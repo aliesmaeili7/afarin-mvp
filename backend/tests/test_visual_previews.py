@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from app.content.visual_catalog import public_catalog, styles, templates
+from app.content.visual_catalog import preview_prompt_of, public_catalog, styles, templates
 from app.providers.image.base import ImageRequest
 from app.providers.image.stub import StubImageProvider
 from scripts.generate_visual_previews import (
@@ -58,10 +58,10 @@ def test_style_prompts_share_composition_and_vary_look() -> None:
         lowered = prompt.lower()
         assert STYLE_COMPOSITION.split(",")[0] in prompt
         assert IDENTITY.split(":")[0] in prompt
-        assert item["prompt_atoms"].split(",")[0] in prompt
+        assert preview_prompt_of(item).split(",")[0] in prompt
         assert "no readable text" in lowered
         assert not any(term in lowered for term in FORBIDDEN)
-    looks = {item["prompt_atoms"] for item in styles()}
+    looks = {preview_prompt_of(item) for item in styles()}
     assert len(looks) == 14
 
 
@@ -72,11 +72,11 @@ def test_template_prompts_share_photoreal_and_vary_scene() -> None:
     for prompt, item in zip(prompts, templates(), strict=True):
         lowered = prompt.lower()
         assert TEMPLATE_STYLE.split(",")[0] in prompt
-        assert photoreal["prompt_atoms"].split(",")[0] in prompt
-        assert item["prompt_atoms"].split(",")[0] in prompt
+        assert preview_prompt_of(photoreal).split(",")[0] in prompt
+        assert preview_prompt_of(item).split(",")[0] in prompt
         assert "no readable text" in lowered
         assert not any(term in lowered for term in FORBIDDEN)
-    scenes = {item["prompt_atoms"] for item in templates()}
+    scenes = {preview_prompt_of(item) for item in templates()}
     assert len(scenes) == 12
 
 

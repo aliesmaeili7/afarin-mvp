@@ -246,6 +246,9 @@ export async function readRunBundle(runId: string): Promise<Record<string, unkno
         quality: await readOptional("quality.json"),
         metrics: await readOptional("metrics.json"),
         error: await readOptional("error.json"),
+        llmCalls: await readOptional("llm_calls.json"),
+        imageRequests: await readOptional("image_requests.json"),
+        architect: await readOptional("architect.json"),
         files,
       });
     }
@@ -254,6 +257,7 @@ export async function readRunBundle(runId: string): Promise<Record<string, unkno
     meta,
     brief: await readJson(runId, "effective_brief.json"),
     director: await readJson(runId, "director_output.json"),
+    directorLlmCalls: await readJson(runId, "llm_calls.json"),
     cost: await readJson(runId, "cost.json"),
     ratings: (await readJson(runId, "ratings.json")) ?? { candidates: {}, director: {} },
     recipes,

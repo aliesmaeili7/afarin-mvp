@@ -82,9 +82,10 @@ async def _fresh_engine() -> AsyncIterator[None]:
     set_content_provider(None)
     set_image_provider(None)
     set_cutout(None)
-    from app.providers.vision import set_visual_planner
+    from app.providers.vision import set_prompt_architect, set_visual_planner
 
     set_visual_planner(None)
+    set_prompt_architect(None)
     get_settings.cache_clear()
 
 

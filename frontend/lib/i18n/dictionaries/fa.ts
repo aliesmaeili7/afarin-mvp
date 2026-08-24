@@ -301,6 +301,13 @@ export const fa = {
     recommendedRecipe: "پیشنهاد آفرین برای تصویر",
     chooseDirectionFirst: "اول یکی از پیشنهادها را انتخاب کن.",
     hideCatalog: "بستن فهرست سبک‌ها",
+    tighterCropTitle: "کادر کمی شل است",
+    tighterCropHelp:
+      "آفرین یک کادر تنگ‌تر پیشنهاد می‌کند تا محصول واضح‌تر دیده شود. اگر قبول کردی، کادر را همین‌جا تنظیم کن.",
+    tighterCropApply: "استفاده از کادر پیشنهادی",
+    tighterCropSkip: "همین کادر خوب است",
+    discouragedPair:
+      "این ترکیب سبک و قالب معمولاً ضعیف است. می‌تونی ادامه بدی، ولی نتیجه ممکنه شبیه تبلیغ عمومی بشه.",
   },
   visual: {
     styles: {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,7 +12,7 @@ import pytest
 from app.providers.image.base import ImageApiError, ImageRequest
 from app.providers.image.creative_prompts import (
     CREATIVE_PROMPT_VERSION,
-    build_creative_prompt,
+    SAFETY_SUFFIX,
 )
 from app.providers.image.stub import StubImageProvider
 from app.providers.vision.base import PlannerContext
@@ -43,9 +44,9 @@ class CountingPlanner(StubVisualPlanner):
         self.plan_calls = 0
         self.score_calls = 0
 
-    async def plan_directions(self, image, context):
+    async def plan_directions(self, image, context, *, original=None):
         self.plan_calls += 1
-        return await super().plan_directions(image, context)
+        return await super().plan_directions(image, context, original=original)
 
     async def score_candidates(self, reference, candidates, context):
         self.score_calls += 1
@@ -114,8 +115,7 @@ def test_production_prompt_builder_is_reused() -> None:
         "fashion_editorial", "model_using", source="eval_fixed"
     )
     campaign = SimpleNamespace(visual_style="friendly")
-    concept = SimpleNamespace(visual_direction="")
-    expected = build_creative_prompt(concept, campaign, recipe, variation=0)
+    concept = SimpleNamespace(visual_direction="", title_fa="", headline_fa="")
 
     async def run() -> None:
         result = await generate_recipe_set(
@@ -136,8 +136,20 @@ def test_production_prompt_builder_is_reused() -> None:
             planner=None,
             n=1,
         )
-        assert result.prompt == expected
+        assert SAFETY_SUFFIX in result.prompt
+        assert "fashion_editorial" in result.prompt
+        assert "model_using" in result.prompt
         assert result.prompt_version == CREATIVE_PROMPT_VERSION
+        assert result.architect is not None
+        assert len(result.architect["candidates"]) == 3
+        assert len(result.prompts) == 1
+        assert result.llm_calls
+        assert result.llm_calls[0]["name"] == "prompt_architect"
+        assert "system" in result.llm_calls[0]
+        assert "user" in result.llm_calls[0]
+        assert result.image_requests
+        assert SAFETY_SUFFIX in result.image_requests[0]["prompt"]
+        assert result.image_requests[0]["kind"] == "primary"
 
     import asyncio
 
@@ -383,6 +395,7 @@ def test_stub_cli_writes_run(tmp_path: Path) -> None:
             "fixed",
             "--candidates",
             "1",
+            "--quality-check",
             "--provider",
             "stub",
             "--runs-dir",
@@ -416,6 +429,21 @@ def test_stub_cli_writes_run(tmp_path: Path) -> None:
     )
     assert "api_key" not in json.dumps(summary)
     assert summary["seed_supported"] is False
+    requests = json.loads(
+        next((runs[0] / "recipes").glob("*/image_requests.json")).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert requests[0]["prompt"]
+    assert "sk-" not in requests[0]["prompt"]
+    calls = json.loads(
+        next((runs[0] / "recipes").glob("*/llm_calls.json")).read_text(encoding="utf-8")
+    )
+    assert calls[0]["name"] == "prompt_architect"
+    assert calls[0]["user"]
+    assert calls[0]["output"]
+    assert {item["name"] for item in calls} == {"prompt_architect", "visual_quality"}
+    assert "data:image" not in json.dumps(calls)
 
 
 def test_experiment_manifest_and_paid_gates(tmp_path: Path) -> None:
@@ -424,6 +452,9 @@ def test_experiment_manifest_and_paid_gates(tmp_path: Path) -> None:
     experiment = load_experiment("baseline-v1")
     assert experiment["experiment_id"] == "baseline-v1"
     assert len(experiment["cases"]) == 2
+    challenger = load_experiment("prompt-architect-v1-challenger")
+    assert challenger["experiment_id"] == "prompt-architect-v1-challenger"
+    assert len(challenger["cases"]) == 4
 
     dry = main(
         [
@@ -491,6 +522,41 @@ def test_experiment_batch_writes_individual_runs(tmp_path: Path) -> None:
         assert meta["label"] == "baseline-v1"
 
 
+def test_experiment_batch_keeps_one_event_loop(tmp_path: Path, monkeypatch) -> None:
+    loops: list[int] = []
+
+    async def fake_execute_run(**kwargs):
+        loops.append(id(asyncio.get_running_loop()))
+        run_dir = kwargs["runs_dir"] / f"{len(loops):03}_{kwargs['plan'].case_id}"
+        run_dir.mkdir()
+        (run_dir / "run_meta.json").write_text(
+            json.dumps(
+                {
+                    "case_id": kwargs["plan"].case_id,
+                    "experiment_id": kwargs["plan"].experiment_id,
+                    "label": kwargs["plan"].label,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return run_dir
+
+    monkeypatch.setattr("scripts.creative_eval.cli.execute_run", fake_execute_run)
+    code = main(
+        [
+            "--experiment",
+            "baseline-v1",
+            "--provider",
+            "stub",
+            "--runs-dir",
+            str(tmp_path),
+        ]
+    )
+    assert code == 0
+    assert len(loops) == 2
+    assert loops[0] == loops[1]
+
+
 def test_director_only_ratings_without_images(tmp_path: Path) -> None:
     code = main(
         [
@@ -509,6 +575,9 @@ def test_director_only_ratings_without_images(tmp_path: Path) -> None:
     assert code == 0
     run = next(tmp_path.iterdir())
     assert (run / "director_output.json").is_file()
+    director_calls = json.loads((run / "llm_calls.json").read_text(encoding="utf-8"))
+    assert director_calls[0]["name"] == "creative_director"
+    assert director_calls[0]["user"]
     assert not list(run.glob("recipes/*/candidate-1.jpg"))
     saved = save_ratings(
         run,

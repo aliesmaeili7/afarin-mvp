@@ -36,6 +36,11 @@ async def test_empty_visual_planner_model_uses_llm_model() -> None:
     assert len(result.directions) == 3
     assert result.directions[0].style_id == "photoreal_commercial"
     assert llm.calls[0]["schema_name"] == "creative_director"
+    assert result.llm_trace is not None
+    assert result.llm_trace.name == "creative_director"
+    assert result.llm_trace.user
+    assert result.llm_trace.output
+    assert "data:image" not in result.llm_trace.output
 
 
 async def test_check_input_quality_does_not_call_the_planner() -> None:

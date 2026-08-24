@@ -164,6 +164,7 @@ async def write_recipe_result(
     run_id: str,
     timestamp: str,
     direction: dict | None = None,
+    analysis: dict | None = None,
 ) -> dict[str, Any]:
     folder.mkdir(parents=True, exist_ok=True)
     write_json(folder / "recipe.json", result.recipe)
@@ -172,10 +173,22 @@ async def write_recipe_result(
         folder / "prompt.json",
         {
             "prompt": result.prompt,
+            "prompts": result.prompts,
             "prompt_version": result.prompt_version,
             "style_id": result.recipe.get("style_id"),
             "template_id": result.recipe.get("template_id"),
+            "compatibility": result.compatibility or result.recipe.get("compatibility"),
         },
+    )
+    if result.architect is not None:
+        write_json(folder / "architect.json", result.architect)
+    if result.cleaned_jpeg is not None:
+        (folder / "cleaned_reference.jpg").write_bytes(result.cleaned_jpeg)
+    write_json(
+        folder / "reference_analysis.json",
+        analysis
+        or (result.recipe.get("planner") or {}).get("reference_analysis")
+        or {},
     )
     if result.candidate_request is not None:
         write_json(
@@ -186,6 +199,10 @@ async def write_recipe_result(
         write_json(folder / "direction.json", direction)
     if result.quality is not None:
         write_json(folder / "quality.json", result.quality)
+    if result.llm_calls:
+        write_json(folder / "llm_calls.json", sanitize(result.llm_calls))
+    if result.image_requests:
+        write_json(folder / "image_requests.json", sanitize(result.image_requests))
 
     metrics: dict[str, Any] = {
         "case_id": case_id,
@@ -244,6 +261,9 @@ async def write_recipe_result(
         "image_cost_usd": str(image_cost) if image_count else None,
         "qc_calls": qc_calls,
         "qc_cost_usd": str(_llm_cost(result.quality)) if result.quality else None,
+        "architect_calls": 1 if result.architect else 0,
+        "architect_cost_usd": str(_llm_cost(result.architect)) if result.architect else None,
+        "compatibility": result.compatibility or result.recipe.get("compatibility"),
     }
 
 
@@ -272,23 +292,29 @@ async def _one_recipe(
     *,
     recipe: dict,
     reference: bytes,
+    original: bytes | None,
+    analysis: dict,
     case: dict[str, Any],
     plan: EvalPlan,
     provider: ImageProvider,
     planner: Any,
     direction: CampaignDirection | None,
     timestamp: str,
+    architect: Any | None = None,
 ) -> RecipeSetResult:
     concept = prompt_concept(direction)
     try:
         return await generate_recipe_set(
             recipe=recipe,
             reference=reference,
+            original=original,
+            analysis=analysis,
             campaign=prompt_campaign(case),
             concept=concept,
             planner_context=planner_context(case, recipe),
             provider=provider,
             planner=planner,
+            architect=architect,
             n=plan.candidates,
             variation=0,
             quality_check=plan.quality_check,
@@ -318,12 +344,17 @@ async def execute_run(
     director: PlannerResult | None,
     runs_dir: Path,
     dry_run: bool = False,
+    architect: Any | None = None,
 ) -> Path:
     if dry_run:
         raise RuntimeError("execute_run must not be called for --dry-run")
 
     image_path = resolve_image(case, require=True)
     reference = _reference_jpeg(image_path)
+    original = image_path.read_bytes()
+    analysis = {}
+    if director is not None:
+        analysis = director.reference_analysis.as_dict()
     timestamp = datetime.now(UTC).isoformat()
     run_dir = allocate_run_dir(
         case_id=plan.case_id, label=plan.label, runs_dir=runs_dir
@@ -338,9 +369,15 @@ async def execute_run(
     write_json(run_dir / "input_fixture.json", fixture_copy)
     write_json(run_dir / "effective_brief.json", effective_brief(case))
     (run_dir / "reference_product.jpg").write_bytes(reference)
+    write_json(run_dir / "reference_analysis.json", analysis)
     write_json(run_dir / "ratings.json", empty_ratings())
     if director is not None:
         write_json(run_dir / "director_output.json", director_output(director))
+        if director.llm_trace is not None:
+            write_json(
+                run_dir / "llm_calls.json",
+                sanitize([director.llm_trace.as_dict()]),
+            )
 
     semaphore = asyncio.Semaphore(max(1, min(3, plan.concurrency)))
     summaries: list[dict[str, Any]] = []
@@ -353,10 +390,13 @@ async def execute_run(
             result = await _one_recipe(
                 recipe=recipe,
                 reference=reference,
+                original=original,
+                analysis=analysis,
                 case=case,
                 plan=plan,
                 provider=provider,
                 planner=planner,
+                architect=architect,
                 direction=direction,
                 timestamp=timestamp,
             )
@@ -372,6 +412,7 @@ async def execute_run(
             run_id=run_id,
             timestamp=timestamp,
             direction=direction_dict(direction) if direction else None,
+            analysis=analysis,
         )
 
     if plan.candidates > 0 and recipes:
@@ -405,14 +446,17 @@ async def execute_run(
                     run_id=run_id,
                     timestamp=timestamp,
                     direction=direction_dict(direction) if direction else None,
+                    analysis=analysis,
                 )
             )
 
     director_cost = _llm_cost(director_output(director) if director else None)
     qc_cost = Decimal("0")
+    architect_cost = Decimal("0")
     image_cost = Decimal("0")
     image_outputs = 0
     qc_calls = 0
+    architect_calls = 0
     for row in summaries:
         image_outputs += int(row.get("image_outputs") or 0)
         if row.get("image_cost_usd"):
@@ -420,12 +464,20 @@ async def execute_run(
         qc_calls += int(row.get("qc_calls") or 0)
         if row.get("qc_cost_usd"):
             qc_cost += Decimal(str(row["qc_cost_usd"]))
+        architect_calls += int(row.get("architect_calls") or 0)
+        if row.get("architect_cost_usd"):
+            architect_cost += Decimal(str(row["architect_cost_usd"]))
+
+    cleaned = next(run_dir.glob("recipes/*/cleaned_reference.jpg"), None)
+    if cleaned is not None and not (run_dir / "cleaned_reference.jpg").exists():
+        (run_dir / "cleaned_reference.jpg").write_bytes(cleaned.read_bytes())
 
     write_json(
         run_dir / "cost.json",
         {
             "llm_calls": {
                 "director": 1 if director is not None else 0,
+                "architect": architect_calls,
                 "qc": qc_calls,
             },
             "image_outputs": {
@@ -437,9 +489,10 @@ async def execute_run(
             },
             "cost_usd": {
                 "director_llm": str(director_cost) if director is not None else None,
+                "architect_llm": str(architect_cost) if architect_calls else None,
                 "qc_llm": str(qc_cost) if qc_calls else None,
                 "images": str(image_cost) if image_outputs else None,
-                "total": str(director_cost + qc_cost + image_cost),
+                "total": str(director_cost + architect_cost + qc_cost + image_cost),
             },
         },
     )
@@ -454,6 +507,7 @@ async def execute_run(
             "provider": plan.provider,
             "image_model": provider.model,
             "planner_model": getattr(planner, "model", None),
+            "architect_model": getattr(architect, "model", None) if architect else None,
             "director_model": getattr(planner, "model", None),
             "qc_model": getattr(planner, "model", None),
             "candidates": plan.candidates,

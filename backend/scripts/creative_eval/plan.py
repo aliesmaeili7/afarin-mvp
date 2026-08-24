@@ -24,6 +24,7 @@ class EvalPlan:
     experiment_id: str | None = None
     concurrency: int = 2
     director_llm_calls: int = 0
+    architect_llm_calls: int = 0
     qc_llm_calls: int = 0
     image_candidates: int = 0
     image_repairs_max: int = 0
@@ -82,6 +83,7 @@ def build_plan(
         experiment_id=experiment_id,
         concurrency=max(1, min(3, concurrency)),
         director_llm_calls=1 if mode == "director" else 0,
+        architect_llm_calls=count if candidates > 0 else 0,
         qc_llm_calls=count if quality_check and candidates > 0 else 0,
         image_candidates=count * max(0, candidates),
         image_repairs_max=(
@@ -130,6 +132,7 @@ def render_plan(plan: EvalPlan) -> str:
         *recipe_lines,
         "  LLM calls:",
         f"    Director:      {plan.director_llm_calls}",
+        f"    Architect:     {plan.architect_llm_calls}",
         f"    QC:            {plan.qc_llm_calls}",
         "  Image outputs (paid frames, not HTTP requests):",
         f"    Candidates:    {plan.image_candidates}",

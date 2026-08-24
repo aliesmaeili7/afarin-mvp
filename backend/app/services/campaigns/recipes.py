@@ -1,4 +1,9 @@
-from app.content.visual_catalog import style_by_id, template_by_id
+from app.content.visual_catalog import (
+    DISCOURAGED_WARNING_FA,
+    compatibility,
+    style_by_id,
+    template_by_id,
+)
 from app.core import messages
 from app.core.errors import invalid
 from app.providers.vision.base import CampaignDirection
@@ -38,6 +43,10 @@ def recipe_from_ids(
     except KeyError as error:
         raise invalid(messages.VISUAL_RECIPE_INVALID) from error
     rec = recommended or {"style_id": style["id"], "template_id": template["id"]}
+    rating = compatibility(style["id"], template["id"])
+    warning = warning_fa
+    if source == "custom" and rating == "discouraged" and not warning:
+        warning = DISCOURAGED_WARNING_FA
     return {
         "style_id": style["id"],
         "template_id": template["id"],
@@ -47,7 +56,8 @@ def recipe_from_ids(
         "identity_constraints": identity_constraints or [],
         "title_fa": title_fa or style["label_fa"],
         "description_fa": description_fa or template["description_fa"],
-        "warning_fa": warning_fa,
+        "warning_fa": warning,
+        "compatibility": rating,
         "text_safe_area": text_safe_area
         or template.get("default_text_safe_area")
         or "bottom",

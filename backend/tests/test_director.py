@@ -63,8 +63,8 @@ async def test_needs_fix_does_not_persist_directions(
     client: AsyncClient, storage
 ) -> None:
     class BrokenCrop(StubVisualPlanner):
-        async def plan_directions(self, image, context):
-            del image, context
+        async def plan_directions(self, image, context, *, original=None):
+            del image, context, original
             return PlannerResult(
                 product_visual_analysis="screenshot chrome covering the product",
                 product_type="unknown",
@@ -89,6 +89,9 @@ async def test_needs_fix_does_not_persist_directions(
     detail = (await client.get(f"/api/campaigns/{campaign_id}", headers=headers)).json()
     assert detail["concepts"] == []
     assert detail["campaign"]["status"] == "brief_complete"
+    assert detail["campaign"]["planner_result_json"]["input_quality"]["status"] == (
+        "needs_fix"
+    )
 
 
 async def test_select_and_mode_make_no_llm_job(

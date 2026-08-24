@@ -76,8 +76,11 @@ async def test_catalog_has_no_prompt_atoms(client: AsyncClient) -> None:
     assert len(body["templates"]) == 12
     for item in body["styles"] + body["templates"]:
         assert "prompt_atoms" not in item
+        assert "prompt_guidance" not in item
         assert item["label_fa"]
         assert item["preview_path"].startswith("/visual-previews/")
+    assert "preferred_templates" in body["styles"][0]
+    assert "preferred_styles" in body["templates"][0]
 
 
 async def test_accurate_path_still_two_empty_scenes(
@@ -120,8 +123,11 @@ async def test_creative_three_candidates_then_story(
     detail = (await client.get(f"/api/campaigns/{campaign_id}", headers=headers)).json()
     visible = [row for row in detail["visual_candidates"] if not row["hidden"]]
     assert len(visible) == 3
-    assert fake.calls[0].n == 3
+    assert [call.n for call in fake.calls] == [1, 1, 1]
     assert fake.calls[0].references
+    assert all(len(call.references) == 1 for call in fake.calls)
+    prompts = [call.prompt for call in fake.calls]
+    assert len(set(prompts)) == 3
     assert all(call.aspect_ratio != "9:16" for call in fake.calls)
 
     chosen = visible[0]["id"]
@@ -175,8 +181,7 @@ async def test_hard_fail_triggers_one_repair(client: AsyncClient, storage) -> No
     status = await _generate(client, headers, campaign_id)
     assert status.status_code == 200
     ns = [call.n for call in fake.calls]
-    assert 3 in ns
-    assert 1 in ns
+    assert ns == [1, 1, 1, 1]
     detail = (await client.get(f"/api/campaigns/{campaign_id}", headers=headers)).json()
     hidden = [row for row in detail["visual_candidates"] if row["hidden"]]
     assert hidden

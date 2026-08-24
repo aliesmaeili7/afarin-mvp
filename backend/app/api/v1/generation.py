@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -23,6 +24,8 @@ from app.services.campaigns.ownership import get_owned_campaign
 from app.services.campaigns.stages import compute_progress
 
 router = APIRouter(prefix="/api/campaigns", tags=["generation"])
+
+logger = logging.getLogger(__name__)
 
 _TERMINAL = ("ready", "partial_failed", "failed", "candidates_ready")
 _VISUAL_JOBS = ("campaign_generation", "image_generation")
@@ -254,6 +257,7 @@ async def _run_images(
                 session, campaign
             )
     except Exception as error:
+        logger.exception("creative/accurate image generation failed")
         if locked is not None:
             job_records.mark_image_failed(locked, error, provider=provider_name)
         if isinstance(error, ApiError) and error.message_fa in (

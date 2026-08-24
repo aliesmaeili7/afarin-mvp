@@ -57,6 +57,7 @@ class ProductImage(Base):
     )
     crop_json: Mapped[dict] = json_column("crop_json")
     crop_storage_path: Mapped[str | None] = text_column()
+    clean_reference_storage_path: Mapped[str | None] = text_column()
     created_at: Mapped[datetime] = created_timestamp()
 
     @property

@@ -4,6 +4,27 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { RatingsPanel, type CandidateRating } from "./RatingsPanel";
 
+type LlmCall = {
+  name?: string;
+  model?: string | null;
+  system?: string;
+  user?: string;
+  images?: { label?: string; bytes?: number; sha256?: string }[];
+  output?: string;
+  usage?: Record<string, unknown> | null;
+};
+
+type ImageRequestTrace = {
+  kind?: string;
+  role?: string;
+  slot?: number;
+  file?: string;
+  prompt?: string;
+  model?: string | null;
+  aspect_ratio?: string;
+  resolution?: string;
+};
+
 type RecipeBundle = {
   folder: string;
   recipe: { style_id?: string; template_id?: string; title_fa?: string } | null;
@@ -12,6 +33,8 @@ type RecipeBundle = {
   quality: { candidates?: Record<string, unknown>[] } | null;
   metrics: { frames?: Record<string, unknown>[] } | null;
   error: { error?: string } | null;
+  llmCalls: LlmCall[] | null;
+  imageRequests: ImageRequestTrace[] | null;
   files: string[];
 };
 
@@ -43,6 +66,39 @@ function qcFor(quality: RecipeBundle["quality"], slot: number) {
   return quality?.candidates?.find((item) => item.slot === slot) ?? null;
 }
 
+function promptFor(
+  requests: ImageRequestTrace[] | null,
+  slot: number,
+  kind: string,
+): string | null {
+  const hit = requests?.find((item) => item.slot === slot && item.kind === kind);
+  return hit?.prompt ? String(hit.prompt) : null;
+}
+
+function prettyJson(value: string | undefined): string {
+  if (!value) {
+    return "";
+  }
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function callTitle(name: string | undefined): string {
+  if (name === "prompt_architect") {
+    return "Prompt Architect";
+  }
+  if (name === "visual_quality") {
+    return "Quality check";
+  }
+  if (name === "creative_director") {
+    return "Creative Director";
+  }
+  return name || "LLM call";
+}
+
 export function RunReview({
   runId,
   bundle,
@@ -53,6 +109,7 @@ export function RunReview({
   const meta = (bundle.meta ?? {}) as Record<string, unknown>;
   const brief = (bundle.brief ?? {}) as Record<string, unknown>;
   const director = bundle.director as Record<string, unknown> | null;
+  const directorLlmCalls = (bundle.directorLlmCalls ?? null) as LlmCall[] | null;
   const cost = (bundle.cost ?? {}) as Record<string, unknown>;
   const recipes = (bundle.recipes ?? []) as RecipeBundle[];
   const [ratings, setRatings] = useState<RatingsState>(
@@ -124,7 +181,8 @@ export function RunReview({
           <div className="rounded-2xl border border-border p-4">
             <h3 className="font-semibold">Cost / calls</h3>
             <p>
-              LLM — Director: {String(llm.director ?? 0)}, QC: {String(llm.qc ?? 0)}
+              LLM — Director: {String(llm.director ?? 0)}, Architect:{" "}
+              {String(llm.architect ?? 0)}, QC: {String(llm.qc ?? 0)}
             </p>
             <p>
               Images — candidates {String(images.candidates ?? 0)}, repairs{" "}
@@ -154,6 +212,13 @@ export function RunReview({
             directions={directorDirections}
             onChange={(directorNext) => persist({ ...ratings, director: directorNext })}
           />
+          {directorLlmCalls?.length ? (
+            <div className="mt-4 space-y-3">
+              {directorLlmCalls.map((call, index) => (
+                <LlmCallCard key={`${call.name}-${index}`} call={call} />
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -207,6 +272,12 @@ function RecipeBlock({
   const candidates = [1, 2, 3].filter((slot) =>
     item.files.includes(`candidate-${slot}.jpg`),
   );
+  const architectCalls = (item.llmCalls ?? []).filter(
+    (call) => call.name === "prompt_architect",
+  );
+  const qcCalls = (item.llmCalls ?? []).filter(
+    (call) => call.name === "visual_quality",
+  );
   return (
     <section>
       <h2 className="text-2xl font-bold">
@@ -242,10 +313,19 @@ function RecipeBlock({
         />
       </div>
 
+      {architectCalls.length ? (
+        <div className="mt-6 space-y-3">
+          {architectCalls.map((call, callIndex) => (
+            <LlmCallCard key={`architect-${callIndex}`} call={call} />
+          ))}
+        </div>
+      ) : null}
+
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         {candidates.map((slot) => {
           const key = `${item.folder}:${slot}`;
           const qc = qcFor(item.quality, slot);
+          const prompt = promptFor(item.imageRequests, slot, "primary");
           return (
             <article key={slot} className="min-w-0">
               <p className="mb-2 font-semibold">Candidate {slot}</p>
@@ -256,6 +336,7 @@ function RecipeBlock({
                 className="w-full rounded-xl border border-border object-contain"
               />
               <QcBlock qc={qc} />
+              {prompt ? <ImagePrompt prompt={prompt} /> : null}
               <RatingsPanel
                 value={ratings.candidates[key] ?? {}}
                 onChange={(value) => onRate(key, value)}
@@ -265,7 +346,15 @@ function RecipeBlock({
         })}
       </div>
 
-      {item.prompt ? (
+      {qcCalls.length ? (
+        <div className="mt-6 space-y-3">
+          {qcCalls.map((call, callIndex) => (
+            <LlmCallCard key={`qc-${callIndex}`} call={call} />
+          ))}
+        </div>
+      ) : null}
+
+      {!item.imageRequests && item.prompt ? (
         <details className="mt-4 text-sm">
           <summary className="cursor-pointer text-muted">Effective prompt</summary>
           <pre className="mt-2 whitespace-pre-wrap rounded-xl bg-ink-950/80 p-3 text-ink-50">
@@ -309,9 +398,67 @@ function RecipeBlock({
             label="Repair"
             src={fileUrl(runId, item.folder, "repair-1.jpg")}
           />
+          {promptFor(item.imageRequests, 1, "repair") ? (
+            <ImagePrompt prompt={promptFor(item.imageRequests, 1, "repair") ?? ""} />
+          ) : null}
         </div>
       ) : null}
     </section>
+  );
+}
+
+function ImagePrompt({ prompt }: { prompt: string }) {
+  return (
+    <details open className="mt-2 text-xs">
+      <summary className="cursor-pointer font-semibold">Image model prompt</summary>
+      <p className="mt-1 text-muted">
+        Compiled prompt sent to Seedream (after the safety compiler).
+      </p>
+      <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-ink-950/80 p-2 text-ink-50">
+        {prompt}
+      </pre>
+    </details>
+  );
+}
+
+function LlmCallCard({ call }: { call: LlmCall }) {
+  const images = call.images ?? [];
+  return (
+    <details className="rounded-xl border border-border p-3 text-sm">
+      <summary className="cursor-pointer font-semibold">
+        {callTitle(call.name)}
+        {call.model ? ` · ${call.model}` : ""}
+      </summary>
+      <p className="mt-2 text-xs text-muted">
+        {images.length
+          ? `Images: ${images.map((item) => `${item.label ?? "image"} (${item.bytes ?? 0} bytes)`).join(", ")}`
+          : "No images attached"}
+      </p>
+      {call.system ? (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-muted">System</summary>
+          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-ink-950/80 p-2 text-xs text-ink-50">
+            {call.system}
+          </pre>
+        </details>
+      ) : null}
+      {call.user ? (
+        <details open className="mt-2">
+          <summary className="cursor-pointer text-muted">User input</summary>
+          <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-ink-950/80 p-2 text-xs text-ink-50">
+            {call.user}
+          </pre>
+        </details>
+      ) : null}
+      {call.output ? (
+        <details open className="mt-2">
+          <summary className="cursor-pointer text-muted">Model output</summary>
+          <pre className="mt-1 max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-lg bg-ink-950/80 p-2 text-xs text-ink-50">
+            {prettyJson(call.output)}
+          </pre>
+        </details>
+      ) : null}
+    </details>
   );
 }
 

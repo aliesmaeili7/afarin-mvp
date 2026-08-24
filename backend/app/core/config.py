@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     llm_app_title: str = "Afarin"
     # Empty = LLM_MODEL. Creative planner/quality vision stays env-configurable.
     visual_planner_model: str = ""
+    prompt_architect_model: str = ""
     # Until credits exist: initial creative generation + this many minus one
     # user-requested «سه نسخه جدید» rounds.
     max_creative_attempts_per_campaign: int = 3
@@ -114,6 +115,10 @@ class Settings(BaseSettings):
     @property
     def planner_model(self) -> str:
         return self.visual_planner_model.strip() or self.llm_model
+
+    @property
+    def architect_model(self) -> str:
+        return self.prompt_architect_model.strip() or self.planner_model
 
 
 @lru_cache

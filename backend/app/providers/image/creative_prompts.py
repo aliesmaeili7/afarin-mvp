@@ -3,80 +3,88 @@
 Accurate empty-scene prompts stay in prompts.py. Persian type is never
 requested from the image model.
 
-CREATIVE_PROMPT_VERSION is a comparison label for eval runs. Changing prompt
-text is a separate product decision — bump the label when that happens.
+CREATIVE_PROMPT_VERSION is a comparison label for eval runs.
 """
 
-from app.content.visual_catalog import style_by_id, template_by_id
+from app.providers.vision.base import ArchitectCandidate, PromptArchitectResult
 from app.db.models import Campaign, CampaignConcept
 
-CREATIVE_PROMPT_VERSION = "v1"
+CREATIVE_PROMPT_VERSION = "creative_prompt_architect_v1"
 
-VARIATIONS = (
-    "variation A: slightly higher camera, cooler rim light, extra "
-    "negative space on the type-safe side",
-    "variation B: three-quarter angle, warmer key light, alternate "
-    "supporting props that do not change the product",
-    "variation C: closer crop or alternate pose, softer fill, "
-    "different environment details in the same recipe",
-)
-
-HARD_NEGATIVES = (
-    "no readable text",
-    "no letters",
-    "no numbers",
-    "no typography",
-    "no captions",
-    "no logos that are not on the reference product",
-    "no extra product variants",
-    "no watermarks",
-    "no UI chrome",
-    "no invented packaging claims",
+SAFETY_SUFFIX = (
+    "only the referenced product and this SKU, no extra variants, "
+    "no readable text, no letters, no numbers, no typography, no captions, "
+    "no invented logos, no Instagram or gallery UI, no pagination, "
+    "no profile icons, no watermarks, no fake branding"
 )
 
 
-def build_creative_prompt(
-    concept: CampaignConcept | None,
-    campaign: Campaign,
-    recipe: dict,
+def compile_creative_prompt(
+    candidate: ArchitectCandidate,
     *,
-    variation: int,
     identity_constraints: list[str] | tuple[str, ...] = (),
+    text_safe_area: str = "bottom",
+    extra_preserve: list[str] | tuple[str, ...] = (),
 ) -> str:
-    style = style_by_id(str(recipe.get("style_id") or "photoreal_commercial"))
-    template = template_by_id(str(recipe.get("template_id") or "hero_product"))
-    visual = (concept.visual_direction or "").strip() if concept else ""
-    direction = str(recipe.get("scene_direction") or "").strip()
-    safe = str(
-        recipe.get("text_safe_area")
-        or template.get("default_text_safe_area")
-        or "bottom"
-    )
-    constraints = list(identity_constraints) or list(
-        recipe.get("identity_constraints") or []
-    )
-    keep = (
-        ", ".join(constraints)
-        if constraints
-        else "keep the product recognizable from the reference"
-    )
-    index = variation % len(VARIATIONS)
-    parts = [
-        "advertising still using the attached product image as the identity reference",
-        style["prompt_atoms"],
-        template["prompt_atoms"],
-        visual,
-        direction,
-        f"keep product identity: {keep}",
-        f"leave a clear empty {safe} area for later typography overlay, "
-        "no letters there",
-        VARIATIONS[index],
-        *HARD_NEGATIVES,
+    preserve = [
+        item
+        for item in (
+            *identity_constraints,
+            *candidate.must_preserve,
+            *extra_preserve,
+        )
+        if item
     ]
-    mood = campaign.visual_style
-    if mood:
-        parts.append(f"campaign mood: {mood}")
+    avoid = [item for item in candidate.must_avoid if item]
+    parts = [
+        candidate.image_prompt.strip(),
+        SAFETY_SUFFIX,
+        f"preserve: {', '.join(preserve)}" if preserve else "",
+        f"avoid: {', '.join(avoid)}" if avoid else "",
+        f"leave a clear empty {text_safe_area} area for later Persian overlay type, "
+        "no letters there",
+        "4:5 Instagram advertisement still",
+    ]
     return ", ".join(part for part in parts if part)
+
+
+def compile_architect_result(
+    result: PromptArchitectResult,
+    *,
+    identity_constraints: list[str] | tuple[str, ...] = (),
+    text_safe_area: str = "bottom",
+) -> PromptArchitectResult:
+    compiled = []
+    extra = tuple(item.feature for item in result.identity_priority if item.importance == "critical")
+    for item in result.candidates:
+        prompt = compile_creative_prompt(
+            item,
+            identity_constraints=identity_constraints,
+            text_safe_area=item.composition.text_safe_area or text_safe_area,
+            extra_preserve=extra,
+        )
+        compiled.append(
+            ArchitectCandidate(
+                slot=item.slot,
+                intention=item.intention,
+                composition=item.composition,
+                lighting=item.lighting,
+                palette=item.palette,
+                relevant_props=item.relevant_props,
+                must_preserve=item.must_preserve,
+                must_avoid=item.must_avoid,
+                image_prompt=item.image_prompt,
+                compiled_prompt=prompt,
+            )
+        )
+    return PromptArchitectResult(
+        reference_summary=result.reference_summary,
+        identity_priority=result.identity_priority,
+        art_direction=result.art_direction,
+        candidates=tuple(compiled),
+        usage=result.usage,
+        llm_trace=result.llm_trace,
+    )
 
 
 def build_story_prompt(
@@ -96,7 +104,7 @@ def build_story_prompt(
             visual,
             direction,
             "leave empty space for overlay typography",
-            *HARD_NEGATIVES,
+            SAFETY_SUFFIX,
         )
         if part
     )
@@ -107,3 +115,17 @@ def build_repair_prompt(base: str) -> str:
         f"{base}, repair pass: keep the same recipe, fix identity and artifacts, "
         "still no readable text"
     )
+
+
+HARD_NEGATIVES = (
+    "no readable text",
+    "no letters",
+    "no numbers",
+    "no typography",
+    "no captions",
+    "no logos that are not on the reference product",
+    "no extra product variants",
+    "no watermarks",
+    "no UI chrome",
+    "no invented packaging claims",
+)

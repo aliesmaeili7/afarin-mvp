@@ -129,6 +129,7 @@ def plans_for_experiment(
 
 def render_batch_plan(experiment_id: str, plans: list[EvalPlan]) -> str:
     director = sum(plan.director_llm_calls for plan in plans)
+    architect = sum(plan.architect_llm_calls for plan in plans)
     qc = sum(plan.qc_llm_calls for plan in plans)
     images = sum(plan.image_outputs for plan in plans)
     repairs = sum(plan.image_repairs_max for plan in plans)
@@ -138,7 +139,8 @@ def render_batch_plan(experiment_id: str, plans: list[EvalPlan]) -> str:
         "  TOTAL:",
         f"    cases:         {len(plans)}",
         f"    recipes:       {sum(len(plan.recipes) for plan in plans)}",
-        f"    LLM calls:     {director + qc} (Director {director}, QC {qc})",
+        f"    LLM calls:     {director + architect + qc} "
+        f"(Director {director}, Architect {architect}, QC {qc})",
         f"    paid image outputs: {images} (+{repairs} repair max)",
         f"    estimated cost: ${cost}",
         "  jobs:",

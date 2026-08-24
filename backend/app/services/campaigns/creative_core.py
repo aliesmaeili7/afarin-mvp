@@ -7,6 +7,7 @@ production send the same strings to the image model.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import logging
@@ -17,6 +18,7 @@ from typing import Any, Literal
 from PIL import Image
 
 from app.core.config import get_settings
+from app.content.visual_catalog import selected_semantics
 from app.providers.image.base import (
     ImageProvider,
     ImageRequest,
@@ -25,12 +27,19 @@ from app.providers.image.base import (
 )
 from app.providers.image.creative_prompts import (
     CREATIVE_PROMPT_VERSION,
-    build_creative_prompt,
+    compile_architect_result,
     build_repair_prompt,
     build_story_prompt,
 )
-from app.providers.vision.base import CandidateQuality, PlannerContext, QualityReport
+from app.providers.vision import get_prompt_architect
+from app.providers.vision.base import (
+    ArchitectContext,
+    CandidateQuality,
+    PlannerContext,
+    QualityReport,
+)
 from app.services.campaigns.master_crop import MASTER_NOTE, central_4x5_crop
+from app.services.campaigns.reference_prep import prepare_clean_jpeg
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +86,12 @@ class RecipeSetResult:
     auto_repair_used: bool = False
     error: str | None = None
     candidate_request: dict | None = None
+    architect: dict | None = None
+    cleaned_jpeg: bytes | None = None
+    prompts: list[str] = field(default_factory=list)
+    compatibility: str | None = None
+    llm_calls: list[dict] = field(default_factory=list)
+    image_requests: list[dict] = field(default_factory=list)
 
 
 def as_jpeg(content: bytes) -> bytes:
@@ -138,6 +153,13 @@ def quality_to_dict(item: CandidateQuality) -> dict:
         "no_unwanted_duplicates": item.no_unwanted_duplicates,
         "ad_composition": item.ad_composition,
         "text_safe_space": item.text_safe_space,
+        "identity_quality": item.identity_quality,
+        "style_adherence": item.style_adherence,
+        "template_adherence": item.template_adherence,
+        "composition_quality": item.composition_quality,
+        "visual_attractiveness": item.visual_attractiveness,
+        "commercial_usefulness": item.commercial_usefulness,
+        "text_safe_space_quality": item.text_safe_space_quality,
     }
 
 
@@ -209,6 +231,75 @@ def _frame(
     )
 
 
+def _image_call(frame: GeneratedFrame) -> dict:
+    names = {
+        "primary": f"candidate-{frame.slot}.jpg",
+        "repair": f"repair-{frame.slot}.jpg",
+        "story": "story.jpg",
+        "master": "master-9x16.jpg",
+    }
+    return {
+        "kind": frame.kind,
+        "role": frame.role,
+        "slot": frame.slot,
+        "file": names.get(frame.kind, f"{frame.kind}-{frame.slot}.jpg"),
+        "prompt": frame.prompt,
+        "provider": frame.provider,
+        "model": frame.model,
+        "aspect_ratio": frame.request_summary.get("aspect_ratio"),
+        "resolution": frame.request_summary.get("resolution"),
+        "n": frame.request_summary.get("n"),
+        "references": frame.request_summary.get("references") or [],
+    }
+
+
+def _append_trace(out: RecipeSetResult, trace: Any) -> None:
+    if trace is None:
+        return
+    payload = trace.as_dict() if hasattr(trace, "as_dict") else None
+    if payload:
+        out.llm_calls.append(payload)
+
+
+def architect_context_for(
+    *,
+    campaign: Any,
+    concept: Any | None,
+    recipe: dict,
+    planner_context: PlannerContext,
+    analysis: dict,
+) -> ArchitectContext:
+    style_id = str(recipe.get("style_id") or "")
+    template_id = str(recipe.get("template_id") or "")
+    semantics = {}
+    if style_id and template_id:
+        try:
+            semantics = selected_semantics(style_id, template_id)
+        except KeyError:
+            semantics = {}
+    return ArchitectContext(
+        product_name=planner_context.product_name,
+        description=planner_context.description,
+        brand_name=planner_context.brand_name,
+        audience=planner_context.audience,
+        objective=planner_context.objective,
+        visual_style=getattr(campaign, "visual_style", None)
+        or planner_context.visual_style,
+        recipe=recipe,
+        reference_analysis=analysis,
+        identity_constraints=tuple(recipe.get("identity_constraints") or ()),
+        concept_title_fa=getattr(concept, "title_fa", "") or "",
+        concept_visual_direction=getattr(concept, "visual_direction", "")
+        or planner_context.concept_visual_direction,
+        compatibility=str(
+            recipe.get("compatibility") or semantics.get("compatibility") or "allowed"
+        ),
+        style_semantics=dict(semantics.get("style") or {}),
+        template_semantics=dict(semantics.get("template") or {}),
+        text_safe_area=str(recipe.get("text_safe_area") or "bottom"),
+    )
+
+
 async def generate_recipe_set(
     *,
     recipe: dict,
@@ -226,45 +317,93 @@ async def generate_recipe_set(
     master_crop: bool = False,
     resolution: str | None = None,
     timestamp: str = "",
+    original: bytes | None = None,
+    analysis: dict | None = None,
+    architect: Any | None = None,
 ) -> RecipeSetResult:
     """Generate candidates for one style/template using production prompts."""
+    del variation
     settings = get_settings()
     res = resolution or settings.image_resolution
-    prompt = build_creative_prompt(
-        concept,
-        campaign,
-        recipe,
-        variation=variation,
-        identity_constraints=list(recipe.get("identity_constraints") or []),
+    analysis = analysis or {}
+    if not analysis and isinstance(recipe.get("planner"), dict):
+        analysis = dict(recipe["planner"].get("reference_analysis") or {})
+    prep = await prepare_clean_jpeg(
+        original=original, crop_jpeg=reference, analysis=analysis
     )
     out = RecipeSetResult(
         recipe=recipe,
-        prompt=prompt,
+        prompt="",
         prompt_version=CREATIVE_PROMPT_VERSION,
+        compatibility=str(recipe.get("compatibility") or ""),
     )
+    if prep.blocked or prep.jpeg is None:
+        out.error = "; ".join(prep.reasons) or "needs_user_action"
+        return out
+    cleaned = prep.jpeg
+    out.cleaned_jpeg = cleaned
     if n <= 0:
         return out
 
-    request = ImageRequest(
-        prompt=prompt,
-        aspect_ratio=ASPECT_4X5,
-        resolution=res,
-        references=(reference,),
-        n=n,
+    context = architect_context_for(
+        campaign=campaign,
+        concept=concept,
+        recipe=recipe,
+        planner_context=planner_context,
+        analysis=analysis,
     )
-    out.candidate_request = request_summary(
-        request, provider=provider.name, model=provider.model
+    planner_impl = architect or get_prompt_architect()
+    planned = await planner_impl.plan_candidates(
+        cleaned, context, original=original if original != cleaned else None
     )
-    result = await provider.generate(request)
-    frames = list(result.images()[:n])
+    _append_trace(out, planned.llm_trace)
+    compiled = compile_architect_result(
+        planned,
+        identity_constraints=list(recipe.get("identity_constraints") or []),
+        text_safe_area=str(recipe.get("text_safe_area") or "bottom"),
+    )
+    out.architect = compiled.as_dict()
+    if compiled.usage is not None:
+        out.architect["usage"] = {
+            "latency_ms": compiled.usage.latency_ms,
+            "cost_usd": (
+                str(compiled.usage.cost_usd)
+                if compiled.usage.cost_usd is not None
+                else None
+            ),
+            "model": compiled.usage.model,
+            "prompt_tokens": compiled.usage.prompt_tokens,
+            "completion_tokens": compiled.usage.completion_tokens,
+        }
+    chosen = list(compiled.candidates[:n])
+    out.prompts = [item.compiled_prompt for item in chosen]
+    out.prompt = out.prompts[0] if out.prompts else ""
+
+    requests = [
+        ImageRequest(
+            prompt=item.compiled_prompt,
+            aspect_ratio=ASPECT_4X5,
+            resolution=res,
+            references=(cleaned,),
+            n=1,
+        )
+        for item in chosen
+    ]
+    if requests:
+        out.candidate_request = request_summary(
+            requests[0], provider=provider.name, model=provider.model
+        )
+    results = await asyncio.gather(*[provider.generate(req) for req in requests])
+    frames = [result.images()[0] for result in results]
     report: QualityReport | None = None
     if quality_check and planner is not None:
         report = await score_frames(
-            planner, reference, tuple(frames), planner_context
+            planner, cleaned, tuple(frames), planner_context
         )
         out.quality = {
             "candidates": [quality_to_dict(item) for item in report.candidates]
         }
+        _append_trace(out, report.llm_trace)
         if report.usage is not None:
             out.quality["usage"] = {
                 "latency_ms": report.usage.latency_ms,
@@ -277,18 +416,20 @@ async def generate_recipe_set(
             }
 
     by_slot = {item.slot: item for item in report.candidates} if report else {}
-    for index, raw in enumerate(frames):
-        item = by_slot.get(index + 1)
+    for index, (raw, request, result, spec) in enumerate(
+        zip(frames, requests, results, chosen, strict=True)
+    ):
+        item = by_slot.get(spec.slot) or by_slot.get(index + 1)
         quality = quality_to_dict(item) if item else None
         hard = bool(item.hard_failed) if item else False
         out.candidates.append(
             _frame(
-                slot=index + 1,
+                slot=spec.slot,
                 kind="primary",
                 role="candidate",
                 jpeg=raw,
-                prompt=prompt,
-                variation=variation,
+                prompt=spec.compiled_prompt,
+                variation=spec.slot - 1,
                 quality=quality,
                 hard_failed=hard,
                 hidden=hard,
@@ -300,23 +441,27 @@ async def generate_recipe_set(
             )
         )
 
+    out.image_requests.extend(_image_call(frame) for frame in out.candidates)
+
     failed = next((row for row in out.candidates if row.hard_failed), None)
     if repair == "production" and failed is not None and not out.auto_repair_used:
         repaired = await _repair_one(
             failed=failed,
             recipe=recipe,
-            reference=reference,
+            reference=cleaned,
             campaign=campaign,
             concept=concept,
             planner_context=planner_context,
             provider=provider,
             planner=planner,
-            variation=variation,
+            variation=failed.slot,
             quality_check=quality_check,
             resolution=res,
             timestamp=timestamp,
+            traces=out.llm_calls,
         )
         out.repairs.append(repaired)
+        out.image_requests.append(_image_call(repaired))
         out.auto_repair_used = True
         if not repaired.hard_failed:
             failed.hidden = True
@@ -335,14 +480,16 @@ async def generate_recipe_set(
             resolution=res,
             timestamp=timestamp,
         )
+        out.image_requests.append(_image_call(out.story))
     if master_crop:
         out.master, out.master_crop_jpeg = await _master(
-            prompt=prompt,
-            reference=reference,
+            prompt=out.prompt,
+            reference=cleaned,
             provider=provider,
             resolution=res,
             timestamp=timestamp,
         )
+        out.image_requests.append(_image_call(out.master))
     return out
 
 
@@ -360,16 +507,9 @@ async def _repair_one(
     quality_check: bool,
     resolution: str,
     timestamp: str,
+    traces: list[dict] | None = None,
 ) -> GeneratedFrame:
-    prompt = build_repair_prompt(
-        build_creative_prompt(
-            concept,
-            campaign,
-            recipe,
-            variation=variation + 10,
-            identity_constraints=list(recipe.get("identity_constraints") or []),
-        )
-    )
+    prompt = build_repair_prompt(failed.prompt)
     request = ImageRequest(
         prompt=prompt,
         aspect_ratio=ASPECT_4X5,
@@ -383,6 +523,8 @@ async def _repair_one(
     if quality_check and planner is not None:
         report = await score_frames(planner, reference, (raw,), planner_context)
         item = report.candidates[0] if report.candidates else None
+        if traces is not None and report.llm_trace is not None:
+            traces.append(report.llm_trace.as_dict())
     quality = quality_to_dict(item) if item else None
     hard = bool(item.hard_failed) if item else False
     return _frame(

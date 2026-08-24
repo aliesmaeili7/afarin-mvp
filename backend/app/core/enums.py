@@ -67,6 +67,7 @@ JOB_TYPES = (
     "copy_rewrite",
     "image_generation",
     "visual_planner",
+    "prompt_architect",
     "visual_quality_check",
 )
 

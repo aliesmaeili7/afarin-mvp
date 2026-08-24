@@ -418,11 +418,14 @@ async def generate_concepts(
             raise
         raise generation_failed() from error
 
+    campaign.planner_result_json = visual_planner.planner_snapshot(
+        result, analyzed_crop=await visual_planner.crop_dict_of(session, campaign)
+    )
     if not result.input_quality.ok:
         campaign.concept_round = (
             None if campaign.concept_round == 0 else campaign.concept_round - 1
         )
-        await session.flush()
+        await session.commit()
         raise invalid(messages.INPUT_QUALITY_NEEDS_FIX)
 
     created = await visual_planner.write_directions(session, campaign, result)

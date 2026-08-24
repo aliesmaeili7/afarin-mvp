@@ -12,6 +12,42 @@ class LlmInputQuality(_Strict):
     reasons: list[str] = Field(default_factory=list)
 
 
+class LlmCropBox(_Strict):
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+    width: float = Field(ge=0.0, le=1.0)
+    height: float = Field(ge=0.0, le=1.0)
+
+
+class LlmReferenceAnalysis(_Strict):
+    cleanliness: Literal[
+        "clean",
+        "peripheral_ui",
+        "isolatable_subject",
+        "overlapping_contamination",
+        "ambiguous",
+    ]
+    product_visibility: Literal["excellent", "good", "weak", "unusable"]
+    screenshot_ui_present: bool
+    watermark_present: bool
+    multiple_products: bool
+    person_present: bool
+    useful_context_present: bool
+    contamination_description: list[str] = Field(default_factory=list)
+    reference_strategy: Literal[
+        "direct_crop",
+        "tighter_crop",
+        "subject_cutout_neutral",
+        "preserve_context_crop",
+        "needs_user_action",
+    ]
+    recommended_crop: LlmCropBox
+    has_recommended_crop: bool
+    preserve_context_reason: str = ""
+    blocking_reasons: list[str] = Field(default_factory=list)
+    brief_image_mismatch: bool = False
+
+
 class LlmDirection(_Strict):
     title_fa: str = Field(min_length=1, max_length=80)
     description_fa: str = Field(min_length=1, max_length=240)
@@ -25,6 +61,7 @@ class LlmDirection(_Strict):
     image_direction: str = Field(min_length=1, max_length=400)
     background_prompt: str = Field(min_length=1, max_length=400)
     text_safe_area: str = Field(min_length=1, max_length=32)
+    compatibility: Literal["preferred", "allowed", "discouraged"] = "allowed"
 
 
 class LlmPlannerResult(_Strict):
@@ -35,6 +72,7 @@ class LlmPlannerResult(_Strict):
     unsuitable_style_ids: list[str]
     unsuitable_template_ids: list[str]
     input_quality: LlmInputQuality
+    reference_analysis: LlmReferenceAnalysis
     directions: list[LlmDirection] = Field(min_length=3, max_length=3)
     forbidden_claims: list[str]
 
@@ -49,7 +87,59 @@ class LlmCandidateQuality(_Strict):
     no_unwanted_duplicates: bool
     ad_composition: bool
     text_safe_space: bool
+    identity_quality: int = Field(ge=1, le=5)
+    style_adherence: int = Field(ge=1, le=5)
+    template_adherence: int = Field(ge=1, le=5)
+    composition_quality: int = Field(ge=1, le=5)
+    visual_attractiveness: int = Field(ge=1, le=5)
+    commercial_usefulness: int = Field(ge=1, le=5)
+    text_safe_space_quality: int = Field(ge=1, le=5)
 
 
 class LlmQualityReport(_Strict):
     candidates: list[LlmCandidateQuality] = Field(min_length=1, max_length=3)
+
+
+class LlmIdentityFeature(_Strict):
+    feature: str = Field(min_length=1, max_length=160)
+    importance: Literal["critical", "important"]
+
+
+class LlmArtDirection(_Strict):
+    visual_thesis: str = Field(min_length=1, max_length=400)
+    product_role: str = Field(min_length=1, max_length=240)
+    style_execution: str = Field(min_length=1, max_length=400)
+    template_execution: str = Field(min_length=1, max_length=400)
+    palette_strategy: str = Field(min_length=1, max_length=240)
+    typography_safe_area: str = Field(min_length=1, max_length=160)
+
+
+class LlmCandidateComposition(_Strict):
+    camera: str = Field(min_length=1, max_length=240)
+    product_scale: str = Field(min_length=1, max_length=160)
+    product_position: str = Field(min_length=1, max_length=160)
+    human_or_pose: str = ""
+    foreground: str = Field(min_length=1, max_length=240)
+    background: str = Field(min_length=1, max_length=240)
+    environment: str = Field(min_length=1, max_length=240)
+    depth: str = Field(min_length=1, max_length=160)
+    text_safe_area: str = Field(min_length=1, max_length=160)
+
+
+class LlmArchitectCandidate(_Strict):
+    slot: Literal[1, 2, 3]
+    intention: Literal["safe", "editorial", "bold"]
+    composition: LlmCandidateComposition
+    lighting: str = Field(min_length=1, max_length=240)
+    palette: str = Field(min_length=1, max_length=240)
+    relevant_props: list[str] = Field(default_factory=list)
+    must_preserve: list[str] = Field(default_factory=list)
+    must_avoid: list[str] = Field(default_factory=list)
+    image_prompt: str = Field(min_length=1, max_length=2500)
+
+
+class LlmPromptArchitectResult(_Strict):
+    reference_summary: str = Field(min_length=1, max_length=400)
+    identity_priority: list[LlmIdentityFeature]
+    art_direction: LlmArtDirection
+    candidates: list[LlmArchitectCandidate] = Field(min_length=3, max_length=3)

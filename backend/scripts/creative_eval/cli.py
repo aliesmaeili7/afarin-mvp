@@ -97,24 +97,29 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _providers(name: str) -> tuple[Any, Any]:
+def _providers(name: str) -> tuple[Any, Any, Any]:
     if name == "stub":
         from app.providers.image.stub import StubImageProvider
-        from app.providers.vision.stub import StubVisualPlanner
+        from app.providers.vision.stub import StubPromptArchitect, StubVisualPlanner
 
-        return StubImageProvider(), StubVisualPlanner()
+        return StubImageProvider(), StubVisualPlanner(), StubPromptArchitect()
     from app.core.config import get_settings
     from app.providers.image.openrouter.client import OpenRouterImageClient
     from app.providers.image.openrouter.provider import OpenRouterImageProvider
     from app.providers.llm.openrouter.client import OpenRouterClient
-    from app.providers.vision.openrouter import OpenRouterVisualPlanner
+    from app.providers.vision.openrouter import (
+        OpenRouterPromptArchitect,
+        OpenRouterVisualPlanner,
+    )
 
     settings = get_settings()
     if not settings.openrouter_api_key:
         raise SystemExit("OPENROUTER_API_KEY is required for --provider openrouter")
+    llm = OpenRouterClient(settings)
     image = OpenRouterImageProvider(OpenRouterImageClient(settings), settings)
-    planner = OpenRouterVisualPlanner(OpenRouterClient(settings), settings)
-    return image, planner
+    planner = OpenRouterVisualPlanner(llm, settings)
+    architect = OpenRouterPromptArchitect(llm, settings)
+    return image, planner, architect
 
 
 def _recipes_for_mode(args: argparse.Namespace, case: dict) -> list[dict[str, str]]:
@@ -174,46 +179,43 @@ def _paid_gates(
     return None
 
 
-def _run_one(
+async def _run_one(
     *,
     case: dict[str, Any],
     plan: EvalPlan,
     recipe_refs: list[dict[str, str]],
     provider: Any,
     planner: Any,
+    architect: Any,
     runs_dir: Path,
 ) -> Path:
     director_result = None
     recipes: list[dict] = []
     directions = None
-
-    async def run() -> Path:
-        nonlocal director_result, recipes, directions
-        if plan.mode == "director":
-            image_bytes = resolve_image(case, require=True).read_bytes()
-            image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=92)
-            director_result = await planner.plan_directions(
-                buffer.getvalue(), planner_context(case)
-            )
-            recipes = recipes_from_director(director_result)
-            directions = list(director_result.directions)
-        else:
-            recipes = recipes_from_fixture(case, recipe_refs)
-            directions = None
-        return await execute_run(
-            case=case,
-            plan=plan,
-            provider=provider,
-            planner=planner,
-            recipes=recipes,
-            directions=directions,
-            director=director_result,
-            runs_dir=runs_dir,
+    if plan.mode == "director":
+        image_bytes = resolve_image(case, require=True).read_bytes()
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=92)
+        director_result = await planner.plan_directions(
+            buffer.getvalue(), planner_context(case)
         )
-
-    return asyncio.run(run())
+        recipes = recipes_from_director(director_result)
+        directions = list(director_result.directions)
+    else:
+        recipes = recipes_from_fixture(case, recipe_refs)
+        directions = None
+    return await execute_run(
+        case=case,
+        plan=plan,
+        provider=provider,
+        planner=planner,
+        architect=architect,
+        recipes=recipes,
+        directions=directions,
+        director=director_result,
+        runs_dir=runs_dir,
+    )
 
 
 def _print_review(run_dir: Path, open_browser: bool) -> None:
@@ -302,20 +304,26 @@ def _run_experiment(args: argparse.Namespace) -> int:
         print("\n--dry-run: zero provider calls.")
         return 0
 
-    provider, planner = _providers(args.provider)
-    written: list[Path] = []
-    for job, plan in zip(jobs, plans, strict=True):
-        run_dir = _run_one(
-            case=job.case,
-            plan=plan,
-            recipe_refs=job.recipe_refs,
-            provider=provider,
-            planner=planner,
-            runs_dir=runs_dir,
-        )
-        written.append(run_dir)
-        print(f"wrote {run_dir}")
-    print(f"\nbatch {experiment['experiment_id']}: {len(written)} runs")
+    provider, planner, architect = _providers(args.provider)
+
+    async def batch() -> list[Path]:
+        written: list[Path] = []
+        for job, plan in zip(jobs, plans, strict=True):
+            run_dir = await _run_one(
+                case=job.case,
+                plan=plan,
+                recipe_refs=job.recipe_refs,
+                provider=provider,
+                planner=planner,
+                architect=architect,
+                runs_dir=runs_dir,
+            )
+            written.append(run_dir)
+            print(f"wrote {run_dir}", flush=True)
+        return written
+
+    written = asyncio.run(batch())
+    print(f"\nbatch {experiment['experiment_id']}: {len(written)} runs", flush=True)
     if written:
         print("review: http://localhost:3000/dev/creative-eval")
         if args.open_browser:
@@ -397,14 +405,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("\n--dry-run: zero provider calls.")
         return 0
 
-    provider, planner = _providers(args.provider)
-    run_dir = _run_one(
-        case=case,
-        plan=plan,
-        recipe_refs=recipe_refs,
-        provider=provider,
-        planner=planner,
-        runs_dir=runs_dir,
+    provider, planner, architect = _providers(args.provider)
+    run_dir = asyncio.run(
+        _run_one(
+            case=case,
+            plan=plan,
+            recipe_refs=recipe_refs,
+            provider=provider,
+            planner=planner,
+            architect=architect,
+            runs_dir=runs_dir,
+        )
     )
     _print_review(run_dir, args.open_browser)
     return 0

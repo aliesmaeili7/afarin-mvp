@@ -24,8 +24,16 @@ export function CatalogPicker({
 }) {
   const { t } = useI18n();
   if (!catalog) return <Skeleton className="h-40 w-full" />;
+  const style = entryOf(catalog, "styles", styleId ?? "");
+  const template = entryOf(catalog, "templates", templateId ?? "");
+  const discouraged = pairingIsDiscouraged(style, template);
   return (
     <div className="flex flex-col gap-5">
+      {discouraged ? (
+        <p className="rounded-2xl bg-coral-50 px-3 py-2 text-sm text-coral-700">
+          {t("wizard.discouragedPair")}
+        </p>
+      ) : null}
       <section>
         <h2 className="mb-2 text-sm font-bold text-ink-700">{t("wizard.styleSection")}</h2>
         <div className="grid grid-cols-2 gap-2">
@@ -120,4 +128,26 @@ export function entryOf(
   id: string,
 ) {
   return catalog?.[kind].find((item) => item.id === id);
+}
+
+function pairingIsDiscouraged(
+  style: VisualCatalogEntry | undefined,
+  template: VisualCatalogEntry | undefined,
+) {
+  if (!style || !template) return false;
+  const preferred =
+    style.preferred_templates?.includes(template.id) ||
+    template.preferred_styles?.includes(style.id);
+  let discouraged =
+    Boolean(style.discouraged_templates?.includes(template.id)) ||
+    Boolean(template.discouraged_styles?.includes(style.id));
+  if (
+    template.human_requirement === "required" &&
+    style.person_affinity === "low" &&
+    !preferred
+  ) {
+    discouraged = true;
+  }
+  if (preferred && discouraged) return false;
+  return discouraged;
 }

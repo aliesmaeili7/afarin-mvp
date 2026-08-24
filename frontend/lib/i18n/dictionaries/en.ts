@@ -306,6 +306,13 @@ export const en: DeepStringify<typeof fa> = {
     recommendedRecipe: "Afarin’s visual recommendation",
     chooseDirectionFirst: "Pick a direction first.",
     hideCatalog: "Close the style catalog",
+    tighterCropTitle: "The crop is a bit loose",
+    tighterCropHelp:
+      "Afarin suggests a tighter crop so the product reads more clearly. Adjust it here if you want.",
+    tighterCropApply: "Use the suggested crop",
+    tighterCropSkip: "Keep my crop",
+    discouragedPair:
+      "This style and layout pairing is usually weak. You can continue, but the ad may look generic.",
   },
   visual: {
     styles: {

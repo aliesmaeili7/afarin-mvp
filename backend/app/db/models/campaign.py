@@ -280,6 +280,7 @@ class CampaignVisualAttempt(Base):
     source: Mapped[str] = mapped_column(String, nullable=False)
     recipe_json: Mapped[dict] = json_column("recipe_json")
     planner_json: Mapped[dict] = json_column("planner_json")
+    prompt_architect_json: Mapped[dict] = json_column("prompt_architect_json")
     status: Mapped[str] = mapped_column(String, nullable=False)
     auto_repair_used: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")

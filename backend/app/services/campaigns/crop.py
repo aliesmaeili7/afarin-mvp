@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 FULL_CROP = {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0}
 MIN_SIDE = 0.12
+# Below this IoU the visible product/context changed enough to rerun Director.
+MATERIAL_CROP_IOU = 0.85
+# Suggested tighter crops looser than this are shown to the seller.
+TIGHTER_CROP_NOTICE_IOU = 0.90
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +61,47 @@ def _valid(rect: CropRect) -> bool:
     if rect.x < -0.001 or rect.y < -0.001:
         return False
     return rect.x + rect.width <= 1.001 and rect.y + rect.height <= 1.001
+
+
+def crop_iou(left: CropRect, right: CropRect) -> float:
+    ax0, ay0 = left.x, left.y
+    ax1, ay1 = left.x + left.width, left.y + left.height
+    bx0, by0 = right.x, right.y
+    bx1, by1 = right.x + right.width, right.y + right.height
+    ix0, iy0 = max(ax0, bx0), max(ay0, by0)
+    ix1, iy1 = min(ax1, bx1), min(ay1, by1)
+    inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
+    union = left.width * left.height + right.width * right.height - inter
+    if union <= 0:
+        return 0.0
+    return inter / union
+
+
+def is_material_crop_change(previous: CropRect, current: CropRect) -> bool:
+    """True when the visible product/context likely changed, not just UI trim."""
+    return crop_iou(previous, current) < MATERIAL_CROP_IOU
+
+
+def should_offer_tighter_crop(approved: CropRect, suggested: CropRect) -> bool:
+    return crop_iou(approved, suggested) < TIGHTER_CROP_NOTICE_IOU
+
+
+def clamp_crop(rect: CropRect, *, pad: float = 0.03) -> CropRect:
+    """Pad slightly then clamp into valid 0–1 space. Director boxes are approximate."""
+    x = rect.x - pad * rect.width
+    y = rect.y - pad * rect.height
+    width = rect.width * (1 + 2 * pad)
+    height = rect.height * (1 + 2 * pad)
+    if x < 0:
+        width += x
+        x = 0.0
+    if y < 0:
+        height += y
+        y = 0.0
+    width = min(width, 1.0 - x)
+    height = min(height, 1.0 - y)
+    clamped = CropRect(x=x, y=y, width=width, height=height)
+    return clamped if _valid(clamped) else CropRect(**FULL_CROP)
 
 
 def suggest_crop(image_bytes: bytes) -> CropRect:
