@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import io
+import json
 import sys
+import time
 import webbrowser
 from collections.abc import Sequence
 from decimal import Decimal
@@ -36,6 +38,7 @@ from scripts.creative_eval.runner import (
     recipes_from_director,
     recipes_from_fixture,
 )
+from scripts.creative_eval.timing import utc_now, write_batch_timing
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -308,19 +311,44 @@ def _run_experiment(args: argparse.Namespace) -> int:
 
     async def batch() -> list[Path]:
         written: list[Path] = []
-        for job, plan in zip(jobs, plans, strict=True):
-            run_dir = await _run_one(
-                case=job.case,
-                plan=plan,
-                recipe_refs=job.recipe_refs,
-                provider=provider,
-                planner=planner,
-                architect=architect,
-                runs_dir=runs_dir,
+        started_at = utc_now()
+        started_perf = time.perf_counter()
+        run_rows: list[dict] = []
+        try:
+            for job, plan in zip(jobs, plans, strict=True):
+                run_dir = await _run_one(
+                    case=job.case,
+                    plan=plan,
+                    recipe_refs=job.recipe_refs,
+                    provider=provider,
+                    planner=planner,
+                    architect=architect,
+                    runs_dir=runs_dir,
+                )
+                written.append(run_dir)
+                timing_path = run_dir / "timing.json"
+                wall_ms = None
+                if timing_path.is_file():
+                    payload = json.loads(timing_path.read_text(encoding="utf-8"))
+                    wall_ms = payload.get("wall_time_ms")
+                run_rows.append(
+                    {
+                        "run_id": run_dir.name,
+                        "case_id": plan.case_id,
+                        "wall_time_ms": wall_ms,
+                    }
+                )
+                print(f"wrote {run_dir}", flush=True)
+            return written
+        finally:
+            write_batch_timing(
+                runs_dir,
+                experiment_id=experiment["experiment_id"],
+                started_at=started_at,
+                started_perf=started_perf,
+                finished_perf=time.perf_counter(),
+                runs=run_rows,
             )
-            written.append(run_dir)
-            print(f"wrote {run_dir}", flush=True)
-        return written
 
     written = asyncio.run(batch())
     print(f"\nbatch {experiment['experiment_id']}: {len(written)} runs", flush=True)

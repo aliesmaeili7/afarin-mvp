@@ -12,10 +12,13 @@ from sqlalchemy import select
 from app.content.visual_catalog import DISCOURAGED_WARNING_FA, compatibility
 from app.db.models import Campaign, GenerationJob, ProductImage
 from app.db.session import get_sessionmaker
+from app.providers.image import set_image_provider
 from app.providers.image.creative_prompts import (
-    SAFETY_SUFFIX,
-    compile_architect_result,
-    compile_creative_prompt,
+    INVENTED_TEXT_RULE,
+)
+from app.providers.vision.architect_validate import (
+    FINAL_PROMPT_MAX_CHARS,
+    validate_architect_result,
 )
 from app.providers.vision.stub import SMART_DIRECTIONS, stub_architect_result
 from app.services.campaigns.crop import (
@@ -31,7 +34,6 @@ from tests.conftest import auth_header
 from tests.fakes import FakeImageProvider
 from tests.test_creative import _creative_campaign
 from tests.test_visuals import _generate
-from app.providers.image import set_image_provider
 
 
 def _jpeg(width: int = 320, height: int = 400, color=(40, 80, 120)) -> bytes:
@@ -51,7 +53,12 @@ class PunchCutout:
         assert pixels is not None
         for y in range(height):
             for x in range(width):
-                if x < margin or y < margin or x >= width - margin or y >= height - margin:
+                if (
+                    x < margin
+                    or y < margin
+                    or x >= width - margin
+                    or y >= height - margin
+                ):
                     red, green, blue, _alpha = pixels[x, y]
                     pixels[x, y] = (red, green, blue, 0)
         buffer = io.BytesIO()
@@ -80,9 +87,7 @@ def test_compatibility_examples() -> None:
 
 
 def test_custom_discouraged_recipe_warns() -> None:
-    recipe = recipe_from_ids(
-        "fashion_editorial", "hero_product", source="custom"
-    )
+    recipe = recipe_from_ids("fashion_editorial", "hero_product", source="custom")
     assert recipe["compatibility"] == "discouraged"
     assert recipe["warning_fa"] == DISCOURAGED_WARNING_FA
 
@@ -94,16 +99,133 @@ def test_stub_director_is_not_forced_surreal() -> None:
     assert ("surreal", "giant_miniature_world") not in ids
 
 
-def test_compiler_appends_safety_suffix() -> None:
-    compiled = compile_architect_result(stub_architect_result())
-    assert len(compiled.candidates) == 3
-    prompts = [item.compiled_prompt for item in compiled.candidates]
-    assert len(set(prompts)) == 3
-    for prompt in prompts:
-        assert SAFETY_SUFFIX in prompt
-        assert "4:5 Instagram advertisement still" in prompt
-    raw = compile_creative_prompt(stub_architect_result().candidates[0])
-    assert raw.endswith("4:5 Instagram advertisement still") or SAFETY_SUFFIX in raw
+def test_stub_slots_differ_structurally() -> None:
+    planned = stub_architect_result()
+    assert len(planned.candidates) == 3
+    cameras = {item.composition.camera for item in planned.candidates}
+    environments = {item.scene.environment for item in planned.candidates}
+    safe = {item.typography_safe_area.position for item in planned.candidates}
+    prompts = {item.final_prompt for item in planned.candidates}
+    assert len(cameras) == 3
+    assert len(environments) == 3
+    assert len(safe) == 3
+    assert len(prompts) == 3
+    assert all(item.final_prompt for item in planned.candidates)
+    assert all(
+        len(item.final_prompt) <= FINAL_PROMPT_MAX_CHARS for item in planned.candidates
+    )
+    validation = validate_architect_result(
+        planned, render_strategy="reference_transform"
+    )
+    assert validation.ok
+
+
+def test_validator_pass_through_does_not_rewrite() -> None:
+    planned = stub_architect_result()
+    original = planned.candidates[0].final_prompt
+    validation = validate_architect_result(
+        planned, render_strategy="reference_transform"
+    )
+    assert validation.ok
+    assert planned.candidates[0].final_prompt is original
+    assert planned.candidates[0].final_prompt == original
+
+
+def test_validator_rejects_bad_aspect_missing_safe_area_and_oversize() -> None:
+    from dataclasses import replace
+
+    planned = stub_architect_result()
+    bad_aspect = replace(
+        planned.candidates[0],
+        output=replace(planned.candidates[0].output, aspect_ratio="1:1"),
+    )
+    missing_safe = replace(
+        planned.candidates[1],
+        typography_safe_area=replace(
+            planned.candidates[1].typography_safe_area, position="", description=""
+        ),
+    )
+    oversize = replace(
+        planned.candidates[2],
+        final_prompt=("this exact product on a table. " * 80)[:900],
+    )
+    result = replace(planned, candidates=(bad_aspect, missing_safe, oversize))
+    validation = validate_architect_result(
+        result, render_strategy="reference_transform"
+    )
+    assert not validation.ok
+    blob = " ".join(validation.errors)
+    assert "4:5" in blob
+    assert "typography_safe_area" in blob
+    assert "exceeds 800" in blob
+
+
+def test_validator_rejects_strategy_mismatch_and_section_dump() -> None:
+    from dataclasses import replace
+
+    planned = stub_architect_result()
+    dumped = replace(
+        planned.candidates[0],
+        final_prompt="VISUAL EXECUTION\nthis exact product on a table with empty type space.",
+        render_strategy="preserved_product_composite",
+    )
+    result = replace(
+        planned, candidates=(dumped, planned.candidates[1], planned.candidates[2])
+    )
+    validation = validate_architect_result(
+        result, render_strategy="reference_transform"
+    )
+    assert not validation.ok
+    blob = " ".join(validation.errors)
+    assert "render_strategy" in blob
+    assert "section dump" in blob
+
+
+def test_seedream_prompt_equals_final_prompt() -> None:
+    from types import SimpleNamespace
+
+    from app.providers.vision.base import PlannerContext
+    from app.services.campaigns.creative_core import generate_recipe_set
+    from app.services.campaigns.recipes import recipe_from_ids
+    from tests.fakes import FakeImageProvider
+
+    async def run() -> None:
+        fake = FakeImageProvider()
+        result = await generate_recipe_set(
+            recipe=recipe_from_ids(
+                "fashion_editorial", "model_using", source="eval_fixed"
+            ),
+            reference=_jpeg(),
+            campaign=SimpleNamespace(visual_style="friendly"),
+            concept=None,
+            planner_context=PlannerContext(
+                product_name="هودی",
+                description=None,
+                brand_name=None,
+                price_text=None,
+                audience=None,
+                objective="sell_product",
+                visual_style="friendly",
+            ),
+            provider=fake,
+            planner=None,
+            n=1,
+        )
+        assert result.error is None
+        assert result.architect is not None
+        final = result.architect["candidates"][0]["final_prompt"]
+        assert fake.calls[0].prompt == final
+        assert result.prompt == final
+        assert "VISUAL EXECUTION" not in final
+        assert "DO NOT ADD" not in final
+        assert INVENTED_TEXT_RULE in final
+        assert len(final) <= FINAL_PROMPT_MAX_CHARS
+        assert result.architect["validation"]["ok"] is True
+        assert result.image_requests[0]["prompt"] == final
+
+    import asyncio
+
+    asyncio.run(run())
 
 
 def test_passthrough_cutout_is_rejected() -> None:
@@ -147,9 +269,9 @@ def test_overlap_strategy_blocks() -> None:
         decide_strategy({"cleanliness": "overlapping_contamination"})
         == "needs_user_action"
     )
-    assert decide_strategy({"person_present": True, "reference_strategy": "subject_cutout_neutral"}) == (
-        "preserve_context_crop"
-    )
+    assert decide_strategy(
+        {"person_present": True, "reference_strategy": "subject_cutout_neutral"}
+    ) == ("preserve_context_crop")
 
 
 async def test_seedream_gets_only_cleaned_reference(
@@ -175,7 +297,9 @@ async def test_seedream_gets_only_cleaned_reference(
         assert campaign is not None
         image = (
             await session.scalars(
-                select(ProductImage).where(ProductImage.product_id == campaign.product_id)
+                select(ProductImage).where(
+                    ProductImage.product_id == campaign.product_id
+                )
             )
         ).first()
         assert image is not None
@@ -191,9 +315,7 @@ async def test_seedream_gets_only_cleaned_reference(
         assert ref_bytes != original
         jobs = list(
             await session.scalars(
-                select(GenerationJob).where(
-                    GenerationJob.campaign_id == campaign.id
-                )
+                select(GenerationJob).where(GenerationJob.campaign_id == campaign.id)
             )
         )
     types = {job.job_type for job in jobs}
@@ -239,3 +361,397 @@ async def test_material_crop_invalidates_director(client: AsyncClient, storage) 
     assert after["campaign"]["status"] == "brief_complete"
     assert after["concepts"] == []
     assert after["campaign"]["planner_result_json"] == {}
+
+
+def _isolatable_analysis(**overrides: object) -> dict:
+    payload = {
+        "cleanliness": "isolatable_subject",
+        "person_present": False,
+        "useful_context_present": False,
+        "product_visibility": "good",
+        "reference_strategy": "direct_crop",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_selector_jar_pedestal_with_cutout_is_preserved() -> None:
+    from app.services.campaigns.render_strategy import (
+        PRESERVED_PRODUCT_COMPOSITE,
+        REFERENCE_TRANSFORM,
+        choose_creative_render_strategy,
+    )
+
+    png = asyncio_run_cutout()
+    choice = choose_creative_render_strategy(
+        style_id="photoreal_commercial",
+        template_id="product_pedestal",
+        analysis=_isolatable_analysis(),
+        product_type="cosmetics",
+        cutout_png=png,
+    )
+    assert choice.strategy == PRESERVED_PRODUCT_COMPOSITE
+
+    worn = choose_creative_render_strategy(
+        style_id="fashion_editorial",
+        template_id="model_using",
+        analysis=_isolatable_analysis(),
+        product_type="hoodie",
+        cutout_png=png,
+    )
+    assert worn.strategy == REFERENCE_TRANSFORM
+
+    person = choose_creative_render_strategy(
+        style_id="photoreal_commercial",
+        template_id="hero_product",
+        analysis=_isolatable_analysis(person_present=True),
+        product_type="cosmetics",
+        cutout_png=png,
+    )
+    assert person.strategy == REFERENCE_TRANSFORM
+
+    none = choose_creative_render_strategy(
+        style_id="photoreal_commercial",
+        template_id="product_pedestal",
+        analysis=_isolatable_analysis(),
+        product_type="cosmetics",
+        cutout_png=None,
+    )
+    assert none.strategy == REFERENCE_TRANSFORM
+
+
+def asyncio_run_cutout() -> bytes:
+    import asyncio
+
+    async def run() -> bytes:
+        set_cutout(PunchCutout())
+        png = await PunchCutout().remove_background(_jpeg(color=(180, 20, 20)))
+        assert png is not None
+        return png
+
+    return asyncio.run(run())
+
+
+def test_passthrough_cutout_is_not_preserved() -> None:
+    from app.services.campaigns.reference_prep import extract_validated_cutout
+    from app.services.campaigns.render_strategy import (
+        REFERENCE_TRANSFORM,
+        choose_creative_render_strategy,
+    )
+
+    async def run() -> None:
+        set_cutout(PassthroughCutout())
+        png = await extract_validated_cutout(_jpeg())
+        assert png is None
+        choice = choose_creative_render_strategy(
+            style_id="photoreal_commercial",
+            template_id="product_pedestal",
+            analysis=_isolatable_analysis(),
+            product_type="cosmetics",
+            cutout_png=png,
+        )
+        assert choice.strategy == REFERENCE_TRANSFORM
+
+    import asyncio
+
+    asyncio.run(run())
+
+
+def test_scene_request_has_no_product_reference() -> None:
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.providers.image.base import ImageResult, ImageUsage
+    from app.providers.vision.base import PlannerContext
+    from app.services.campaigns.creative_core import generate_recipe_set
+    from app.services.campaigns.recipes import recipe_from_ids
+    from tests.fakes import FakeImageProvider
+
+    async def run() -> None:
+        set_cutout(PunchCutout())
+        fake = FakeImageProvider()
+        scene = io.BytesIO()
+        Image.new("RGB", (400, 500), (30, 120, 40)).save(scene, format="JPEG")
+        fake.results = [
+            ImageResult(
+                content=scene.getvalue(),
+                media_type="image/jpeg",
+                usage=ImageUsage(latency_ms=4, cost_usd=Decimal("0"), model="fake"),
+            )
+        ]
+        result = await generate_recipe_set(
+            recipe=recipe_from_ids(
+                "photoreal_commercial", "product_pedestal", source="eval_fixed"
+            ),
+            reference=_jpeg(color=(180, 20, 20)),
+            campaign=SimpleNamespace(visual_style="luxury"),
+            concept=None,
+            planner_context=PlannerContext(
+                product_name="کرم",
+                description=None,
+                brand_name=None,
+                price_text=None,
+                audience=None,
+                objective="sell_product",
+                visual_style="luxury",
+            ),
+            provider=fake,
+            planner=None,
+            n=1,
+            analysis=_isolatable_analysis(),
+            product_type="cosmetics",
+            category="cosmetics",
+        )
+        assert result.render_strategy == "preserved_product_composite"
+        assert fake.calls
+        assert fake.calls[0].references == ()
+        assert "no product drawn" in result.prompt
+        assert result.prompt == result.architect["candidates"][0]["final_prompt"]
+        assert "this exact seller product" not in result.prompt
+
+    import asyncio
+
+    asyncio.run(run())
+
+
+def test_cutout_pixels_survive_paste() -> None:
+    from app.providers.vision.base import ProductPlacement
+    from app.services.campaigns.product_composite import composite_cutout_onto_scene
+
+    scene = io.BytesIO()
+    Image.new("RGB", (400, 500), (10, 180, 20)).save(scene, format="JPEG")
+    cut = Image.new("RGBA", (200, 260), (0, 0, 0, 0))
+    pixels = cut.load()
+    assert pixels is not None
+    for y in range(40, 220):
+        for x in range(30, 170):
+            pixels[x, y] = (220, 30, 30, 255)
+    buf = io.BytesIO()
+    cut.save(buf, format="PNG")
+    composed = composite_cutout_onto_scene(
+        scene.getvalue(),
+        buf.getvalue(),
+        ProductPlacement(x=0.5, y=0.55, width=0.4, contact_surface="plinth"),
+    )
+    image = Image.open(io.BytesIO(composed)).convert("RGB")
+    sample = image.getpixel((200, 275))
+    assert sample[0] > sample[1]
+    assert sample[0] > 150
+
+
+def test_unusable_preserved_placement_retries_as_transform() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from app.providers.vision.base import PlannerContext, PromptArchitectResult
+    from app.providers.vision.stub import StubPromptArchitect
+    from app.services.campaigns.creative_core import generate_recipe_set
+    from app.services.campaigns.recipes import recipe_from_ids
+    from tests.fakes import FakeImageProvider
+
+    class FlipArchitect:
+        name = "flip"
+        model = None
+
+        def __init__(self) -> None:
+            self.calls = 0
+            self._inner = StubPromptArchitect()
+            self.scene_prompt = ""
+
+        async def plan_candidates(
+            self, cleaned, context, *, original=None, correction=None
+        ):
+            self.calls += 1
+            if self.calls == 1:
+                planned = stub_architect_result(
+                    render_strategy="preserved_product_composite"
+                )
+                self.scene_prompt = planned.candidates[0].final_prompt
+                broken = tuple(
+                    replace(
+                        item,
+                        has_product_placement=False,
+                        product_placement=None,
+                    )
+                    for item in planned.candidates
+                )
+                return PromptArchitectResult(
+                    reference_summary=planned.reference_summary,
+                    candidates=broken,
+                )
+            return await self._inner.plan_candidates(
+                cleaned, context, original=original, correction=correction
+            )
+
+    async def run() -> None:
+        set_cutout(PunchCutout())
+        fake = FakeImageProvider()
+        architect = FlipArchitect()
+        result = await generate_recipe_set(
+            recipe=recipe_from_ids(
+                "photoreal_commercial", "product_pedestal", source="eval_fixed"
+            ),
+            reference=_jpeg(color=(180, 20, 20)),
+            campaign=SimpleNamespace(visual_style="luxury"),
+            concept=None,
+            planner_context=PlannerContext(
+                product_name="کرم",
+                description=None,
+                brand_name=None,
+                price_text=None,
+                audience=None,
+                objective="sell_product",
+                visual_style="luxury",
+            ),
+            provider=fake,
+            planner=None,
+            n=1,
+            analysis=_isolatable_analysis(),
+            product_type="cosmetics",
+            category="cosmetics",
+            architect=architect,
+        )
+        assert architect.calls == 2
+        assert result.error is None
+        assert result.architect["validation"]["ok"] is True
+        assert result.architect["validation"]["retry_used"] is True
+        assert result.architect["validation"]["switched_to_transform"] is True
+        assert result.render_strategy == "reference_transform"
+        assert fake.calls[0].references != ()
+        assert fake.calls[0].prompt != architect.scene_prompt
+        assert "this exact seller product" in fake.calls[0].prompt
+        assert "no product drawn" not in fake.calls[0].prompt
+
+    import asyncio
+
+    asyncio.run(run())
+
+
+def test_validation_failure_after_retry_makes_zero_image_calls() -> None:
+    from types import SimpleNamespace
+
+    from app.providers.vision.base import PlannerContext
+    from app.services.campaigns.creative_core import generate_recipe_set
+    from app.services.campaigns.recipes import recipe_from_ids
+    from tests.fakes import FakeImageProvider
+
+    class BadArchitect:
+        name = "bad"
+        model = None
+        calls = 0
+
+        async def plan_candidates(
+            self, cleaned, context, *, original=None, correction=None
+        ):
+            del cleaned, context, original, correction
+            self.calls += 1
+            planned = stub_architect_result()
+            from dataclasses import replace
+
+            oversize = "this exact product sits on a table. " * 40
+            return replace(
+                planned,
+                candidates=tuple(
+                    replace(item, final_prompt=oversize[:900])
+                    for item in planned.candidates
+                ),
+            )
+
+    async def run() -> None:
+        fake = FakeImageProvider()
+        architect = BadArchitect()
+        result = await generate_recipe_set(
+            recipe=recipe_from_ids(
+                "fashion_editorial", "model_using", source="eval_fixed"
+            ),
+            reference=_jpeg(),
+            campaign=SimpleNamespace(visual_style="friendly"),
+            concept=None,
+            planner_context=PlannerContext(
+                product_name="هودی",
+                description=None,
+                brand_name=None,
+                price_text=None,
+                audience=None,
+                objective="sell_product",
+                visual_style="friendly",
+            ),
+            provider=fake,
+            planner=None,
+            n=1,
+            architect=architect,
+        )
+        assert architect.calls == 2
+        assert result.error
+        assert "exceeds 800" in result.error
+        assert fake.calls == []
+        assert result.architect["validation"]["ok"] is False
+        assert result.architect["validation"]["retry_used"] is True
+
+    import asyncio
+
+    asyncio.run(run())
+
+
+def test_implausible_composite_does_not_reuse_scene_prompt() -> None:
+    from decimal import Decimal
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from app.providers.image.base import ImageResult, ImageUsage
+    from app.providers.vision.base import PlannerContext
+    from app.services.campaigns.creative_core import generate_recipe_set
+    from app.services.campaigns.recipes import recipe_from_ids
+    from tests.fakes import FakeImageProvider
+
+    async def run() -> None:
+        set_cutout(PunchCutout())
+        fake = FakeImageProvider()
+        scene = io.BytesIO()
+        Image.new("RGB", (400, 500), (30, 120, 40)).save(scene, format="JPEG")
+        fake.results = [
+            ImageResult(
+                content=scene.getvalue(),
+                media_type="image/jpeg",
+                usage=ImageUsage(latency_ms=4, cost_usd=Decimal("0"), model="fake"),
+            )
+        ]
+        with patch(
+            "app.services.campaigns.creative_core.composite_looks_plausible",
+            return_value=False,
+        ):
+            result = await generate_recipe_set(
+                recipe=recipe_from_ids(
+                    "photoreal_commercial", "product_pedestal", source="eval_fixed"
+                ),
+                reference=_jpeg(color=(180, 20, 20)),
+                campaign=SimpleNamespace(visual_style="luxury"),
+                concept=None,
+                planner_context=PlannerContext(
+                    product_name="کرم",
+                    description=None,
+                    brand_name=None,
+                    price_text=None,
+                    audience=None,
+                    objective="sell_product",
+                    visual_style="luxury",
+                ),
+                provider=fake,
+                planner=None,
+                n=1,
+                analysis=_isolatable_analysis(),
+                product_type="cosmetics",
+                category="cosmetics",
+            )
+        assert len(fake.calls) == 1
+        assert fake.calls[0].references == ()
+        assert "no product drawn" in fake.calls[0].prompt
+        assert result.candidates[0].hard_failed
+        assert (
+            "composite could not plausibly integrate"
+            in (result.candidates[0].quality or {}).get("reasons", [""])[-1]
+        )
+
+    import asyncio
+
+    asyncio.run(run())

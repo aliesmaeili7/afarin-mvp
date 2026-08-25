@@ -105,41 +105,84 @@ class LlmIdentityFeature(_Strict):
     importance: Literal["critical", "important"]
 
 
-class LlmArtDirection(_Strict):
-    visual_thesis: str = Field(min_length=1, max_length=400)
-    product_role: str = Field(min_length=1, max_length=240)
-    style_execution: str = Field(min_length=1, max_length=400)
-    template_execution: str = Field(min_length=1, max_length=400)
-    palette_strategy: str = Field(min_length=1, max_length=240)
-    typography_safe_area: str = Field(min_length=1, max_length=160)
+class LlmExistingTextAndGraphics(_Strict):
+    preserve: bool
+    instructions: str = Field(default="", max_length=240)
+
+
+class LlmArchitectProduct(_Strict):
+    role_in_scene: str = Field(min_length=1, max_length=240)
+    identity_priority: list[LlmIdentityFeature] = Field(default_factory=list)
+    existing_text_and_graphics: LlmExistingTextAndGraphics
+
+
+class LlmArchitectScene(_Strict):
+    environment: str = Field(min_length=1, max_length=240)
+    story_or_context: str = Field(min_length=1, max_length=240)
+    foreground: str = Field(min_length=1, max_length=240)
+    background: str = Field(min_length=1, max_length=240)
+    props: list[str] = Field(default_factory=list)
 
 
 class LlmCandidateComposition(_Strict):
     camera: str = Field(min_length=1, max_length=240)
+    lens_feel: str = Field(min_length=1, max_length=160)
     product_scale: str = Field(min_length=1, max_length=160)
     product_position: str = Field(min_length=1, max_length=160)
     human_or_pose: str = ""
-    foreground: str = Field(min_length=1, max_length=240)
-    background: str = Field(min_length=1, max_length=240)
-    environment: str = Field(min_length=1, max_length=240)
     depth: str = Field(min_length=1, max_length=160)
-    text_safe_area: str = Field(min_length=1, max_length=160)
+
+
+class LlmArchitectLighting(_Strict):
+    direction: str = Field(min_length=1, max_length=160)
+    quality: str = Field(min_length=1, max_length=160)
+    mood: str = Field(min_length=1, max_length=160)
+
+
+class LlmColorAndMaterial(_Strict):
+    palette: str = Field(min_length=1, max_length=240)
+    material_treatment: str = Field(min_length=1, max_length=240)
+
+
+class LlmTypographySafeArea(_Strict):
+    position: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1, max_length=240)
+
+
+class LlmArchitectOutput(_Strict):
+    aspect_ratio: str = Field(min_length=1, max_length=16)
+    format: str = Field(min_length=1, max_length=80)
+
+
+class LlmProductPlacement(_Strict):
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+    width: float = Field(ge=0.0, le=1.0)
+    rotation_degrees: float = Field(ge=-45.0, le=45.0)
+    contact_surface: str = ""
+    shadow_direction: str = ""
+    shadow_softness: str = ""
 
 
 class LlmArchitectCandidate(_Strict):
     slot: Literal[1, 2, 3]
     intention: Literal["safe", "editorial", "bold"]
+    creative_intent: str = Field(min_length=1, max_length=240)
+    product: LlmArchitectProduct
+    scene: LlmArchitectScene
     composition: LlmCandidateComposition
-    lighting: str = Field(min_length=1, max_length=240)
-    palette: str = Field(min_length=1, max_length=240)
-    relevant_props: list[str] = Field(default_factory=list)
+    lighting: LlmArchitectLighting
+    color_and_material: LlmColorAndMaterial
+    typography_safe_area: LlmTypographySafeArea
     must_preserve: list[str] = Field(default_factory=list)
-    must_avoid: list[str] = Field(default_factory=list)
-    image_prompt: str = Field(min_length=1, max_length=2500)
+    must_not_generate: list[str] = Field(default_factory=list)
+    render_strategy: Literal["reference_transform", "preserved_product_composite"]
+    has_product_placement: bool
+    product_placement: LlmProductPlacement
+    output: LlmArchitectOutput
+    final_prompt: str = Field(min_length=1, max_length=1200)
 
 
 class LlmPromptArchitectResult(_Strict):
     reference_summary: str = Field(min_length=1, max_length=400)
-    identity_priority: list[LlmIdentityFeature]
-    art_direction: LlmArtDirection
     candidates: list[LlmArchitectCandidate] = Field(min_length=3, max_length=3)

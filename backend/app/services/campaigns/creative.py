@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import time
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import messages
 from app.core.config import get_settings
 from app.core.enums import FEED_SCENE_TYPES, STORY_SCENE_TYPES
-from app.core.errors import invalid, not_found
+from app.core.errors import generation_failed, invalid, not_found
 from app.db.models import (
     Campaign,
     CampaignAsset,
@@ -26,9 +27,13 @@ from app.db.models import (
     GenerationJob,
 )
 from app.providers.image import get_image_provider
-from app.providers.image.base import ImageApiError, ImageRequest, ImageResult, ImageUsage
+from app.providers.image.base import (
+    ImageApiError,
+    ImageRequest,
+    ImageResult,
+    ImageUsage,
+)
 from app.providers.image.creative_prompts import (
-    compile_architect_result,
     build_repair_prompt,
     build_story_prompt,
 )
@@ -37,7 +42,16 @@ from app.providers.vision.base import CandidateQuality, PlannerContext, QualityR
 from app.services.campaigns import cost as budgets
 from app.services.campaigns import jobs as job_records
 from app.services.campaigns import queries
-from app.services.campaigns.creative_core import architect_context_for, quality_to_dict
+from app.services.campaigns.creative_core import (
+    architect_context_for,
+    plan_slots,
+    plan_validated_candidates,
+    quality_to_dict,
+)
+from app.services.campaigns.product_composite import (
+    composite_cutout_onto_scene,
+    composite_looks_plausible,
+)
 from app.services.campaigns.product_media import (
     load_creative_reference_bytes,
     load_original_bytes,
@@ -47,7 +61,12 @@ from app.services.campaigns.product_media import (
 from app.services.campaigns.reference_prep import (
     assert_not_blocked,
     decide_strategy,
+    extract_validated_cutout,
     prepare_clean_jpeg,
+)
+from app.services.campaigns.render_strategy import (
+    REFERENCE_TRANSFORM,
+    choose_creative_render_strategy,
 )
 from app.services.storage import get_storage, visual_candidate_key, visual_story_key
 from app.services.storage.paths import StorageRef
@@ -76,8 +95,19 @@ async def generate_candidates(
         raise invalid(messages.INPUT_QUALITY_NEEDS_FIX)
     cleaned = await _require_clean_reference(session, campaign, analysis)
     original = await load_original_bytes(session, campaign)
+    crop, _ = await load_reference_bytes(session, campaign)
+    cutout_png = await extract_validated_cutout(crop or cleaned)
     concept = await _selected_concept(session, campaign)
     context = await _planner_context(session, campaign, concept, recipe)
+    snapshot = campaign.planner_result_json or {}
+    product_type = snapshot.get("product_type") if isinstance(snapshot, dict) else None
+    choice = choose_creative_render_strategy(
+        style_id=str(recipe.get("style_id") or ""),
+        template_id=str(recipe.get("template_id") or ""),
+        analysis=analysis,
+        product_type=str(product_type) if product_type else None,
+        cutout_png=cutout_png,
+    )
 
     used = await budgets.attempt_count(session, campaign.id)
     attempt = CampaignVisualAttempt(
@@ -86,9 +116,7 @@ async def generate_candidates(
         source=source if source in ("smart", "custom") else "custom",
         recipe_json=recipe,
         planner_json=(
-            recipe.get("planner")
-            if isinstance(recipe.get("planner"), dict)
-            else {}
+            recipe.get("planner") if isinstance(recipe.get("planner"), dict) else {}
         ),
         status="generating",
         auto_repair_used=False,
@@ -106,8 +134,9 @@ async def generate_candidates(
 
     campaign.current_visual_attempt_id = attempt.id
     await session.flush()
+    started_perf = time.perf_counter()
 
-    compiled = await _run_architect(
+    run = await _run_architect(
         session,
         campaign,
         attempt,
@@ -118,18 +147,37 @@ async def generate_candidates(
         recipe=recipe,
         context=context,
         analysis=analysis,
+        render_strategy=choice.strategy,
+        render_strategy_reason=choice.reason,
     )
-    prompts = [item.compiled_prompt for item in compiled.candidates]
-    attempt.prompt_architect_json = compiled.as_dict()
+    slots = plan_slots(
+        candidates=list(run.result.candidates),
+        cleaned=cleaned,
+        intended_strategy=run.effective_strategy,
+    )
+    payload = run.result.as_dict()
+    payload["validation"] = run.validation
+    payload["render_strategy"] = run.effective_strategy
+    payload["render_strategy_reason"] = choice.reason
+    payload["selector_strategy"] = choice.strategy
+    payload["slot_strategies"] = [
+        {
+            "slot": item.candidate.slot,
+            "strategy": item.used_strategy,
+            "reason": item.fallback_reason,
+        }
+        for item in slots
+    ]
+    attempt.prompt_architect_json = payload
     await session.flush()
 
-    frames = await _generate_slots(
+    frames, composite_failed = await _generate_slots(
         session,
         campaign,
         job,
-        prompts=prompts,
+        slots=slots,
         attempt_number=attempt.attempt_number,
-        references=(cleaned,),
+        cutout_png=cutout_png,
     )
     stored: list[CampaignVisualCandidate] = []
     for index, frame in enumerate(frames):
@@ -138,7 +186,7 @@ async def generate_candidates(
                 session,
                 campaign,
                 attempt,
-                slot=index + 1,
+                slot=slots[index].candidate.slot if index < len(slots) else index + 1,
                 jpeg=_as_jpeg(frame),
                 job_id=job.id,
                 kind="primary",
@@ -151,21 +199,46 @@ async def generate_candidates(
     )
     _apply_quality(stored, report)
 
+    for row in stored:
+        reason = composite_failed.get(row.slot)
+        if reason:
+            row.hard_failed = True
+            row.hidden = True
+            notes = (
+                list(row.quality_json.get("reasons") or []) if row.quality_json else []
+            )
+            notes.append(reason)
+            payload_q = dict(row.quality_json or {})
+            payload_q["hard_failed"] = True
+            payload_q["reasons"] = notes
+            row.quality_json = payload_q
+
     failed = [row for row in stored if row.hard_failed]
     if failed and not attempt.auto_repair_used:
-        await _repair_one(
-            session,
-            campaign,
-            job,
-            attempt,
-            stored,
-            failed[0],
-            cleaned,
-            prompts[failed[0].slot - 1],
-            context,
+        failed_plan = next(
+            (item for item in slots if item.candidate.slot == failed[0].slot),
+            slots[0],
         )
+        if (
+            failed[0].slot not in composite_failed
+            and failed_plan.used_strategy == REFERENCE_TRANSFORM
+        ):
+            await _repair_one(
+                session,
+                campaign,
+                job,
+                attempt,
+                stored,
+                failed[0],
+                cleaned,
+                failed_plan.prompt,
+                context,
+            )
 
     attempt.status = "awaiting_selection"
+    payload = dict(attempt.prompt_architect_json or {})
+    payload["wall_time_ms"] = int(round((time.perf_counter() - started_perf) * 1000))
+    attempt.prompt_architect_json = payload
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
 
@@ -262,9 +335,7 @@ async def _repair_one(
     )
     if already >= budgets.REPAIRS_PER_ATTEMPT:
         return
-    await budgets.assert_auto_ceiling(
-        session, campaign.id, attempt.attempt_number, 1
-    )
+    await budgets.assert_auto_ceiling(session, campaign.id, attempt.attempt_number, 1)
     prompt = build_repair_prompt(compiled_prompt)
     result = await _generate_images(
         session,
@@ -302,11 +373,11 @@ async def _generate_slots(
     campaign: Campaign,
     job: GenerationJob,
     *,
-    prompts: list[str],
+    slots,
     attempt_number: int,
-    references: tuple[bytes, ...],
-) -> list[bytes]:
-    n = len(prompts)
+    cutout_png: bytes | None,
+) -> tuple[list[bytes], dict[int, str]]:
+    n = len(slots)
     already = await budgets.count_outputs(
         session,
         campaign.id,
@@ -328,13 +399,13 @@ async def _generate_slots(
     job.input_json = payload
     requests = [
         ImageRequest(
-            prompt=prompt,
+            prompt=item.prompt,
             aspect_ratio=ASPECT_4X5,
             resolution=settings.image_resolution,
-            references=references,
+            references=item.references,
             n=1,
         )
-        for prompt in prompts
+        for item in slots
     ]
     try:
         results = await asyncio.gather(
@@ -344,9 +415,25 @@ async def _generate_slots(
         raise
     frames: list[bytes] = []
     usage: ImageUsage | None = None
-    for result in results:
-        frames.append(result.images()[0])
+    composite_failed: dict[int, str] = {}
+    provider = get_image_provider()
+    for slot, result in zip(slots, results, strict=True):
+        raw = result.images()[0]
         usage = _merge_usage(usage, result.usage)
+        jpeg = raw
+        if slot.will_composite and cutout_png and slot.candidate.product_placement:
+            pasted = composite_cutout_onto_scene(
+                raw, cutout_png, slot.candidate.product_placement
+            )
+            if composite_looks_plausible(
+                pasted, cutout_png, slot.candidate.product_placement
+            ):
+                jpeg = pasted
+            else:
+                reason = "composite could not plausibly integrate the cutout"
+                composite_failed[slot.candidate.slot] = reason
+                jpeg = pasted
+        frames.append(jpeg)
     produced = len(frames)
     job.input_json = {
         **payload,
@@ -354,8 +441,8 @@ async def _generate_slots(
         "output_count": produced,
         "n": produced,
     }
-    job_records.apply_image_usage(job, usage, provider=get_image_provider().name)
-    return frames
+    job_records.apply_image_usage(job, usage, provider=provider.name)
+    return frames, composite_failed
 
 
 def _merge_usage(
@@ -373,8 +460,7 @@ def _merge_usage(
         cost_usd=cost,
         model=right.model or left.model,
         prompt_tokens=(left.prompt_tokens or 0) + (right.prompt_tokens or 0) or None,
-        completion_tokens=(left.completion_tokens or 0)
-        + (right.completion_tokens or 0)
+        completion_tokens=(left.completion_tokens or 0) + (right.completion_tokens or 0)
         or None,
     )
 
@@ -562,6 +648,8 @@ async def _run_architect(
     recipe: dict,
     context: PlannerContext,
     analysis: dict,
+    render_strategy: str = REFERENCE_TRANSFORM,
+    render_strategy_reason: str = "",
 ):
     architect = get_prompt_architect()
     job = GenerationJob(
@@ -574,40 +662,49 @@ async def _run_architect(
             "style_id": recipe.get("style_id"),
             "template_id": recipe.get("template_id"),
             "attempt_id": str(attempt.id),
+            "render_strategy": render_strategy,
         },
     )
     session.add(job)
     await session.flush()
     try:
-        result = await architect.plan_candidates(
-            cleaned,
-            architect_context_for(
+        run = await plan_validated_candidates(
+            architect,
+            cleaned=cleaned,
+            original=original if original != cleaned else None,
+            context=architect_context_for(
                 campaign=campaign,
                 concept=concept,
                 recipe=recipe,
                 planner_context=context,
                 analysis=analysis,
+                render_strategy=render_strategy,
+                render_strategy_reason=render_strategy_reason,
             ),
-            original=original if original != cleaned else None,
+            identity_constraints=list(recipe.get("identity_constraints") or []),
+            template_id=str(recipe.get("template_id") or ""),
         )
     except Exception as error:
         job_records.mark_failed(job, error)
         raise
-    compiled = compile_architect_result(
-        result,
-        identity_constraints=list(recipe.get("identity_constraints") or []),
-        text_safe_area=str(recipe.get("text_safe_area") or "bottom"),
-    )
+    if not run.validation.get("ok"):
+        job.output_json = {"validation": run.validation}
+        job_records.mark_failed(job, generation_failed())
+        raise generation_failed()
     job.provider = architect.name
     job.model = architect.model
-    if compiled.usage is not None:
-        job_records.apply_llm_usage(job, compiled.usage)
+    if run.result.usage is not None:
+        job_records.apply_llm_usage(job, run.result.usage)
     job_records.mark_succeeded(
         job,
-        {"slots": [item.slot for item in compiled.candidates]},
+        {
+            "slots": [item.slot for item in run.result.candidates],
+            "validation": run.validation,
+            "render_strategy": run.effective_strategy,
+        },
         consume_llm=False,
     )
-    return compiled
+    return run
 
 
 async def _score_with_job(
@@ -629,9 +726,7 @@ async def _score_with_job(
     session.add(job)
     await session.flush()
     try:
-        report = await get_visual_planner().score_candidates(
-            reference, frames, context
-        )
+        report = await get_visual_planner().score_candidates(reference, frames, context)
     except Exception as error:
         logger.warning("visual quality scoring skipped: %s", error)
         job_records.mark_failed(job, error)
@@ -669,9 +764,7 @@ async def _score(
         )
 
 
-def _apply_quality(
-    rows: list[CampaignVisualCandidate], report: QualityReport
-) -> None:
+def _apply_quality(rows: list[CampaignVisualCandidate], report: QualityReport) -> None:
     by_slot = {item.slot: item for item in report.candidates}
     for index, row in enumerate(rows):
         item = by_slot.get(row.slot) or by_slot.get(index + 1)

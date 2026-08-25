@@ -213,37 +213,184 @@ class IdentityFeature:
 
 
 @dataclass(frozen=True, slots=True)
+class ExistingTextAndGraphics:
+    preserve: bool = False
+    instructions: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"preserve": self.preserve, "instructions": self.instructions}
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectProduct:
+    role_in_scene: str
+    identity_priority: tuple[IdentityFeature, ...] = ()
+    existing_text_and_graphics: ExistingTextAndGraphics = field(
+        default_factory=ExistingTextAndGraphics
+    )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "role_in_scene": self.role_in_scene,
+            "identity_priority": [
+                {"feature": item.feature, "importance": item.importance}
+                for item in self.identity_priority
+            ],
+            "existing_text_and_graphics": self.existing_text_and_graphics.as_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectScene:
+    environment: str
+    story_or_context: str
+    foreground: str
+    background: str
+    props: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "environment": self.environment,
+            "story_or_context": self.story_or_context,
+            "foreground": self.foreground,
+            "background": self.background,
+            "props": list(self.props),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ArchitectComposition:
     camera: str
+    lens_feel: str
     product_scale: str
     product_position: str
     human_or_pose: str
-    foreground: str
-    background: str
-    environment: str
     depth: str
-    text_safe_area: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "camera": self.camera,
+            "lens_feel": self.lens_feel,
+            "product_scale": self.product_scale,
+            "product_position": self.product_position,
+            "human_or_pose": self.human_or_pose or None,
+            "depth": self.depth,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectLighting:
+    direction: str
+    quality: str
+    mood: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "direction": self.direction,
+            "quality": self.quality,
+            "mood": self.mood,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectColorAndMaterial:
+    palette: str
+    material_treatment: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "palette": self.palette,
+            "material_treatment": self.material_treatment,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class TypographySafeArea:
+    position: str
+    description: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"position": self.position, "description": self.description}
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectOutput:
+    aspect_ratio: str = "4:5"
+    format: str = "instagram advertisement still"
+
+    def as_dict(self) -> dict[str, str]:
+        return {"aspect_ratio": self.aspect_ratio, "format": self.format}
+
+
+@dataclass(frozen=True, slots=True)
+class ProductPlacement:
+    x: float = 0.5
+    y: float = 0.58
+    width: float = 0.42
+    rotation_degrees: float = 0.0
+    contact_surface: str = ""
+    shadow_direction: str = "down"
+    shadow_softness: str = "soft"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "x": self.x,
+            "y": self.y,
+            "width": self.width,
+            "rotation_degrees": self.rotation_degrees,
+            "contact_surface": self.contact_surface,
+            "shadow_direction": self.shadow_direction,
+            "shadow_softness": self.shadow_softness,
+        }
 
 
 @dataclass(frozen=True, slots=True)
 class ArchitectCandidate:
     slot: int
     intention: str
+    creative_intent: str
+    product: ArchitectProduct
+    scene: ArchitectScene
     composition: ArchitectComposition
-    lighting: str
-    palette: str
-    relevant_props: tuple[str, ...]
+    lighting: ArchitectLighting
+    color_and_material: ArchitectColorAndMaterial
+    typography_safe_area: TypographySafeArea
     must_preserve: tuple[str, ...]
-    must_avoid: tuple[str, ...]
-    image_prompt: str
-    compiled_prompt: str = ""
+    must_not_generate: tuple[str, ...]
+    render_strategy: str
+    final_prompt: str
+    has_product_placement: bool = False
+    product_placement: ProductPlacement | None = None
+    output: ArchitectOutput = field(default_factory=ArchitectOutput)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "slot": self.slot,
+            "intention": self.intention,
+            "creative_intent": self.creative_intent,
+            "product": self.product.as_dict(),
+            "scene": self.scene.as_dict(),
+            "composition": self.composition.as_dict(),
+            "lighting": self.lighting.as_dict(),
+            "color_and_material": self.color_and_material.as_dict(),
+            "typography_safe_area": self.typography_safe_area.as_dict(),
+            "must_preserve": list(self.must_preserve),
+            "must_not_generate": list(self.must_not_generate),
+            "render_strategy": self.render_strategy,
+            "has_product_placement": self.has_product_placement,
+            "product_placement": (
+                self.product_placement.as_dict()
+                if self.product_placement is not None
+                else None
+            ),
+            "output": self.output.as_dict(),
+            "final_prompt": self.final_prompt,
+        }
 
 
 @dataclass(frozen=True, slots=True)
 class PromptArchitectResult:
     reference_summary: str
-    identity_priority: tuple[IdentityFeature, ...]
-    art_direction: dict
     candidates: tuple[ArchitectCandidate, ...]
     usage: LlmUsage | None = None
     llm_trace: LlmCallTrace | None = None
@@ -251,36 +398,7 @@ class PromptArchitectResult:
     def as_dict(self) -> dict:
         return {
             "reference_summary": self.reference_summary,
-            "identity_priority": [
-                {"feature": item.feature, "importance": item.importance}
-                for item in self.identity_priority
-            ],
-            "art_direction": dict(self.art_direction),
-            "candidates": [
-                {
-                    "slot": item.slot,
-                    "intention": item.intention,
-                    "composition": {
-                        "camera": item.composition.camera,
-                        "product_scale": item.composition.product_scale,
-                        "product_position": item.composition.product_position,
-                        "human_or_pose": item.composition.human_or_pose or None,
-                        "foreground": item.composition.foreground,
-                        "background": item.composition.background,
-                        "environment": item.composition.environment,
-                        "depth": item.composition.depth,
-                        "text_safe_area": item.composition.text_safe_area,
-                    },
-                    "lighting": item.lighting,
-                    "palette": item.palette,
-                    "relevant_props": list(item.relevant_props),
-                    "must_preserve": list(item.must_preserve),
-                    "must_avoid": list(item.must_avoid),
-                    "image_prompt": item.image_prompt,
-                    "compiled_prompt": item.compiled_prompt,
-                }
-                for item in self.candidates
-            ],
+            "candidates": [item.as_dict() for item in self.candidates],
         }
 
 
@@ -301,6 +419,8 @@ class ArchitectContext:
     style_semantics: dict = field(default_factory=dict)
     template_semantics: dict = field(default_factory=dict)
     text_safe_area: str = "bottom"
+    render_strategy: str = "reference_transform"
+    render_strategy_reason: str = ""
 
 
 class VisualPlanner(Protocol):
@@ -337,4 +457,5 @@ class PromptArchitect(Protocol):
         context: ArchitectContext,
         *,
         original: bytes | None = None,
+        correction: str | None = None,
     ) -> PromptArchitectResult: ...

@@ -11,14 +11,14 @@ import asyncio
 import hashlib
 import io
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, Literal
 
 from PIL import Image
 
-from app.core.config import get_settings
 from app.content.visual_catalog import selected_semantics
+from app.core.config import get_settings
 from app.providers.image.base import (
     ImageProvider,
     ImageRequest,
@@ -27,19 +27,38 @@ from app.providers.image.base import (
 )
 from app.providers.image.creative_prompts import (
     CREATIVE_PROMPT_VERSION,
-    compile_architect_result,
     build_repair_prompt,
     build_story_prompt,
 )
 from app.providers.vision import get_prompt_architect
+from app.providers.vision.architect_validate import (
+    correction_user_block,
+    merge_llm_usage,
+    placement_unusable,
+    validate_architect_result,
+)
 from app.providers.vision.base import (
+    ArchitectCandidate,
     ArchitectContext,
     CandidateQuality,
     PlannerContext,
+    PromptArchitectResult,
     QualityReport,
 )
 from app.services.campaigns.master_crop import MASTER_NOTE, central_4x5_crop
-from app.services.campaigns.reference_prep import prepare_clean_jpeg
+from app.services.campaigns.product_composite import (
+    composite_cutout_onto_scene,
+    composite_looks_plausible,
+)
+from app.services.campaigns.reference_prep import (
+    extract_validated_cutout,
+    prepare_clean_jpeg,
+)
+from app.services.campaigns.render_strategy import (
+    PRESERVED_PRODUCT_COMPOSITE,
+    REFERENCE_TRANSFORM,
+    choose_creative_render_strategy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +111,31 @@ class RecipeSetResult:
     compatibility: str | None = None
     llm_calls: list[dict] = field(default_factory=list)
     image_requests: list[dict] = field(default_factory=list)
+    render_strategy: str | None = None
+    render_strategy_reason: str | None = None
+    cutout_png: bytes | None = None
+    scene_jpegs: dict[int, bytes] = field(default_factory=dict)
+    slot_strategies: list[dict] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class SlotPlan:
+    candidate: ArchitectCandidate
+    prompt: str
+    references: tuple[bytes, ...]
+    will_composite: bool
+    used_strategy: str
+    fallback_reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ArchitectRun:
+    result: PromptArchitectResult
+    validation: dict
+    effective_strategy: str
+    retry_used: bool
+    switched_to_transform: bool = False
+    traces: tuple[Any, ...] = ()
 
 
 def as_jpeg(content: bytes) -> bytes:
@@ -268,6 +312,8 @@ def architect_context_for(
     recipe: dict,
     planner_context: PlannerContext,
     analysis: dict,
+    render_strategy: str = REFERENCE_TRANSFORM,
+    render_strategy_reason: str = "",
 ) -> ArchitectContext:
     style_id = str(recipe.get("style_id") or "")
     template_id = str(recipe.get("template_id") or "")
@@ -297,6 +343,112 @@ def architect_context_for(
         style_semantics=dict(semantics.get("style") or {}),
         template_semantics=dict(semantics.get("template") or {}),
         text_safe_area=str(recipe.get("text_safe_area") or "bottom"),
+        render_strategy=render_strategy,
+        render_strategy_reason=render_strategy_reason,
+    )
+
+
+def plan_slots(
+    *,
+    candidates: list[ArchitectCandidate],
+    cleaned: bytes,
+    intended_strategy: str,
+) -> list[SlotPlan]:
+    slots: list[SlotPlan] = []
+    for item in candidates:
+        prompt = item.final_prompt
+        if intended_strategy == PRESERVED_PRODUCT_COMPOSITE:
+            slots.append(
+                SlotPlan(
+                    candidate=item,
+                    prompt=prompt,
+                    references=(),
+                    will_composite=True,
+                    used_strategy=PRESERVED_PRODUCT_COMPOSITE,
+                )
+            )
+            continue
+        slots.append(
+            SlotPlan(
+                candidate=item,
+                prompt=prompt,
+                references=(cleaned,),
+                will_composite=False,
+                used_strategy=REFERENCE_TRANSFORM,
+            )
+        )
+    return slots
+
+
+async def plan_validated_candidates(
+    architect: Any,
+    *,
+    cleaned: bytes,
+    original: bytes | None,
+    context: ArchitectContext,
+    identity_constraints: list[str] | tuple[str, ...],
+    template_id: str,
+) -> ArchitectRun:
+    planned = await architect.plan_candidates(
+        cleaned, context, original=original
+    )
+    traces = [planned.llm_trace] if planned.llm_trace is not None else []
+    validation = validate_architect_result(
+        planned,
+        render_strategy=context.render_strategy,
+        identity_constraints=identity_constraints,
+        template_id=template_id,
+    )
+    retry_used = False
+    switched = False
+    effective = context.render_strategy
+    if not validation.ok:
+        retry_used = True
+        retry_context = context
+        if (
+            context.render_strategy == PRESERVED_PRODUCT_COMPOSITE
+            and placement_unusable(validation)
+        ):
+            switched = True
+            effective = REFERENCE_TRANSFORM
+            retry_context = replace(context, render_strategy=REFERENCE_TRANSFORM)
+        retry = await architect.plan_candidates(
+            cleaned,
+            retry_context,
+            original=original,
+            correction=correction_user_block(
+                validation.errors, switch_to_transform=switched
+            ),
+        )
+        if retry.llm_trace is not None:
+            traces.append(retry.llm_trace)
+        planned = PromptArchitectResult(
+            reference_summary=retry.reference_summary,
+            candidates=retry.candidates,
+            usage=merge_llm_usage(planned.usage, retry.usage),
+            llm_trace=retry.llm_trace,
+        )
+        validation = validate_architect_result(
+            planned,
+            render_strategy=effective,
+            identity_constraints=identity_constraints,
+            template_id=template_id,
+        )
+    payload = validation.as_dict(
+        retry_used=retry_used, switched_to_transform=switched
+    )
+    return ArchitectRun(
+        result=PromptArchitectResult(
+            reference_summary=planned.reference_summary,
+            candidates=planned.candidates,
+            usage=planned.usage,
+            llm_trace=traces[-1] if traces else planned.llm_trace,
+        ),
+        validation=payload,
+        effective_strategy=effective,
+        retry_used=retry_used,
+        switched_to_transform=switched,
+        traces=tuple(traces),
     )
 
 
@@ -320,6 +472,8 @@ async def generate_recipe_set(
     original: bytes | None = None,
     analysis: dict | None = None,
     architect: Any | None = None,
+    product_type: str | None = None,
+    category: str | None = None,
 ) -> RecipeSetResult:
     """Generate candidates for one style/template using production prompts."""
     del variation
@@ -345,61 +499,141 @@ async def generate_recipe_set(
     if n <= 0:
         return out
 
+    cutout_png = await extract_validated_cutout(reference)
+    out.cutout_png = cutout_png
+    kind = product_type or analysis.get("product_type")
+    choice = choose_creative_render_strategy(
+        style_id=str(recipe.get("style_id") or ""),
+        template_id=str(recipe.get("template_id") or ""),
+        analysis=analysis,
+        product_type=kind if isinstance(kind, str) else None,
+        category=category,
+        cutout_png=cutout_png,
+    )
+    out.render_strategy = choice.strategy
+    out.render_strategy_reason = choice.reason
+
     context = architect_context_for(
         campaign=campaign,
         concept=concept,
         recipe=recipe,
         planner_context=planner_context,
         analysis=analysis,
+        render_strategy=choice.strategy,
+        render_strategy_reason=choice.reason,
     )
     planner_impl = architect or get_prompt_architect()
-    planned = await planner_impl.plan_candidates(
-        cleaned, context, original=original if original != cleaned else None
-    )
-    _append_trace(out, planned.llm_trace)
-    compiled = compile_architect_result(
-        planned,
+    run = await plan_validated_candidates(
+        planner_impl,
+        cleaned=cleaned,
+        original=original if original != cleaned else None,
+        context=context,
         identity_constraints=list(recipe.get("identity_constraints") or []),
-        text_safe_area=str(recipe.get("text_safe_area") or "bottom"),
+        template_id=str(recipe.get("template_id") or ""),
     )
-    out.architect = compiled.as_dict()
-    if compiled.usage is not None:
+    for trace in run.traces:
+        _append_trace(out, trace)
+    out.architect = run.result.as_dict()
+    out.architect["validation"] = run.validation
+    out.architect["render_strategy"] = run.effective_strategy
+    out.architect["render_strategy_reason"] = choice.reason
+    out.architect["selector_strategy"] = choice.strategy
+    if run.result.usage is not None:
         out.architect["usage"] = {
-            "latency_ms": compiled.usage.latency_ms,
+            "latency_ms": run.result.usage.latency_ms,
             "cost_usd": (
-                str(compiled.usage.cost_usd)
-                if compiled.usage.cost_usd is not None
+                str(run.result.usage.cost_usd)
+                if run.result.usage.cost_usd is not None
                 else None
             ),
-            "model": compiled.usage.model,
-            "prompt_tokens": compiled.usage.prompt_tokens,
-            "completion_tokens": compiled.usage.completion_tokens,
+            "model": run.result.usage.model,
+            "prompt_tokens": run.result.usage.prompt_tokens,
+            "completion_tokens": run.result.usage.completion_tokens,
         }
-    chosen = list(compiled.candidates[:n])
-    out.prompts = [item.compiled_prompt for item in chosen]
+    out.render_strategy = run.effective_strategy
+    out.render_strategy_reason = choice.reason
+    if not run.validation.get("ok"):
+        out.error = "; ".join(run.validation.get("errors") or []) or (
+            "architect_validation_failed"
+        )
+        return out
+    chosen = list(run.result.candidates[:n])
+    slots = plan_slots(
+        candidates=chosen,
+        cleaned=cleaned,
+        intended_strategy=run.effective_strategy,
+    )
+    out.prompts = [item.prompt for item in slots]
     out.prompt = out.prompts[0] if out.prompts else ""
+    out.slot_strategies = [
+        {
+            "slot": item.candidate.slot,
+            "strategy": item.used_strategy,
+            "reason": item.fallback_reason,
+        }
+        for item in slots
+    ]
 
     requests = [
         ImageRequest(
-            prompt=item.compiled_prompt,
+            prompt=item.prompt,
             aspect_ratio=ASPECT_4X5,
             resolution=res,
-            references=(cleaned,),
+            references=item.references,
             n=1,
         )
-        for item in chosen
+        for item in slots
     ]
     if requests:
         out.candidate_request = request_summary(
             requests[0], provider=provider.name, model=provider.model
         )
     results = await asyncio.gather(*[provider.generate(req) for req in requests])
-    frames = [result.images()[0] for result in results]
+    produced: list[tuple[SlotPlan, ImageRequest, ImageResult, bytes]] = []
+    composite_failed: dict[int, str] = {}
+    for slot, request, result in zip(slots, requests, results, strict=True):
+        raw = result.images()[0]
+        jpeg = raw
+        used = slot
+        used_request = request
+        used_result = result
+        if slot.will_composite and cutout_png and slot.candidate.product_placement:
+            out.scene_jpegs[slot.candidate.slot] = as_jpeg(raw)
+            pasted = composite_cutout_onto_scene(
+                raw, cutout_png, slot.candidate.product_placement
+            )
+            if composite_looks_plausible(
+                pasted, cutout_png, slot.candidate.product_placement
+            ):
+                jpeg = pasted
+            else:
+                reason = "composite could not plausibly integrate the cutout"
+                composite_failed[slot.candidate.slot] = reason
+                jpeg = pasted
+                used = SlotPlan(
+                    candidate=slot.candidate,
+                    prompt=slot.prompt,
+                    references=(),
+                    will_composite=True,
+                    used_strategy=PRESERVED_PRODUCT_COMPOSITE,
+                    fallback_reason=reason,
+                )
+        produced.append((used, used_request, used_result, jpeg))
+    frames = [jpeg for _used, _req, _res, jpeg in produced]
+    out.prompts = [item.prompt for item, *_rest in produced]
+    out.prompt = out.prompts[0] if out.prompts else ""
+    out.slot_strategies = [
+        {
+            "slot": item.candidate.slot,
+            "strategy": item.used_strategy,
+            "reason": item.fallback_reason,
+        }
+        for item, *_rest in produced
+    ]
+
     report: QualityReport | None = None
     if quality_check and planner is not None:
-        report = await score_frames(
-            planner, cleaned, tuple(frames), planner_context
-        )
+        report = await score_frames(planner, cleaned, tuple(frames), planner_context)
         out.quality = {
             "candidates": [quality_to_dict(item) for item in report.candidates]
         }
@@ -416,20 +650,26 @@ async def generate_recipe_set(
             }
 
     by_slot = {item.slot: item for item in report.candidates} if report else {}
-    for index, (raw, request, result, spec) in enumerate(
-        zip(frames, requests, results, chosen, strict=True)
-    ):
-        item = by_slot.get(spec.slot) or by_slot.get(index + 1)
+    for index, (spec, request, result, jpeg) in enumerate(produced):
+        item = by_slot.get(spec.candidate.slot) or by_slot.get(index + 1)
         quality = quality_to_dict(item) if item else None
         hard = bool(item.hard_failed) if item else False
+        composite_reason = composite_failed.get(spec.candidate.slot)
+        if composite_reason:
+            hard = True
+            quality = dict(quality or {})
+            quality["hard_failed"] = True
+            reasons = list(quality.get("reasons") or [])
+            reasons.append(composite_reason)
+            quality["reasons"] = reasons
         out.candidates.append(
             _frame(
-                slot=spec.slot,
+                slot=spec.candidate.slot,
                 kind="primary",
                 role="candidate",
-                jpeg=raw,
-                prompt=spec.compiled_prompt,
-                variation=spec.slot - 1,
+                jpeg=jpeg,
+                prompt=spec.prompt,
+                variation=spec.candidate.slot - 1,
                 quality=quality,
                 hard_failed=hard,
                 hidden=hard,
@@ -445,27 +685,35 @@ async def generate_recipe_set(
 
     failed = next((row for row in out.candidates if row.hard_failed), None)
     if repair == "production" and failed is not None and not out.auto_repair_used:
-        repaired = await _repair_one(
-            failed=failed,
-            recipe=recipe,
-            reference=cleaned,
-            campaign=campaign,
-            concept=concept,
-            planner_context=planner_context,
-            provider=provider,
-            planner=planner,
-            variation=failed.slot,
-            quality_check=quality_check,
-            resolution=res,
-            timestamp=timestamp,
-            traces=out.llm_calls,
+        failed_spec = next(
+            (item for item, *_rest in produced if item.candidate.slot == failed.slot),
+            None,
         )
-        out.repairs.append(repaired)
-        out.image_requests.append(_image_call(repaired))
-        out.auto_repair_used = True
-        if not repaired.hard_failed:
-            failed.hidden = True
-            failed.repaired = True
+        if (
+            failed_spec is None
+            or failed_spec.used_strategy == REFERENCE_TRANSFORM
+        ):
+            repaired = await _repair_one(
+                failed=failed,
+                recipe=recipe,
+                reference=cleaned,
+                campaign=campaign,
+                concept=concept,
+                planner_context=planner_context,
+                provider=provider,
+                planner=planner,
+                variation=failed.slot,
+                quality_check=quality_check,
+                resolution=res,
+                timestamp=timestamp,
+                traces=out.llm_calls,
+            )
+            out.repairs.append(repaired)
+            out.image_requests.append(_image_call(repaired))
+            out.auto_repair_used = True
+            if not repaired.hard_failed:
+                failed.hidden = True
+                failed.repaired = True
 
     winner = next((row for row in out.candidates if not row.hidden), None)
     if winner is None and out.candidates:

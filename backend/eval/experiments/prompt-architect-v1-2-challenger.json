@@ -1,0 +1,49 @@
+{
+  "experiment_id": "prompt-architect-v1-2-challenger",
+  "quality_check": true,
+  "repair": "none",
+  "candidates": 1,
+  "cases": [
+    {
+      "case": "sweatshirt_01",
+      "mode": "fixed",
+      "recipes": [
+        "fashion_editorial:model_using",
+        "collage:hero_product",
+        "cinematic:cinematic_environment"
+      ],
+      "candidates": 1
+    },
+    {
+      "case": "cosmetics_01",
+      "mode": "fixed",
+      "recipes": [
+        "photoreal_commercial:product_pedestal",
+        "photoreal_commercial:flat_lay"
+      ],
+      "candidates": 1
+    },
+    {
+      "case": "restaurant_food_01",
+      "mode": "fixed",
+      "recipes": [
+        "photoreal_commercial:hero_product"
+      ],
+      "candidates": 1
+    },
+    {
+      "case": "shoes_01",
+      "mode": "fixed",
+      "recipes": [
+        "fashion_editorial:model_using",
+        "clay:model_using"
+      ],
+      "candidates": 1
+    },
+    {
+      "case": "cosmetics_01",
+      "mode": "director",
+      "candidates": 1
+    }
+  ]
+}

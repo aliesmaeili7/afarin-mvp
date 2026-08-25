@@ -12,7 +12,7 @@ import pytest
 from app.providers.image.base import ImageApiError, ImageRequest
 from app.providers.image.creative_prompts import (
     CREATIVE_PROMPT_VERSION,
-    SAFETY_SUFFIX,
+    INVENTED_TEXT_RULE,
 )
 from app.providers.image.stub import StubImageProvider
 from app.providers.vision.base import PlannerContext
@@ -136,11 +136,12 @@ def test_production_prompt_builder_is_reused() -> None:
             planner=None,
             n=1,
         )
-        assert SAFETY_SUFFIX in result.prompt
-        assert "fashion_editorial" in result.prompt
-        assert "model_using" in result.prompt
+        assert INVENTED_TEXT_RULE in result.prompt
+        assert "fashion editorial" in result.prompt
         assert result.prompt_version == CREATIVE_PROMPT_VERSION
         assert result.architect is not None
+        assert result.architect["candidates"][0]["final_prompt"] == result.prompt
+        assert "VISUAL EXECUTION" not in result.prompt
         assert len(result.architect["candidates"]) == 3
         assert len(result.prompts) == 1
         assert result.llm_calls
@@ -148,8 +149,9 @@ def test_production_prompt_builder_is_reused() -> None:
         assert "system" in result.llm_calls[0]
         assert "user" in result.llm_calls[0]
         assert result.image_requests
-        assert SAFETY_SUFFIX in result.image_requests[0]["prompt"]
+        assert result.image_requests[0]["prompt"] == result.prompt
         assert result.image_requests[0]["kind"] == "primary"
+        assert result.architect["validation"]["ok"] is True
 
     import asyncio
 
@@ -436,6 +438,7 @@ def test_stub_cli_writes_run(tmp_path: Path) -> None:
     )
     assert requests[0]["prompt"]
     assert "sk-" not in requests[0]["prompt"]
+    assert (runs[0] / "timing.json").is_file()
     calls = json.loads(
         next((runs[0] / "recipes").glob("*/llm_calls.json")).read_text(encoding="utf-8")
     )
@@ -452,9 +455,28 @@ def test_experiment_manifest_and_paid_gates(tmp_path: Path) -> None:
     experiment = load_experiment("baseline-v1")
     assert experiment["experiment_id"] == "baseline-v1"
     assert len(experiment["cases"]) == 2
-    challenger = load_experiment("prompt-architect-v1-challenger")
-    assert challenger["experiment_id"] == "prompt-architect-v1-challenger"
-    assert len(challenger["cases"]) == 4
+    v11 = load_experiment("prompt-architect-v1-1-challenger")
+    assert v11["experiment_id"] == "prompt-architect-v1-1-challenger"
+    food = next(item for item in v11["cases"] if item["case"] == "restaurant_food_01")
+    assert food["recipes"] == [
+        {"style_id": "photoreal_commercial", "template_id": "hero_product"}
+    ]
+    cosmetics = next(item for item in v11["cases"] if item["case"] == "cosmetics_01")
+    assert all(
+        f"{row['style_id']}:{row['template_id']}" != "surreal:giant_miniature_world"
+        for row in cosmetics["recipes"]
+    )
+    v12 = load_experiment("prompt-architect-v1-2-challenger")
+    assert v12["experiment_id"] == "prompt-architect-v1-2-challenger"
+    v12_cosmetics = [
+        item for item in v12["cases"] if item["case"] == "cosmetics_01"
+    ]
+    assert any(item["mode"] == "director" and not item["recipes"] for item in v12_cosmetics)
+    assert all(
+        f"{row['style_id']}:{row['template_id']}" != "surreal:giant_miniature_world"
+        for item in v12["cases"]
+        for row in item.get("recipes") or []
+    )
 
     dry = main(
         [
@@ -509,8 +531,14 @@ def test_experiment_batch_writes_individual_runs(tmp_path: Path) -> None:
         ]
     )
     assert code == 0
-    runs = sorted(path for path in tmp_path.iterdir() if path.is_dir())
+    runs = sorted(
+        path
+        for path in tmp_path.iterdir()
+        if path.is_dir() and not path.name.startswith("_")
+    )
     assert len(runs) == 2
+    batches = list((tmp_path / "_batches").glob("*.json"))
+    assert len(batches) == 1
     cases = {
         json.loads((run / "run_meta.json").read_text(encoding="utf-8"))["case_id"]
         for run in runs
@@ -624,3 +652,147 @@ def _tiny_ref() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (320, 400), (20, 30, 40)).save(buffer, format="JPEG")
     return buffer.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_run_writes_wall_clock_timing(tmp_path: Path) -> None:
+    case = load_case("sweatshirt_01")
+
+    class SlowStub(StubImageProvider):
+        async def generate(self, request: ImageRequest):
+            await asyncio.sleep(0.05)
+            return await super().generate(request)
+
+    plan = build_plan(
+        case_id=case["case_id"],
+        mode="fixed",
+        recipes=case["fixed_recipes"][:1],
+        candidates=1,
+        quality_check=True,
+        repair="none",
+        story=False,
+        master_crop=False,
+        provider="stub",
+        paid=False,
+        label="timing",
+    )
+    run_dir = await execute_run(
+        case=case,
+        plan=plan,
+        provider=SlowStub(),
+        planner=CountingPlanner(),
+        recipes=recipes_from_fixture(case, case["fixed_recipes"][:1]),
+        directions=None,
+        director=None,
+        runs_dir=tmp_path,
+    )
+    timing = json.loads((run_dir / "timing.json").read_text(encoding="utf-8"))
+    assert timing["wall_time_ms"] >= 50
+    metrics = json.loads(
+        next((run_dir / "recipes").glob("*/metrics.json")).read_text(encoding="utf-8")
+    )
+    latency_sum = sum(int(frame.get("latency_ms") or 0) for frame in metrics["frames"])
+    assert timing["wall_time_ms"] != latency_sum
+    assert "s wall-clock" in timing["summary"]
+    assert timing["successful_candidates"] == 1
+
+
+@pytest.mark.asyncio
+async def test_timing_requested_candidates_tracks_n(tmp_path: Path) -> None:
+    case = load_case("sweatshirt_01")
+    recipes = recipes_from_fixture(case, case["fixed_recipes"][:1])
+    for n in (1, 3):
+        plan = build_plan(
+            case_id=case["case_id"],
+            mode="fixed",
+            recipes=case["fixed_recipes"][:1],
+            candidates=n,
+            quality_check=False,
+            repair="none",
+            story=False,
+            master_crop=False,
+            provider="stub",
+            paid=False,
+            label=f"n{n}",
+        )
+        run_dir = await execute_run(
+            case=case,
+            plan=plan,
+            provider=StubImageProvider(),
+            planner=CountingPlanner(),
+            recipes=recipes,
+            directions=None,
+            director=None,
+            runs_dir=tmp_path,
+        )
+        timing = json.loads((run_dir / "timing.json").read_text(encoding="utf-8"))
+        assert timing["requested_candidates"] == n
+        assert timing["successful_candidates"] == n
+
+
+@pytest.mark.asyncio
+async def test_timing_counts_story_separately(tmp_path: Path) -> None:
+    case = load_case("sweatshirt_01")
+    plan = build_plan(
+        case_id=case["case_id"],
+        mode="fixed",
+        recipes=case["fixed_recipes"][:1],
+        candidates=1,
+        quality_check=False,
+        repair="none",
+        story=True,
+        master_crop=False,
+        provider="stub",
+        paid=False,
+        label="story",
+    )
+    run_dir = await execute_run(
+        case=case,
+        plan=plan,
+        provider=StubImageProvider(),
+        planner=CountingPlanner(),
+        recipes=recipes_from_fixture(case, case["fixed_recipes"][:1]),
+        directions=None,
+        director=None,
+        runs_dir=tmp_path,
+    )
+    timing = json.loads((run_dir / "timing.json").read_text(encoding="utf-8"))
+    assert timing["story_outputs"] == 1
+    assert timing["successful_candidates"] == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_recipe_still_writes_timing(tmp_path: Path) -> None:
+    case = load_case("sweatshirt_01")
+    plan = build_plan(
+        case_id=case["case_id"],
+        mode="fixed",
+        recipes=case["fixed_recipes"][:1],
+        candidates=1,
+        quality_check=False,
+        repair="none",
+        story=False,
+        master_crop=False,
+        provider="stub",
+        paid=False,
+        label="fail",
+    )
+    run_dir = await execute_run(
+        case=case,
+        plan=plan,
+        provider=FakeImageProvider(ImageApiError(
+            status_code=500,
+            provider_message="boom",
+            payload_keys=(),
+            retryable=False,
+        )),
+        planner=CountingPlanner(),
+        recipes=recipes_from_fixture(case, case["fixed_recipes"][:1]),
+        directions=None,
+        director=None,
+        runs_dir=tmp_path,
+    )
+    timing = json.loads((run_dir / "timing.json").read_text(encoding="utf-8"))
+    assert "wall_time_ms" in timing
+    assert (run_dir / "timing.json").is_file()
+

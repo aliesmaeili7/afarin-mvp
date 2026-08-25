@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import time
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -31,6 +32,7 @@ from scripts.creative_eval.store import (
     recipe_folder,
     write_json,
 )
+from scripts.creative_eval.timing import write_run_timing
 
 
 def prompt_campaign(case: dict[str, Any]) -> SimpleNamespace:
@@ -167,7 +169,21 @@ async def write_recipe_result(
     analysis: dict | None = None,
 ) -> dict[str, Any]:
     folder.mkdir(parents=True, exist_ok=True)
-    write_json(folder / "recipe.json", result.recipe)
+    write_json(
+        folder / "recipe.json",
+        {
+            **dict(result.recipe),
+            **(
+                {
+                    "render_strategy": result.render_strategy,
+                    "render_strategy_reason": result.render_strategy_reason,
+                    "slot_strategies": result.slot_strategies,
+                }
+                if result.render_strategy
+                else {}
+            ),
+        },
+    )
     (folder / "effective_prompt.txt").write_text(result.prompt + "\n", encoding="utf-8")
     write_json(
         folder / "prompt.json",
@@ -178,12 +194,20 @@ async def write_recipe_result(
             "style_id": result.recipe.get("style_id"),
             "template_id": result.recipe.get("template_id"),
             "compatibility": result.compatibility or result.recipe.get("compatibility"),
+            "render_strategy": result.render_strategy,
         },
     )
     if result.architect is not None:
         write_json(folder / "architect.json", result.architect)
+        validation = result.architect.get("validation")
+        if isinstance(validation, dict):
+            write_json(folder / "validation.json", validation)
     if result.cleaned_jpeg is not None:
         (folder / "cleaned_reference.jpg").write_bytes(result.cleaned_jpeg)
+    if result.cutout_png is not None:
+        (folder / "cutout.png").write_bytes(result.cutout_png)
+    for slot, scene in result.scene_jpegs.items():
+        (folder / f"scene-{slot}.jpg").write_bytes(scene)
     write_json(
         folder / "reference_analysis.json",
         analysis
@@ -262,8 +286,12 @@ async def write_recipe_result(
         "qc_calls": qc_calls,
         "qc_cost_usd": str(_llm_cost(result.quality)) if result.quality else None,
         "architect_calls": 1 if result.architect else 0,
-        "architect_cost_usd": str(_llm_cost(result.architect)) if result.architect else None,
+        "architect_cost_usd": str(_llm_cost(result.architect))
+        if result.architect
+        else None,
         "compatibility": result.compatibility or result.recipe.get("compatibility"),
+        "render_strategy": result.render_strategy,
+        "render_strategy_reason": result.render_strategy_reason,
     }
 
 
@@ -322,6 +350,8 @@ async def _one_recipe(
             story=plan.story,
             master_crop=plan.master_crop,
             timestamp=timestamp,
+            product_type=str(case.get("category") or "") or None,
+            category=str(case.get("category") or "") or None,
         )
     except Exception as error:
         failed = RecipeSetResult(
@@ -355,175 +385,233 @@ async def execute_run(
     analysis = {}
     if director is not None:
         analysis = director.reference_analysis.as_dict()
+    if case.get("category") and not analysis.get("product_type"):
+        analysis = {**analysis, "product_type": case.get("category")}
     timestamp = datetime.now(UTC).isoformat()
     run_dir = allocate_run_dir(
         case_id=plan.case_id, label=plan.label, runs_dir=runs_dir
     )
     run_id = run_dir.name
-
-    fixture_copy = {
-        key: value
-        for key, value in case.items()
-        if not str(key).startswith("_")
-    }
-    write_json(run_dir / "input_fixture.json", fixture_copy)
-    write_json(run_dir / "effective_brief.json", effective_brief(case))
-    (run_dir / "reference_product.jpg").write_bytes(reference)
-    write_json(run_dir / "reference_analysis.json", analysis)
-    write_json(run_dir / "ratings.json", empty_ratings())
-    if director is not None:
-        write_json(run_dir / "director_output.json", director_output(director))
-        if director.llm_trace is not None:
-            write_json(
-                run_dir / "llm_calls.json",
-                sanitize([director.llm_trace.as_dict()]),
-            )
-
-    semaphore = asyncio.Semaphore(max(1, min(3, plan.concurrency)))
+    started_at = datetime.now(UTC)
+    started_perf = time.perf_counter()
     summaries: list[dict[str, Any]] = []
 
-    async def work(index: int, recipe: dict) -> dict[str, Any]:
-        direction = None
-        if directions is not None and index < len(directions):
-            direction = directions[index]
-        async with semaphore:
-            result = await _one_recipe(
-                recipe=recipe,
-                reference=reference,
-                original=original,
-                analysis=analysis,
-                case=case,
-                plan=plan,
-                provider=provider,
-                planner=planner,
-                architect=architect,
-                direction=direction,
-                timestamp=timestamp,
-            )
-        folder = run_dir / "recipes" / recipe_folder(
-            index + 1,
-            str(recipe.get("style_id")),
-            str(recipe.get("template_id")),
-        )
-        return await write_recipe_result(
-            folder,
-            result,
-            case_id=plan.case_id,
-            run_id=run_id,
-            timestamp=timestamp,
-            direction=direction_dict(direction) if direction else None,
-            analysis=analysis,
-        )
+    try:
+        fixture_copy = {
+            key: value for key, value in case.items() if not str(key).startswith("_")
+        }
 
-    if plan.candidates > 0 and recipes:
-        summaries = list(
-            await asyncio.gather(
-                *(work(index, recipe) for index, recipe in enumerate(recipes))
-            )
-        )
-    elif recipes:
-        for index, recipe in enumerate(recipes):
-            folder = run_dir / "recipes" / recipe_folder(
-                index + 1,
-                str(recipe.get("style_id")),
-                str(recipe.get("template_id")),
-            )
-            empty = RecipeSetResult(
-                recipe=recipe,
-                prompt="",
-                prompt_version=CREATIVE_PROMPT_VERSION,
-            )
-            direction = (
-                directions[index]
-                if directions is not None and index < len(directions)
-                else None
-            )
-            summaries.append(
-                await write_recipe_result(
-                    folder,
-                    empty,
-                    case_id=plan.case_id,
-                    run_id=run_id,
-                    timestamp=timestamp,
-                    direction=direction_dict(direction) if direction else None,
+        write_json(run_dir / "input_fixture.json", fixture_copy)
+
+        write_json(run_dir / "effective_brief.json", effective_brief(case))
+
+        (run_dir / "reference_product.jpg").write_bytes(reference)
+
+        write_json(run_dir / "reference_analysis.json", analysis)
+
+        write_json(run_dir / "ratings.json", empty_ratings())
+
+        if director is not None:
+            write_json(run_dir / "director_output.json", director_output(director))
+
+            if director.llm_trace is not None:
+                write_json(
+                    run_dir / "llm_calls.json",
+                    sanitize([director.llm_trace.as_dict()]),
+                )
+
+        semaphore = asyncio.Semaphore(max(1, min(3, plan.concurrency)))
+
+        summaries: list[dict[str, Any]] = []
+
+        async def work(index: int, recipe: dict) -> dict[str, Any]:
+
+            direction = None
+
+            if directions is not None and index < len(directions):
+                direction = directions[index]
+
+            async with semaphore:
+                result = await _one_recipe(
+                    recipe=recipe,
+                    reference=reference,
+                    original=original,
                     analysis=analysis,
+                    case=case,
+                    plan=plan,
+                    provider=provider,
+                    planner=planner,
+                    architect=architect,
+                    direction=direction,
+                    timestamp=timestamp,
+                )
+
+            folder = (
+                run_dir
+                / "recipes"
+                / recipe_folder(
+                    index + 1,
+                    str(recipe.get("style_id")),
+                    str(recipe.get("template_id")),
                 )
             )
 
-    director_cost = _llm_cost(director_output(director) if director else None)
-    qc_cost = Decimal("0")
-    architect_cost = Decimal("0")
-    image_cost = Decimal("0")
-    image_outputs = 0
-    qc_calls = 0
-    architect_calls = 0
-    for row in summaries:
-        image_outputs += int(row.get("image_outputs") or 0)
-        if row.get("image_cost_usd"):
-            image_cost += Decimal(str(row["image_cost_usd"]))
-        qc_calls += int(row.get("qc_calls") or 0)
-        if row.get("qc_cost_usd"):
-            qc_cost += Decimal(str(row["qc_cost_usd"]))
-        architect_calls += int(row.get("architect_calls") or 0)
-        if row.get("architect_cost_usd"):
-            architect_cost += Decimal(str(row["architect_cost_usd"]))
+            return await write_recipe_result(
+                folder,
+                result,
+                case_id=plan.case_id,
+                run_id=run_id,
+                timestamp=timestamp,
+                direction=direction_dict(direction) if direction else None,
+                analysis=analysis,
+            )
 
-    cleaned = next(run_dir.glob("recipes/*/cleaned_reference.jpg"), None)
-    if cleaned is not None and not (run_dir / "cleaned_reference.jpg").exists():
-        (run_dir / "cleaned_reference.jpg").write_bytes(cleaned.read_bytes())
+        if plan.candidates > 0 and recipes:
+            summaries = list(
+                await asyncio.gather(
+                    *(work(index, recipe) for index, recipe in enumerate(recipes))
+                )
+            )
 
-    write_json(
-        run_dir / "cost.json",
-        {
-            "llm_calls": {
-                "director": 1 if director is not None else 0,
-                "architect": architect_calls,
-                "qc": qc_calls,
+        elif recipes:
+            for index, recipe in enumerate(recipes):
+                folder = (
+                    run_dir
+                    / "recipes"
+                    / recipe_folder(
+                        index + 1,
+                        str(recipe.get("style_id")),
+                        str(recipe.get("template_id")),
+                    )
+                )
+
+                empty = RecipeSetResult(
+                    recipe=recipe,
+                    prompt="",
+                    prompt_version=CREATIVE_PROMPT_VERSION,
+                )
+
+                direction = (
+                    directions[index]
+                    if directions is not None and index < len(directions)
+                    else None
+                )
+
+                summaries.append(
+                    await write_recipe_result(
+                        folder,
+                        empty,
+                        case_id=plan.case_id,
+                        run_id=run_id,
+                        timestamp=timestamp,
+                        direction=direction_dict(direction) if direction else None,
+                        analysis=analysis,
+                    )
+                )
+
+        director_cost = _llm_cost(director_output(director) if director else None)
+
+        qc_cost = Decimal("0")
+
+        architect_cost = Decimal("0")
+
+        image_cost = Decimal("0")
+
+        image_outputs = 0
+
+        qc_calls = 0
+
+        architect_calls = 0
+
+        for row in summaries:
+            image_outputs += int(row.get("image_outputs") or 0)
+
+            if row.get("image_cost_usd"):
+                image_cost += Decimal(str(row["image_cost_usd"]))
+
+            qc_calls += int(row.get("qc_calls") or 0)
+
+            if row.get("qc_cost_usd"):
+                qc_cost += Decimal(str(row["qc_cost_usd"]))
+
+            architect_calls += int(row.get("architect_calls") or 0)
+
+            if row.get("architect_cost_usd"):
+                architect_cost += Decimal(str(row["architect_cost_usd"]))
+
+        cleaned = next(run_dir.glob("recipes/*/cleaned_reference.jpg"), None)
+
+        if cleaned is not None and not (run_dir / "cleaned_reference.jpg").exists():
+            (run_dir / "cleaned_reference.jpg").write_bytes(cleaned.read_bytes())
+
+        write_json(
+            run_dir / "cost.json",
+            {
+                "llm_calls": {
+                    "director": 1 if director is not None else 0,
+                    "architect": architect_calls,
+                    "qc": qc_calls,
+                },
+                "image_outputs": {
+                    "candidates": sum(
+                        int(row.get("candidates") or 0) for row in summaries
+                    ),
+                    "repairs": sum(int(row.get("repairs") or 0) for row in summaries),
+                    "story": sum(1 for row in summaries if row.get("story")),
+                    "master": sum(1 for row in summaries if row.get("master")),
+                    "total": image_outputs,
+                },
+                "cost_usd": {
+                    "director_llm": str(director_cost)
+                    if director is not None
+                    else None,
+                    "architect_llm": str(architect_cost) if architect_calls else None,
+                    "qc_llm": str(qc_cost) if qc_calls else None,
+                    "images": str(image_cost) if image_outputs else None,
+                    "total": str(director_cost + architect_cost + qc_cost + image_cost),
+                },
             },
-            "image_outputs": {
-                "candidates": sum(int(row.get("candidates") or 0) for row in summaries),
-                "repairs": sum(int(row.get("repairs") or 0) for row in summaries),
-                "story": sum(1 for row in summaries if row.get("story")),
-                "master": sum(1 for row in summaries if row.get("master")),
-                "total": image_outputs,
+        )
+
+        write_json(
+            run_dir / "run_meta.json",
+            {
+                "run_id": run_id,
+                "case_id": plan.case_id,
+                "mode": plan.mode,
+                "label": plan.label,
+                "prompt_version": CREATIVE_PROMPT_VERSION,
+                "provider": plan.provider,
+                "image_model": provider.model,
+                "planner_model": getattr(planner, "model", None),
+                "architect_model": getattr(architect, "model", None)
+                if architect
+                else None,
+                "director_model": getattr(planner, "model", None),
+                "qc_model": getattr(planner, "model", None),
+                "candidates": plan.candidates,
+                "quality_check": plan.quality_check,
+                "repair": plan.repair,
+                "story": plan.story,
+                "master_crop": plan.master_crop,
+                "paid": plan.paid,
+                "experiment_id": plan.experiment_id,
+                "category": case.get("category"),
+                "created_at": timestamp,
+                "recipes": summaries,
+                **reproducibility(case=case, provider=provider, planner=planner),
             },
-            "cost_usd": {
-                "director_llm": str(director_cost) if director is not None else None,
-                "architect_llm": str(architect_cost) if architect_calls else None,
-                "qc_llm": str(qc_cost) if qc_calls else None,
-                "images": str(image_cost) if image_outputs else None,
-                "total": str(director_cost + architect_cost + qc_cost + image_cost),
-            },
-        },
-    )
-    write_json(
-        run_dir / "run_meta.json",
-        {
-            "run_id": run_id,
-            "case_id": plan.case_id,
-            "mode": plan.mode,
-            "label": plan.label,
-            "prompt_version": CREATIVE_PROMPT_VERSION,
-            "provider": plan.provider,
-            "image_model": provider.model,
-            "planner_model": getattr(planner, "model", None),
-            "architect_model": getattr(architect, "model", None) if architect else None,
-            "director_model": getattr(planner, "model", None),
-            "qc_model": getattr(planner, "model", None),
-            "candidates": plan.candidates,
-            "quality_check": plan.quality_check,
-            "repair": plan.repair,
-            "story": plan.story,
-            "master_crop": plan.master_crop,
-            "paid": plan.paid,
-            "experiment_id": plan.experiment_id,
-            "category": case.get("category"),
-            "created_at": timestamp,
-            "recipes": summaries,
-            **reproducibility(case=case, provider=provider, planner=planner),
-        },
-    )
-    return run_dir
+        )
+        return run_dir
+    finally:
+        write_run_timing(
+            run_dir,
+            started_at=started_at,
+            started_perf=started_perf,
+            finished_perf=time.perf_counter(),
+            plan=plan,
+            summaries=summaries,
+        )
 
 
 def _reference_jpeg(path: Path) -> bytes:

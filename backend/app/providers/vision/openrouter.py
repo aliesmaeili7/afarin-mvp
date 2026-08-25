@@ -16,19 +16,27 @@ from app.providers.llm.openrouter.client import LlmClient, parse_json_object
 from app.providers.llm.openrouter.schemas import strict_schema
 from app.providers.vision.base import (
     ArchitectCandidate,
+    ArchitectColorAndMaterial,
     ArchitectComposition,
     ArchitectContext,
+    ArchitectLighting,
+    ArchitectOutput,
+    ArchitectProduct,
+    ArchitectScene,
     CampaignDirection,
     CandidateQuality,
     CropBox,
+    ExistingTextAndGraphics,
     IdentityFeature,
     InputQuality,
     LlmCallTrace,
     PlannerContext,
     PlannerResult,
+    ProductPlacement,
     PromptArchitectResult,
     QualityReport,
     ReferenceAnalysis,
+    TypographySafeArea,
     llm_image_ref,
     llm_usage_dict,
 )
@@ -92,7 +100,10 @@ class OpenRouterVisualPlanner:
             reasons=tuple(payload.input_quality.reasons),
         )
         analysis = _analysis_from(payload.reference_analysis)
-        if analysis.reference_strategy == "needs_user_action" or analysis.brief_image_mismatch:
+        if (
+            analysis.reference_strategy == "needs_user_action"
+            or analysis.brief_image_mismatch
+        ):
             quality = InputQuality(
                 "needs_fix",
                 quality.reasons or analysis.blocking_reasons or ("needs_user_action",),
@@ -133,9 +144,7 @@ class OpenRouterVisualPlanner:
                 row for row in payload.unsuitable_style_ids if row in style_ids()
             ),
             unsuitable_template_ids=tuple(
-                row
-                for row in payload.unsuitable_template_ids
-                if row in template_ids()
+                row for row in payload.unsuitable_template_ids if row in template_ids()
             ),
             input_quality=quality,
             directions=directions,
@@ -295,12 +304,13 @@ class OpenRouterPromptArchitect:
         context: ArchitectContext,
         *,
         original: bytes | None = None,
+        correction: str | None = None,
     ) -> PromptArchitectResult:
         frames = [_for_vision(cleaned)]
         labels = ["cleaned_reference"]
         user = (
             "Image 1 = CLEANED reference (this is what the image model will see).\n"
-            + architect_user_prompt(context)
+            + architect_user_prompt(context, correction=correction)
         )
         if original and original != cleaned:
             frames.append(_for_vision(original))
@@ -308,7 +318,7 @@ class OpenRouterPromptArchitect:
             user = (
                 "Image 1 = CLEANED reference (image model input). "
                 "Image 2 = DIRTY/ORIGINAL (context only; do not reproduce UI).\n"
-                + architect_user_prompt(context)
+                + architect_user_prompt(context, correction=correction)
             )
         payload, trace = await self._planner._complete(
             schema_name="prompt_architect",
@@ -337,53 +347,87 @@ def _architect_from(
         seen_slots.add(item.slot)
         seen_intent.add(item.intention)
         pose = item.composition.human_or_pose.strip()
+        graphics = item.product.existing_text_and_graphics
         rows.append(
             ArchitectCandidate(
                 slot=int(item.slot),
                 intention=item.intention,
+                creative_intent=item.creative_intent.strip(),
+                product=ArchitectProduct(
+                    role_in_scene=item.product.role_in_scene.strip(),
+                    identity_priority=tuple(
+                        IdentityFeature(row.feature.strip(), row.importance)
+                        for row in item.product.identity_priority
+                        if row.feature.strip()
+                    ),
+                    existing_text_and_graphics=ExistingTextAndGraphics(
+                        preserve=bool(graphics.preserve),
+                        instructions=str(graphics.instructions or "").strip(),
+                    ),
+                ),
+                scene=ArchitectScene(
+                    environment=item.scene.environment.strip(),
+                    story_or_context=item.scene.story_or_context.strip(),
+                    foreground=item.scene.foreground.strip(),
+                    background=item.scene.background.strip(),
+                    props=tuple(row.strip() for row in item.scene.props if row.strip()),
+                ),
                 composition=ArchitectComposition(
                     camera=item.composition.camera.strip(),
+                    lens_feel=item.composition.lens_feel.strip(),
                     product_scale=item.composition.product_scale.strip(),
                     product_position=item.composition.product_position.strip(),
                     human_or_pose=pose,
-                    foreground=item.composition.foreground.strip(),
-                    background=item.composition.background.strip(),
-                    environment=item.composition.environment.strip(),
                     depth=item.composition.depth.strip(),
-                    text_safe_area=item.composition.text_safe_area.strip(),
                 ),
-                lighting=item.lighting.strip(),
-                palette=item.palette.strip(),
-                relevant_props=tuple(
-                    row.strip() for row in item.relevant_props if row.strip()
+                lighting=ArchitectLighting(
+                    direction=item.lighting.direction.strip(),
+                    quality=item.lighting.quality.strip(),
+                    mood=item.lighting.mood.strip(),
+                ),
+                color_and_material=ArchitectColorAndMaterial(
+                    palette=item.color_and_material.palette.strip(),
+                    material_treatment=item.color_and_material.material_treatment.strip(),
+                ),
+                typography_safe_area=TypographySafeArea(
+                    position=item.typography_safe_area.position.strip(),
+                    description=item.typography_safe_area.description.strip(),
                 ),
                 must_preserve=tuple(
                     row.strip() for row in item.must_preserve if row.strip()
                 ),
-                must_avoid=tuple(row.strip() for row in item.must_avoid if row.strip()),
-                image_prompt=item.image_prompt.strip(),
+                must_not_generate=tuple(
+                    row.strip() for row in item.must_not_generate if row.strip()
+                ),
+                render_strategy=item.render_strategy,
+                final_prompt=item.final_prompt.strip(),
+                has_product_placement=bool(item.has_product_placement),
+                product_placement=_placement_from(item.product_placement),
+                output=ArchitectOutput(
+                    aspect_ratio=item.output.aspect_ratio.strip(),
+                    format=item.output.format.strip(),
+                ),
             )
         )
     if len(rows) != 3:
         raise generation_failed()
     return PromptArchitectResult(
         reference_summary=payload.reference_summary.strip(),
-        identity_priority=tuple(
-            IdentityFeature(item.feature.strip(), item.importance)
-            for item in payload.identity_priority
-            if item.feature.strip()
-        ),
-        art_direction={
-            "visual_thesis": payload.art_direction.visual_thesis.strip(),
-            "product_role": payload.art_direction.product_role.strip(),
-            "style_execution": payload.art_direction.style_execution.strip(),
-            "template_execution": payload.art_direction.template_execution.strip(),
-            "palette_strategy": payload.art_direction.palette_strategy.strip(),
-            "typography_safe_area": payload.art_direction.typography_safe_area.strip(),
-        },
         candidates=tuple(sorted(rows, key=lambda row: row.slot)),
         usage=usage,
         llm_trace=trace,
+    )
+
+
+def _placement_from(payload: Any) -> ProductPlacement:
+    return ProductPlacement(
+        x=float(payload.x),
+        y=float(payload.y),
+        width=float(payload.width),
+        rotation_degrees=float(payload.rotation_degrees),
+        contact_surface=str(payload.contact_surface or "").strip(),
+        shadow_direction=str(payload.shadow_direction or "").strip() or "down",
+        shadow_softness=str(payload.shadow_softness or "").strip() or "soft",
     )
 
 

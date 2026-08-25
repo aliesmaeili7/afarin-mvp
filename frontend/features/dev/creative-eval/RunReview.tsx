@@ -27,7 +27,13 @@ type ImageRequestTrace = {
 
 type RecipeBundle = {
   folder: string;
-  recipe: { style_id?: string; template_id?: string; title_fa?: string } | null;
+  recipe: {
+    style_id?: string;
+    template_id?: string;
+    title_fa?: string;
+    render_strategy?: string;
+    render_strategy_reason?: string;
+  } | null;
   direction: Record<string, unknown> | null;
   prompt: string | null;
   quality: { candidates?: Record<string, unknown>[] } | null;
@@ -35,6 +41,12 @@ type RecipeBundle = {
   error: { error?: string } | null;
   llmCalls: LlmCall[] | null;
   imageRequests: ImageRequestTrace[] | null;
+  architect: Record<string, unknown> | null;
+  validation: {
+    ok?: boolean;
+    retry_used?: boolean;
+    errors?: string[];
+  } | null;
   files: string[];
 };
 
@@ -86,6 +98,16 @@ function prettyJson(value: string | undefined): string {
   }
 }
 
+function strategyLabel(value: string | undefined): string | null {
+  if (value === "reference_transform") {
+    return "Reference transform";
+  }
+  if (value === "preserved_product_composite") {
+    return "Preserved product composite";
+  }
+  return value || null;
+}
+
 function callTitle(name: string | undefined): string {
   if (name === "prompt_architect") {
     return "Prompt Architect";
@@ -112,6 +134,7 @@ export function RunReview({
   const directorLlmCalls = (bundle.directorLlmCalls ?? null) as LlmCall[] | null;
   const cost = (bundle.cost ?? {}) as Record<string, unknown>;
   const recipes = (bundle.recipes ?? []) as RecipeBundle[];
+  const timing = (bundle.timing ?? null) as Record<string, unknown> | null;
   const [ratings, setRatings] = useState<RatingsState>(
     (bundle.ratings as RatingsState) ?? { candidates: {}, director: {} },
   );
@@ -154,8 +177,10 @@ export function RunReview({
       </p>
       <h1 className="mt-2 text-3xl font-bold">{runId}</h1>
       <p className="text-muted">
-        {String(meta.case_id)} · {mode} · label {String(meta.label ?? "—")} · prompt{" "}
-        {String(meta.prompt_version)} · {String(meta.provider)}
+        {String(meta.case_id)} ·{" "}
+        {mode === "director" ? "Director / free choice" : mode} · label{" "}
+        {String(meta.label ?? "—")} · prompt {String(meta.prompt_version)} ·{" "}
+        {String(meta.provider)}
       </p>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(280px,420px)_1fr]">
@@ -190,6 +215,17 @@ export function RunReview({
               {String(images.master ?? 0)}, total {String(images.total ?? 0)}
             </p>
             <p>USD — images {String(usd.images ?? "—")}, total {String(usd.total ?? "—")}</p>
+            {timing ? (
+              <p>
+                TOTAL WAIT {String(timing.summary ?? `${Number(timing.wall_time_ms ?? 0) / 1000} s`)}
+                {typeof timing.successful_candidates === "number"
+                  ? ` · ${timing.successful_candidates} generated candidates`
+                  : ""}
+                {typeof timing.paid_image_outputs === "number"
+                  ? ` · ${timing.paid_image_outputs} image outputs`
+                  : ""}
+              </p>
+            ) : null}
           </div>
         </div>
       </section>
@@ -229,12 +265,11 @@ export function RunReview({
       ) : null}
 
       <div className="mt-10 space-y-16">
-        {recipes.map((item, index) => (
+        {recipes.map((item) => (
           <RecipeBlock
             key={item.folder}
             runId={runId}
             item={item}
-            index={index}
             mode={mode}
             ratings={ratings}
             onRate={(key, value) =>
@@ -254,14 +289,12 @@ export function RunReview({
 function RecipeBlock({
   runId,
   item,
-  index,
   mode,
   ratings,
   onRate,
 }: {
   runId: string;
   item: RecipeBundle;
-  index: number;
   mode: string;
   ratings: RatingsState;
   onRate: (key: string, value: CandidateRating) => void;
@@ -278,12 +311,27 @@ function RecipeBlock({
   const qcCalls = (item.llmCalls ?? []).filter(
     (call) => call.name === "visual_quality",
   );
+  const architect = (item.architect ?? null) as Record<string, unknown> | null;
+  const validation = (item.validation ?? architect?.validation ?? null) as
+    | { ok?: boolean; retry_used?: boolean; errors?: string[] }
+    | null;
   return (
     <section>
       <h2 className="text-2xl font-bold">
-        {mode === "director" ? `Direction ${index + 1} · ` : null}
+        {mode === "director" ? "Afarin chose · " : null}
         {styleId} × {templateId}
       </h2>
+      {validationLabel(validation) ? (
+        <p className="mt-1 text-sm font-semibold">{validationLabel(validation)}</p>
+      ) : null}
+      {strategyLabel(item.recipe?.render_strategy) ? (
+        <p className="mt-1 text-sm text-muted">
+          {strategyLabel(item.recipe?.render_strategy)}
+          {item.recipe?.render_strategy_reason
+            ? ` — ${item.recipe.render_strategy_reason}`
+            : ""}
+        </p>
+      ) : null}
       {item.direction ? (
         <div className="mt-2 max-w-3xl text-sm">
           <p className="font-semibold">{String(direction.title_fa ?? "")}</p>
@@ -311,6 +359,21 @@ function RecipeBlock({
           label="Public template preview"
           src={`/visual-previews/templates/${templateId}.jpg`}
         />
+        {item.files.includes("cutout.png") ? (
+          <PreviewCard
+            label="Validated cutout"
+            src={fileUrl(runId, item.folder, "cutout.png")}
+          />
+        ) : null}
+        {item.files
+          .filter((name) => name.startsWith("scene-") && name.endsWith(".jpg"))
+          .map((name) => (
+            <PreviewCard
+              key={name}
+              label={`Empty scene · ${name}`}
+              src={fileUrl(runId, item.folder, name)}
+            />
+          ))}
       </div>
 
       {architectCalls.length ? (
@@ -326,6 +389,7 @@ function RecipeBlock({
           const key = `${item.folder}:${slot}`;
           const qc = qcFor(item.quality, slot);
           const prompt = promptFor(item.imageRequests, slot, "primary");
+          const plan = architectPlanFor(architect, slot);
           return (
             <article key={slot} className="min-w-0">
               <p className="mb-2 font-semibold">Candidate {slot}</p>
@@ -336,6 +400,7 @@ function RecipeBlock({
                 className="w-full rounded-xl border border-border object-contain"
               />
               <QcBlock qc={qc} />
+              {plan ? <ArchitectPlan plan={plan} /> : null}
               {prompt ? <ImagePrompt prompt={prompt} /> : null}
               <RatingsPanel
                 value={ratings.candidates[key] ?? {}}
@@ -407,12 +472,111 @@ function RecipeBlock({
   );
 }
 
+function validationLabel(
+  validation: { ok?: boolean; retry_used?: boolean; errors?: string[] } | null,
+): string | null {
+  if (!validation) {
+    return null;
+  }
+  if (validation.ok && validation.retry_used) {
+    return "Architect validation: PASS AFTER 1 RETRY";
+  }
+  if (validation.ok) {
+    return "Architect validation: PASS";
+  }
+  return "Architect validation: FAIL";
+}
+
+function architectPlanFor(
+  architect: Record<string, unknown> | null,
+  slot: number,
+): Record<string, unknown> | null {
+  const rows = architect?.candidates;
+  if (!Array.isArray(rows)) {
+    return null;
+  }
+  const hit = rows.find((item) => {
+    return (
+      item &&
+      typeof item === "object" &&
+      "slot" in item &&
+      Number((item as { slot?: number }).slot) === slot
+    );
+  });
+  return hit && typeof hit === "object" ? (hit as Record<string, unknown>) : null;
+}
+
+function ArchitectPlan({ plan }: { plan: Record<string, unknown> }) {
+  const scene = (plan.scene ?? {}) as Record<string, unknown>;
+  const composition = (plan.composition ?? {}) as Record<string, unknown>;
+  const lighting = (plan.lighting ?? {}) as Record<string, unknown>;
+  const typeSafe = (plan.typography_safe_area ?? {}) as Record<string, unknown>;
+  const product = (plan.product ?? {}) as Record<string, unknown>;
+  const identity = Array.isArray(plan.must_preserve)
+    ? (plan.must_preserve as string[]).join("; ")
+    : Array.isArray(product.identity_priority)
+      ? (product.identity_priority as { feature?: string }[])
+          .map((item) => item.feature)
+          .filter(Boolean)
+          .join("; ")
+      : "—";
+  return (
+    <details className="mt-2 text-xs">
+      <summary className="cursor-pointer font-semibold">Architect plan</summary>
+      <dl className="mt-1 grid grid-cols-1 gap-1">
+        <div>
+          <dt className="text-muted">intent</dt>
+          <dd>{String(plan.intention ?? plan.creative_intent ?? "—")}</dd>
+        </div>
+        <div>
+          <dt className="text-muted">scene</dt>
+          <dd>{String(scene.environment ?? composition.environment ?? "—")}</dd>
+        </div>
+        <div>
+          <dt className="text-muted">composition</dt>
+          <dd>
+            {String(composition.camera ?? "—")} · {String(composition.product_position ?? "—")}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted">lighting</dt>
+          <dd>
+            {typeof plan.lighting === "string"
+              ? plan.lighting
+              : `${String(lighting.direction ?? "—")} / ${String(lighting.quality ?? "")}`}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted">identity</dt>
+          <dd>{identity || "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted">type-safe area</dt>
+          <dd>
+            {String(typeSafe.position ?? composition.text_safe_area ?? "—")}
+            {typeSafe.description ? ` — ${String(typeSafe.description)}` : ""}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted">strategy</dt>
+          <dd>{String(plan.render_strategy ?? "—")}</dd>
+        </div>
+      </dl>
+    </details>
+  );
+}
+
 function ImagePrompt({ prompt }: { prompt: string }) {
+  const compiled = /VISUAL EXECUTION|DO NOT ADD/.test(prompt);
   return (
     <details open className="mt-2 text-xs">
-      <summary className="cursor-pointer font-semibold">Image model prompt</summary>
+      <summary className="cursor-pointer font-semibold">
+        {compiled ? "Image model prompt / compiled" : "Final Seedream prompt"}
+      </summary>
       <p className="mt-1 text-muted">
-        Compiled prompt sent to Seedream (after the safety compiler).
+        {compiled
+          ? "Compiled prompt sent to Seedream (after the safety compiler)."
+          : "Architect final_prompt sent to Seedream unchanged."}
       </p>
       <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-ink-950/80 p-2 text-ink-50">
         {prompt}

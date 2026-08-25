@@ -44,14 +44,45 @@ export async function listRuns(): Promise<Record<string, unknown>[]> {
   const names = await readdir(root, { withFileTypes: true });
   const rows: Record<string, unknown>[] = [];
   for (const entry of names.reverse()) {
-    if (!entry.isDirectory()) {
+    if (!entry.isDirectory() || entry.name.startsWith("_")) {
       continue;
     }
     try {
       const raw = await readFile(join(root, entry.name, "run_meta.json"), "utf8");
-      rows.push(JSON.parse(raw) as Record<string, unknown>);
+      const meta = JSON.parse(raw) as Record<string, unknown>;
+      try {
+        const timingRaw = await readFile(join(root, entry.name, "timing.json"), "utf8");
+        const timing = JSON.parse(timingRaw) as Record<string, unknown>;
+        meta.timing = timing;
+        meta.wall_time_ms = timing.wall_time_ms;
+        meta.timing_summary = timing.summary;
+      } catch {
+        /* old runs omit timing */
+      }
+      rows.push(meta);
     } catch {
       rows.push({ run_id: entry.name });
+    }
+  }
+  return rows;
+}
+
+export async function listBatches(): Promise<Record<string, unknown>[]> {
+  const root = join(runsRoot(), "_batches");
+  if (!existsSync(root)) {
+    return [];
+  }
+  const names = await readdir(root);
+  const rows: Record<string, unknown>[] = [];
+  for (const name of names.sort().reverse()) {
+    if (!name.endsWith(".json")) {
+      continue;
+    }
+    try {
+      const raw = await readFile(join(root, name), "utf8");
+      rows.push({ file: name, ...(JSON.parse(raw) as Record<string, unknown>) });
+    } catch {
+      rows.push({ file: name });
     }
   }
   return rows;
@@ -94,7 +125,7 @@ export async function listObservations(): Promise<SummaryObservation[]> {
   const names = await readdir(root, { withFileTypes: true });
   const rows: SummaryObservation[] = [];
   for (const entry of names) {
-    if (!entry.isDirectory()) {
+    if (!entry.isDirectory() || entry.name.startsWith("_")) {
       continue;
     }
     const ratingsPath = join(root, entry.name, "ratings.json");
@@ -249,6 +280,7 @@ export async function readRunBundle(runId: string): Promise<Record<string, unkno
         llmCalls: await readOptional("llm_calls.json"),
         imageRequests: await readOptional("image_requests.json"),
         architect: await readOptional("architect.json"),
+        validation: await readOptional("validation.json"),
         files,
       });
     }
@@ -261,5 +293,6 @@ export async function readRunBundle(runId: string): Promise<Record<string, unkno
     cost: await readJson(runId, "cost.json"),
     ratings: (await readJson(runId, "ratings.json")) ?? { candidates: {}, director: {} },
     recipes,
+    timing: await readJson(runId, "timing.json"),
   };
 }

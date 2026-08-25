@@ -26,7 +26,6 @@ from PIL import Image, ImageDraw, ImageFont, ImageStat
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.providers.image.base import ImageRequest
-from app.providers.image.creative_prompts import compile_architect_result
 from app.providers.image.prompts import build_scene_prompt
 from app.providers.vision.stub import stub_architect_result
 from app.services.campaigns.master_crop import MASTER_NOTE, central_4x5_crop
@@ -204,9 +203,7 @@ async def run_case(
             concept, campaign
         ) + ", " + MASTER_NOTE
     else:
-        dedicated_prompt = compile_architect_result(stub_architect_result()).candidates[
-            0
-        ].compiled_prompt
+        dedicated_prompt = stub_architect_result().candidates[0].final_prompt
         master_prompt = dedicated_prompt + ", " + MASTER_NOTE
 
     feed_a = await provider.generate(

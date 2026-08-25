@@ -63,14 +63,18 @@ def decide_strategy(analysis: dict | None) -> str:
     """Safety overrides on top of Director output."""
     payload = analysis or {}
     strategy = analysis_strategy(payload)
-    if payload.get("brief_image_mismatch") or payload.get("product_visibility") == "unusable":
+    if (
+        payload.get("brief_image_mismatch")
+        or payload.get("product_visibility") == "unusable"
+    ):
         return "needs_user_action"
     cleanliness = str(payload.get("cleanliness") or "")
     if cleanliness == "overlapping_contamination":
         return "needs_user_action"
-    if payload.get("person_present") or payload.get("useful_context_present"):
-        if strategy == "subject_cutout_neutral":
-            return "preserve_context_crop"
+    if (
+        payload.get("person_present") or payload.get("useful_context_present")
+    ) and strategy == "subject_cutout_neutral":
+        return "preserve_context_crop"
     if strategy == "needs_user_action":
         return strategy
     return strategy
@@ -92,7 +96,8 @@ async def prepare_clean_jpeg(
     if strategy == "needs_user_action":
         reasons = tuple(
             str(item)
-            for item in (analysis or {}).get("blocking_reasons") or ("needs_user_action",)
+            for item in (analysis or {}).get("blocking_reasons")
+            or ("needs_user_action",)
         )
         return PrepResult(strategy, None, True, reasons)
 
@@ -106,7 +111,7 @@ async def prepare_clean_jpeg(
 
     if strategy == "subject_cutout_neutral":
         cut = await get_cutout().remove_background(crop_jpeg)
-        checked = _validate_cutout(cut)
+        checked = validate_cutout_png(cut)
         if checked is None:
             logger.warning("creative cutout failed or looked contaminated; blocking")
             return PrepResult(
@@ -141,7 +146,7 @@ def assert_not_blocked(result: PrepResult) -> bytes:
     return result.jpeg
 
 
-def _validate_cutout(png: bytes | None) -> bytes | None:
+def validate_cutout_png(png: bytes | None) -> bytes | None:
     if not png:
         return None
     try:
@@ -169,6 +174,16 @@ def _validate_cutout(png: bytes | None) -> bytes | None:
     if box_w < MIN_BBOX_FRACTION or box_h < MIN_BBOX_FRACTION:
         return None
     return png
+
+
+async def extract_validated_cutout(image_jpeg: bytes) -> bytes | None:
+    """Best-effort rembg cutout. Failure returns None; never blocks transform."""
+    try:
+        cut = await get_cutout().remove_background(image_jpeg)
+    except Exception:
+        logger.warning("cutout extraction failed", exc_info=True)
+        return None
+    return validate_cutout_png(cut)
 
 
 def _composite_neutral(png: bytes) -> bytes:
