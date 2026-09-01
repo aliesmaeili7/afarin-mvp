@@ -57,6 +57,15 @@ describe("dictionaries", () => {
     expect(t("en", "result.generateThree")).toBe("Generate 3 new versions");
   });
 
+  it("translates chat chrome", () => {
+    expect(t("fa", "chat.emptyPrompt")).toBe("امروز چی می‌خوای بسازی؟");
+    expect(t("en", "chat.emptyPrompt")).toBe("What do you want to make today?");
+    expect(t("fa", "nav.chat")).toBe("گفتگو");
+    expect(t("fa", "landing.chatCta")).toBe("گفتگو با آفرین");
+    expect(t("fa", "chat.plusAd")).toBe("تبلیغ بساز");
+    expect(t("en", "chat.plusAd")).toBe("Create advertisement");
+  });
+
   it("translates educational chrome", () => {
     expect(t("fa", "education.generate")).toBe("ساخت پست");
     expect(t("en", "education.generate")).toBe("Create post");

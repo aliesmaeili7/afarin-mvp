@@ -160,6 +160,22 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-danger: var(--danger);
   --color-focus-ring: var(--focus-ring);
+
+  --color-chat-bg: var(--chat-bg);
+  --color-chat-surface: var(--chat-surface);
+  --color-chat-surface-secondary: var(--chat-surface-secondary);
+  --color-chat-surface-elevated: var(--chat-surface-elevated);
+  --color-chat-border-subtle: var(--chat-border-subtle);
+  --color-chat-text: var(--chat-text);
+  --color-chat-text-secondary: var(--chat-text-secondary);
+  --color-chat-accent: var(--chat-accent);
+  --color-chat-accent-soft: var(--chat-accent-soft);
+  --color-chat-danger: var(--chat-danger);
+  --shadow-chat-soft: var(--chat-shadow-soft);
+  --radius-chat-md: var(--chat-radius-md);
+  --radius-chat-lg: var(--chat-radius-lg);
+  --radius-chat-xl: var(--chat-radius-xl);
+  --blur-chat: var(--chat-blur);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -175,6 +191,22 @@
   --primary-foreground: #ffffff;
   --danger: #e8503f;
   --focus-ring: #7c3aed;
+
+  --chat-bg: #f4f2f7;
+  --chat-surface: #ffffff;
+  --chat-surface-secondary: #efedf4;
+  --chat-surface-elevated: #ffffff;
+  --chat-border-subtle: rgb(23 18 31 / 0.08);
+  --chat-text: #17121f;
+  --chat-text-secondary: #6c6382;
+  --chat-accent: #7c3aed;
+  --chat-accent-soft: #ece4ff;
+  --chat-danger: #e8503f;
+  --chat-shadow-soft: 0 1px 2px rgb(23 18 31 / 0.04), 0 10px 28px -16px rgb(23 18 31 / 0.18);
+  --chat-radius-md: 16px;
+  --chat-radius-lg: 22px;
+  --chat-radius-xl: 28px;
+  --chat-blur: 18px;
 }
 
 .dark {
@@ -198,6 +230,18 @@
   --color-gold-100: #3a3018;
   --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.24), 0 8px 24px -12px rgb(0 0 0 / 0.45);
   --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.28), 0 24px 48px -24px rgb(0 0 0 / 0.55);
+
+  --chat-bg: #121018;
+  --chat-surface: #1c1824;
+  --chat-surface-secondary: #262033;
+  --chat-surface-elevated: #2c2538;
+  --chat-border-subtle: rgb(244 241 250 / 0.08);
+  --chat-text: #f4f1fa;
+  --chat-text-secondary: #a89fb8;
+  --chat-accent: #a476fc;
+  --chat-accent-soft: #2a1f45;
+  --chat-danger: #fb7263;
+  --chat-shadow-soft: 0 1px 2px rgb(0 0 0 / 0.28), 0 12px 32px -18px rgb(0 0 0 / 0.55);
 }
 
 @keyframes fade-up {
@@ -297,6 +341,14 @@
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-motion,
+  .chat-shimmer {
+    animation: none !important;
+    transition: none !important;
   }
 }
 

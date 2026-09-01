@@ -59,6 +59,12 @@ export function SiteHeader({ showCta = true }: { showCta?: boolean }) {
             {!loaded ? null : session ? (
               <>
                 <Link
+                  href="/chat"
+                  className="rounded-xl px-3 py-2 text-sm font-semibold text-muted transition-colors hover:bg-ink-100 hover:text-foreground"
+                >
+                  {t("nav.chat")}
+                </Link>
+                <Link
                   href="/dashboard"
                   className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-muted transition-colors hover:bg-ink-100 hover:text-foreground sm:inline-flex"
                 >
@@ -84,6 +90,12 @@ export function SiteHeader({ showCta = true }: { showCta?: boolean }) {
               </>
             ) : (
               <>
+                <Link
+                  href="/chat"
+                  className="rounded-xl px-3 py-2 text-sm font-semibold text-muted transition-colors hover:bg-ink-100 hover:text-foreground"
+                >
+                  {t("nav.chat")}
+                </Link>
                 <Link href="/login">
                   <Button size="sm" variant="ghost">
                     {t("nav.login")}

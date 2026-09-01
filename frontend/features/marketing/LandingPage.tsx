@@ -91,6 +91,12 @@ export function LandingPage() {
                     </Button>
                   </Link>
                 </div>
+                <Link
+                  href="/chat"
+                  className="mt-3 inline-flex text-sm font-semibold text-brand-700 hover:underline"
+                >
+                  {t("landing.chatCta")}
+                </Link>
                 <p className="mt-3 text-xs text-muted">{t("landing.noCard")}</p>
               </div>
 

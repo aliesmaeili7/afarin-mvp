@@ -138,6 +138,136 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+export function SendIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 12h12M13 6l6 6-6 6" />
+    </Icon>
+  );
+}
+
+export function SearchIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4 4" />
+    </Icon>
+  );
+}
+
+export function MenuIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </Icon>
+  );
+}
+
+export function MoreIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="6" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="18" cy="12" r="1.2" fill="currentColor" />
+    </Icon>
+  );
+}
+
+export function PaperclipIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 12.5 15.2 5.3a4 4 0 0 1 5.6 5.6l-8.8 8.8a5.5 5.5 0 0 1-7.8-7.8l8.1-8.1" />
+    </Icon>
+  );
+}
+
+export function PaletteIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4.5a7.5 7.5 0 1 0 .4 15h1.4a1.8 1.8 0 0 0 1.6-2.7 1.8 1.8 0 0 1 1.6-2.8H18a3.5 3.5 0 0 0 3.4-4.2A7.5 7.5 0 0 0 12 4.5z" />
+      <circle cx="8" cy="10" r="1" fill="currentColor" />
+      <circle cx="11" cy="8" r="1" fill="currentColor" />
+      <circle cx="14.5" cy="9" r="1" fill="currentColor" />
+      <circle cx="9" cy="13.5" r="1" fill="currentColor" />
+    </Icon>
+  );
+}
+
+export function PanelLeftIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="5" width="16" height="14" rx="2.5" />
+      <path d="M9 5v14" />
+    </Icon>
+  );
+}
+
+export function UserIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="8" r="3.2" />
+      <path d="M5.2 19.2c.8-3.2 3.5-5 6.8-5s6 1.8 6.8 5" />
+    </Icon>
+  );
+}
+
+export function LogoutIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 5H7.5A2.5 2.5 0 0 0 5 7.5v9A2.5 2.5 0 0 0 7.5 19H10" />
+      <path d="M10 12h9M16 8l4 4-4 4" />
+    </Icon>
+  );
+}
+
+export function PinIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m15.5 4.5-7.4 7.4c-.8 2.6-2.6 4.4-2.6 4.4s1.8-1.8 4.4-2.6l7.4-7.4a2.2 2.2 0 0 0-2.8-2.8z" />
+      <path d="m10.2 13.8-4.7 4.7" />
+    </Icon>
+  );
+}
+
+export function ArchiveIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 8h16l-1.2 11.2A2 2 0 0 1 16.8 21H7.2a2 2 0 0 1-2-1.8L4 8z" />
+      <path d="M3.5 8h17V6.2A1.2 1.2 0 0 0 19.3 5H4.7A1.2 1.2 0 0 0 3.5 6.2V8z" />
+      <path d="M10 13h4" />
+    </Icon>
+  );
+}
+
+export function ShareIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="18" cy="5.5" r="2.2" />
+      <circle cx="6" cy="12" r="2.2" />
+      <circle cx="18" cy="18.5" r="2.2" />
+      <path d="m8 11 8-4.5M8 13l8 4.5" />
+    </Icon>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 7h14" />
+      <path d="M10 7V5.5A1.5 1.5 0 0 1 11.5 4h1A1.5 1.5 0 0 1 14 5.5V7" />
+      <path d="M7 7l.8 12.2A2 2 0 0 0 9.8 21h4.4a2 2 0 0 0 2-1.8L17 7" />
+    </Icon>
+  );
+}
+
+export function ChevronIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m7 10 5 5 5-5" />
+    </Icon>
+  );
+}
+
 export function GoogleIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden="true" {...props}>
