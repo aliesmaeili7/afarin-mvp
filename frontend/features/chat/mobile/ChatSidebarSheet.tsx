@@ -16,6 +16,9 @@ export function ChatSidebarSheet({
   search,
   onSearch,
   controls,
+  listLoading,
+  listError,
+  onRetryList,
 }: {
   open: boolean;
   onClose: () => void;
@@ -24,6 +27,9 @@ export function ChatSidebarSheet({
   search: string;
   onSearch: (value: string) => void;
   controls: ConversationControls;
+  listLoading?: boolean;
+  listError?: boolean;
+  onRetryList?: () => void;
 }) {
   const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
@@ -68,6 +74,9 @@ export function ChatSidebarSheet({
           onToggleCollapsed={onClose}
           onNavigate={onClose}
           controls={controls}
+          listLoading={listLoading}
+          listError={listError}
+          onRetryList={onRetryList}
         />
       </div>
     </div>

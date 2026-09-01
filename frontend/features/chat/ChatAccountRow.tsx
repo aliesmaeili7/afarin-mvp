@@ -2,6 +2,7 @@
 
 import { useCallback, useId, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArchiveIcon,
   ChevronIcon,
@@ -23,6 +24,7 @@ import { ChatMenuButton } from "./primitives/ChatMenuButton";
 import { ChatSheet } from "./primitives/ChatSheet";
 import { useChatAccount } from "./useChatAccount";
 import { useMobileSheet } from "./useChatSession";
+import { clearChatDraft } from "./chatDraft";
 
 export function ChatAccountRow({
   collapsed,
@@ -32,6 +34,7 @@ export function ChatAccountRow({
   onOpenArchive: () => void;
 }) {
   const { t, locale, openSettings } = useI18n();
+  const router = useRouter();
   const { account, signOut } = useChatAccount();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -54,7 +57,9 @@ export function ChatAccountRow({
 
   async function handleSignOut() {
     close();
+    clearChatDraft();
     await signOut();
+    router.push("/chat");
   }
 
   const items = (

@@ -72,7 +72,9 @@ describe("signed-out account footer", () => {
       "createAccount",
       "archive",
     ]);
-    expect(items.find((item) => item.id === "signIn")?.href).toBe("/login");
+    expect(items.find((item) => item.id === "signIn")?.href).toBe(
+      "/login?next=/chat",
+    );
     expect(items.find((item) => item.id === "createAccount")?.href).toBe(
       "/create/signup",
     );

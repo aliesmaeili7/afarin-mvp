@@ -25,7 +25,23 @@ from collections.abc import Sequence
 
 from alembic import op
 
-from app.db.models import APP_TABLES, BROWSER_ROLES, RUNTIME_ROLE
+from app.db.models import BROWSER_ROLES, RUNTIME_ROLE
+
+# Tables that existed when this revision ran. Later tables get the same
+# policy in the migration that creates them.
+PHASE_2_TABLES = (
+    "profiles",
+    "anonymous_sessions",
+    "brands",
+    "brand_assets",
+    "products",
+    "product_images",
+    "campaigns",
+    "campaign_concepts",
+    "campaign_copy",
+    "campaign_assets",
+    "generation_jobs",
+)
 
 revision: str = "9f2b7c4d5e10"
 down_revision: str | None = "0b876a2c1921"
@@ -37,7 +53,7 @@ POLICY = "afarin_app_full_access"
 
 def upgrade() -> None:
     browser_roles = ", ".join(BROWSER_ROLES)
-    for table in APP_TABLES:
+    for table in PHASE_2_TABLES:
         op.execute(f"alter table {table} enable row level security")
         op.execute(f"drop policy if exists {POLICY} on {table}")
         op.execute(
@@ -50,5 +66,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for table in APP_TABLES:
+    for table in PHASE_2_TABLES:
         op.execute(f"drop policy if exists {POLICY} on {table}")

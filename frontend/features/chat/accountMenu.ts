@@ -22,7 +22,7 @@ const SIGNED_IN: AccountMenuItem[] = [
 ];
 
 const SIGNED_OUT: AccountMenuItem[] = [
-  { id: "signIn", href: "/login" },
+  { id: "signIn", href: "/login?next=/chat" },
   { id: "createAccount", href: "/create/signup" },
   { id: "archive", dividerBefore: true },
 ];

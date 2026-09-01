@@ -39,9 +39,10 @@ export function ImageArtifact({
   }, [menuOpen]);
 
   const src =
-    artifact.storage_path?.startsWith("data:")
+    artifact.url ??
+    (artifact.storage_path?.startsWith("data:")
       ? artifact.storage_path
-      : resolveStaticAssetUrl(artifact.storage_path);
+      : resolveStaticAssetUrl(artifact.storage_path));
 
   if (artifact.status === "failed") {
     return (

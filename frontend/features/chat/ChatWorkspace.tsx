@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ui/Toast";
 import { useI18n } from "@/lib/i18n/PreferencesProvider";
+import { toDisplayError } from "@/lib/i18n/errors";
+import { chatApiMode } from "@/lib/api/chat";
+import { snapshotForThemeId } from "@/lib/api/chat/catalog";
 import type {
   ChatAttachment,
   ConversationArtifact,
@@ -27,13 +31,18 @@ import {
   useMobileSheet,
   useSidebarCollapsed,
 } from "./useChatSession";
+import { useChatAccount } from "./useChatAccount";
+import { clearChatDraft, readChatDraft, writeChatDraft } from "./chatDraft";
 
 export function ChatWorkspace({ conversationId }: { conversationId: string | null }) {
   const router = useRouter();
   const { t, locale } = useI18n();
+  const { toast } = useToast();
+  const { account } = useChatAccount();
   const session = useChatSession(conversationId);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
+  const [draftThemeId, setDraftThemeId] = useState<string | null>(null);
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
   const [reference, setReference] = useState<ConversationArtifact | null>(null);
   const [creationAction, setCreationAction] = useState<CreationAction | null>(
@@ -55,6 +64,7 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
     useStickToBottom([
       session.conversation?.messages.length,
       session.pending?.startedAt,
+      session.pendingUser?.id,
     ]);
 
   useEffect(() => {
@@ -75,11 +85,30 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
     };
   }, []);
 
+  useEffect(() => {
+    if (conversationId) return;
+    const stored = readChatDraft();
+    if (!stored) return;
+    setDraft(stored.content);
+    setDraftThemeId(stored.themeId);
+    setCreationAction(stored.creationAction);
+  }, [conversationId]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void session.refreshList(search);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [search, session.refreshList]);
+
+  const activeThemeId = conversationId
+    ? (session.conversation?.active_theme?.id ?? null)
+    : draftThemeId;
+
   const activeTheme = useMemo(() => {
-    const id = session.conversation?.active_theme_id ?? null;
-    if (!id) return null;
-    return session.themes.find((theme) => theme.id === id) ?? null;
-  }, [session.conversation?.active_theme_id, session.themes]);
+    if (!activeThemeId) return null;
+    return session.themes.find((theme) => theme.id === activeThemeId) ?? null;
+  }, [activeThemeId, session.themes]);
 
   async function navigateIfNew(id: string) {
     if (conversationId !== id) {
@@ -87,31 +116,73 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
     }
   }
 
+  function notice(error: unknown) {
+    toast(toDisplayError(error, locale), "error");
+  }
+
   async function handleSend() {
+    if (
+      chatApiMode === "http" &&
+      !account.signedIn &&
+      (draft.trim() || attachment)
+    ) {
+      writeChatDraft({
+        content: draft,
+        themeId: draftThemeId,
+        creationAction,
+      });
+      toast(t("chat.signInToSave"), "info");
+      router.push("/login?next=/chat");
+      return;
+    }
     const language = inferMessageLanguage(draft);
     const input = {
       content: draft,
       attachment,
       generateImage: Boolean(reference),
       skillHint: creationAction,
+      language,
+      activeTheme: conversationId ? undefined : snapshotForThemeId(draftThemeId),
     };
+    const previousDraft = draft;
+    const previousAttachment = attachment;
+    const previousAction = creationAction;
     setDraft("");
     setAttachment(null);
     setReference(null);
     setCreationAction(null);
     pinToBottom();
     const result = await session.send(input, language);
-    if (result) await navigateIfNew(result.id);
+    if (!result) {
+      setDraft(previousDraft);
+      setAttachment(previousAttachment);
+      setCreationAction(previousAction);
+      toast(t("chat.sendFailed"), "error");
+      return;
+    }
+    clearChatDraft();
+    await navigateIfNew(result.id);
   }
 
   async function handleRetry(artifactId: string) {
     pinToBottom();
-    await session.retry(artifactId, locale);
+    try {
+      await session.retry(artifactId, locale);
+    } catch (error) {
+      notice(error);
+    }
   }
 
   async function handleTheme(themeId: string | null) {
-    const result = await session.setTheme(themeId);
-    if (result) await navigateIfNew(result.id);
+    if (!conversationId) {
+      setDraftThemeId(themeId);
+      return;
+    }
+    try {
+      await session.setTheme(themeId);
+    } catch (error) {
+      notice(error);
+    }
   }
 
   function leaveIfCurrent(id: string) {
@@ -122,27 +193,43 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
 
   async function handleCommitRename(id: string, title: string) {
     setRenamingId(null);
-    await session.rename(id, title);
+    try {
+      await session.rename(id, title);
+    } catch (error) {
+      notice(error);
+    }
   }
 
   async function handleArchive(id: string) {
-    await session.archive(id);
-    setArchiveRevision((value) => value + 1);
-    leaveIfCurrent(id);
+    try {
+      await session.archive(id);
+      setArchiveRevision((value) => value + 1);
+      leaveIfCurrent(id);
+    } catch (error) {
+      notice(error);
+    }
   }
 
   async function handleRestore(id: string) {
-    await session.restore(id);
-    setArchiveRevision((value) => value + 1);
+    try {
+      await session.restore(id);
+      setArchiveRevision((value) => value + 1);
+    } catch (error) {
+      notice(error);
+    }
   }
 
   async function handleDeleteConfirmed() {
     const id = deleteId;
     setDeleteId(null);
     if (!id) return;
-    await session.remove(id);
-    setArchiveRevision((value) => value + 1);
-    leaveIfCurrent(id);
+    try {
+      await session.remove(id);
+      setArchiveRevision((value) => value + 1);
+      leaveIfCurrent(id);
+    } catch (error) {
+      notice(error);
+    }
   }
 
   const controls: ConversationControls = {
@@ -158,10 +245,10 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
     },
     onCancelRename: () => setRenamingId(null),
     onPin: (id) => {
-      void session.pin(id);
+      void session.pin(id).catch(notice);
     },
     onUnpin: (id) => {
-      void session.unpin(id);
+      void session.unpin(id).catch(notice);
     },
     onArchive: (id) => {
       void handleArchive(id);
@@ -175,7 +262,7 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
     session.conversation?.title ??
     (conversationId ? t("chat.untitled") : t("chat.emptyBrand"));
 
-  if (session.notFound) {
+  if (session.notFound && !session.conversationLoading) {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-chat-bg text-chat-text">
         <p>{t("chat.notFound")}</p>
@@ -202,6 +289,9 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
             collapsed={collapsed}
             onToggleCollapsed={() => setCollapsed(!collapsed)}
             controls={controls}
+            listLoading={session.listLoading}
+            listError={session.listError}
+            onRetryList={() => void session.refreshList(search)}
           />
         </div>
       )}
@@ -214,6 +304,9 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
         search={search}
         onSearch={setSearch}
         controls={controls}
+        listLoading={session.listLoading}
+        listError={session.listError}
+        onRetryList={() => void session.refreshList(search)}
       />
 
       <div
@@ -224,6 +317,10 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
         <ConversationView
           conversation={session.conversation}
           pending={session.pending}
+          pendingUser={session.pendingUser}
+          loading={session.conversationLoading && Boolean(conversationId)}
+          error={session.conversationError && !session.notFound}
+          onRetryLoad={session.reloadConversation}
           onRetry={(id) => void handleRetry(id)}
           onUseAsReference={setReference}
           onInsertShortcut={setDraft}
@@ -258,7 +355,7 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
         open={themeOpen}
         onClose={() => setThemeOpen(false)}
         themes={session.themes}
-        selectedId={session.conversation?.active_theme_id ?? null}
+        selectedId={activeThemeId}
         onSelect={(id) => void handleTheme(id)}
       />
       <ChatShareSheet conversationId={shareId} onClose={() => setShareId(null)} />

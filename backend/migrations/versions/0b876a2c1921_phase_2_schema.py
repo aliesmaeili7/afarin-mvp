@@ -11,7 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from app.db.models import APP_TABLES
+# Frozen to the tables this revision actually creates. Do not import live
+# APP_TABLES — later models would make a fresh `alembic upgrade head` fail.
 
 revision: str = "0b876a2c1921"
 down_revision: str | None = None
@@ -486,7 +487,20 @@ def _enable_deny_all_rls() -> None:
     9f2b7c4d5e10 adds the policy that lets the backend in; the two are kept
     apart so the fix reads as the deliberate correction it is.
     """
-    for table in APP_TABLES:
+    phase_2_tables = (
+        "profiles",
+        "anonymous_sessions",
+        "brands",
+        "brand_assets",
+        "products",
+        "product_images",
+        "campaigns",
+        "campaign_concepts",
+        "campaign_copy",
+        "campaign_assets",
+        "generation_jobs",
+    )
+    for table in phase_2_tables:
         op.execute(f"alter table {table} enable row level security")
         op.execute(f"revoke all on table {table} from anon, authenticated")
 

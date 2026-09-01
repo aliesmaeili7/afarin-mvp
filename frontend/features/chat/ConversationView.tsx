@@ -6,6 +6,7 @@ import type { TranslationKey } from "@/lib/i18n/t";
 import type {
   Conversation,
   ConversationArtifact,
+  ConversationMessage,
 } from "@/lib/api/chat/types";
 import { AssistantMessage } from "./AssistantMessage";
 import { UserMessage } from "./UserMessage";
@@ -22,6 +23,10 @@ const SHORTCUTS: { label: TranslationKey; insert: TranslationKey }[] = [
 export function ConversationView({
   conversation,
   pending,
+  pendingUser,
+  loading,
+  error,
+  onRetryLoad,
   onRetry,
   onUseAsReference,
   onInsertShortcut,
@@ -32,6 +37,10 @@ export function ConversationView({
 }: {
   conversation: Conversation | null;
   pending: PendingGeneration | null;
+  pendingUser?: ConversationMessage | null;
+  loading?: boolean;
+  error?: boolean;
+  onRetryLoad?: () => void;
   onRetry: (artifactId: string) => void;
   onUseAsReference: (artifact: ConversationArtifact) => void;
   onInsertShortcut: (text: string) => void;
@@ -41,7 +50,9 @@ export function ConversationView({
   onJump: () => void;
 }) {
   const { t } = useI18n();
-  const empty = !conversation || conversation.messages.length === 0;
+  const empty =
+    !conversation ||
+    (conversation.messages.length === 0 && !pendingUser);
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -51,7 +62,24 @@ export function ConversationView({
         className="h-full overflow-y-auto px-4"
       >
         <div className="mx-auto flex min-h-full w-full max-w-[52rem] flex-col gap-6 py-8">
-          {empty && !pending ? (
+          {loading ? (
+            <p className="py-16 text-center text-sm text-chat-text-secondary">
+              {t("chat.conversationLoading")}
+            </p>
+          ) : error ? (
+            <div className="flex flex-col items-center gap-3 py-16">
+              <p className="text-sm text-chat-text-secondary">{t("chat.loadError")}</p>
+              {onRetryLoad ? (
+                <button
+                  type="button"
+                  onClick={onRetryLoad}
+                  className="h-11 rounded-full bg-chat-accent px-5 text-sm font-semibold text-white"
+                >
+                  {t("common.retry")}
+                </button>
+              ) : null}
+            </div>
+          ) : empty && !pending ? (
             <EmptyState onInsertShortcut={onInsertShortcut} />
           ) : (
             <>
@@ -68,6 +96,10 @@ export function ConversationView({
                   />
                 ),
               )}
+              {pendingUser &&
+              !conversation?.messages.some((item) => item.id === pendingUser.id) ? (
+                <UserMessage message={pendingUser} />
+              ) : null}
               {pending ? <GenerationPlaceholder pending={pending} /> : null}
             </>
           )}

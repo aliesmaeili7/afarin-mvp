@@ -61,9 +61,9 @@ describe("mock ChatApi", () => {
   it("sets and clears the active theme", async () => {
     const created = await chatApi.createConversation();
     const themed = await chatApi.setActiveTheme(created.id, "saved-clay");
-    expect(themed.active_theme_id).toBe("saved-clay");
+    expect(themed.active_theme?.id).toBe("saved-clay");
     const cleared = await chatApi.setActiveTheme(created.id, null);
-    expect(cleared.active_theme_id).toBeNull();
+    expect(cleared.active_theme).toBeNull();
   });
 
   it("generateImage produces a ready artifact", async () => {
@@ -142,6 +142,20 @@ describe("mock ChatApi", () => {
     await expect(chatApi.getConversation(created.id)).rejects.toThrow(
       "conversation_not_found",
     );
+  });
+
+  it("creates a conversation on first send without a prior create call", async () => {
+    const { conversation } = await chatApi.sendMessage(null, {
+      content: "سلام آفرین",
+    });
+    expect(conversation.messages[0]?.role).toBe("user");
+    expect(conversation.title).toContain("سلام");
+  });
+
+  it("searches titles", async () => {
+    const found = await chatApi.searchConversations("کفش");
+    expect(found.some((item) => item.id === "conv-shoe")).toBe(true);
+    expect(found.some((item) => item.id === "conv-decimals")).toBe(false);
   });
 
   it("shares conversation text without a public URL", async () => {

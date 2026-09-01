@@ -23,6 +23,8 @@ export function inferMessageLanguage(text: string): MessageLanguage {
   return inferMessageDir(text) === "rtl" ? "fa" : "en";
 }
 
-export function messageDirFromLanguage(language: MessageLanguage): MessageDir {
+export function messageDirFromLanguage(
+  language: MessageLanguage | null | undefined,
+): MessageDir {
   return language === "en" ? "ltr" : "rtl";
 }

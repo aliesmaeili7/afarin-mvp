@@ -64,3 +64,11 @@ EDUCATION_THEME_NAME_REQUIRED = "برای تم یک اسم بنویس."
 EDUCATION_THEME_NOT_SAVEABLE = "برای این پست تمی برای ذخیره وجود نداره."
 EDUCATION_POST_NOT_READY = "این پست هنوز آماده نیست."
 EDUCATION_BUSY = "الان داره ساخته می‌شه. کمی صبر کن."
+
+# --- Chat persistence ---
+CHAT_SIGN_IN_REQUIRED = "برای ذخیره گفتگو اول باید وارد بشی."
+CHAT_NOT_FOUND = "این گفتگو پیدا نشد."
+CHAT_MESSAGE_REQUIRED = "یه پیام بنویس یا یک تصویر پیوست کن."
+CHAT_MESSAGE_TOO_LONG = "پیامت خیلی بلنده. کوتاه‌ترش کن."
+CHAT_TITLE_REQUIRED = "برای گفتگو یک اسم بنویس."
+CHAT_THEME_INVALID = "این تم معتبر نیست."

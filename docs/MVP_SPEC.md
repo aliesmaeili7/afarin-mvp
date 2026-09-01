@@ -1011,15 +1011,17 @@ Credit costs must come from backend configuration.
 
 # 21. Chat
 
-A standalone ChatGPT-style interface is **not launch-critical**.
+Standalone chat is a third surface (`/chat`), not a Campaign and not an
+EducationalPost. See `docs/CHAT_ARCHITECTURE.md`.
 
-Do not allow it to delay the campaign workflow.
+Phase A is the Persian-first chat UX. Phase B persists user-owned
+conversations, messages, artifacts, and theme snapshots. Phase C (not
+implemented) will connect a Persian-native Orchestrator and skills.
 
-For MVP, prioritize the contextual campaign assistant.
+Do not call advertising or education generation from the chat UI. Chat
+components speak only to `ChatApi`.
 
-A standalone Persian AI chat can be added immediately after the main workflow works.
-
-When implemented:
+When Phase C lands:
 
 * generous free daily usage
 * route normal usage to a good low-cost model
@@ -1311,6 +1313,62 @@ Source: `builtin` (catalog, not stored here) or `user`.
 
 ---
 
+## chat_conversations
+
+Generic chat domain. Authenticated-only. Not a campaign and not an
+educational post. Created on first send, never merely because `/chat` opened.
+
+```text
+id
+user_id
+title
+language nullable
+active_theme_json nullable
+pinned
+pinned_at nullable
+archived
+created_at
+updated_at
+```
+
+`active_theme_json` is a semantic snapshot (`id`, `source`, `name`, `style_json`).
+
+## chat_messages
+
+```text
+id
+conversation_id
+role
+content
+language nullable
+metadata_json
+created_at
+```
+
+Roles: `user` | `assistant`. Skill hints live in `metadata_json`, not columns.
+
+## chat_artifacts
+
+```text
+id
+conversation_id
+message_id nullable
+artifact_type
+storage_path
+mime_type
+width
+height
+aspect_ratio
+status
+metadata_json
+created_at
+```
+
+`artifact_type` includes future media (`image`, `audio`, `video`, `subtitle`,
+`document`). Phase B only writes `image`.
+
+---
+
 ## credit_ledger
 
 ```text
@@ -1457,6 +1515,21 @@ GET    /api/education/themes
 POST   /api/education/themes
 PATCH  /api/education/themes/{id}
 DELETE /api/education/themes/{id}
+```
+
+## Chat
+
+Authenticated writes. Anonymous `GET /conversations` returns `[]`.
+Unknown and foreign ids both 404. First send is `POST /conversations`
+(conversation + user message in one DB transaction). No generation in Phase B.
+
+```text
+POST   /api/chat/conversations
+GET    /api/chat/conversations
+GET    /api/chat/conversations/{id}
+PATCH  /api/chat/conversations/{id}
+DELETE /api/chat/conversations/{id}
+POST   /api/chat/conversations/{id}/messages
 ```
 
 ## Credits

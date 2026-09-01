@@ -12,11 +12,19 @@ export interface ChatTheme {
   swatch: string;
 }
 
+/** Semantic snapshot persisted on a conversation. No CSS/swatches. */
+export interface ChatThemeSnapshot {
+  id: string;
+  source: string;
+  name: string;
+  style_json: Record<string, unknown>;
+}
+
 export interface ConversationSummary {
   id: string;
   title: string;
-  language: ChatLanguage;
-  active_theme_id: string | null;
+  language: ChatLanguage | null;
+  active_theme: ChatThemeSnapshot | null;
   pinned: boolean;
   archived: boolean;
   pinned_at: string | null;
@@ -26,7 +34,9 @@ export interface ConversationSummary {
 
 export interface ChatAttachment {
   name: string;
-  dataUrl: string;
+  dataUrl?: string;
+  mime_type?: string;
+  storage_path?: string;
 }
 
 export interface ConversationMessage {
@@ -34,13 +44,15 @@ export interface ConversationMessage {
   conversation_id: string;
   role: ChatRole;
   content: string;
-  language: ChatLanguage;
+  language: ChatLanguage | null;
   metadata_json?: {
     attachment?: ChatAttachment;
+    explicit_skill_hint?: SkillHint;
     failed?: boolean;
     [key: string]: unknown;
   };
   created_at: string;
+  pending?: boolean;
 }
 
 export interface ConversationArtifact {
@@ -49,7 +61,11 @@ export interface ConversationArtifact {
   message_id: string | null;
   artifact_type: ArtifactType;
   storage_path: string | null;
-  aspect_ratio: ArtifactAspect;
+  url?: string | null;
+  mime_type?: string | null;
+  width?: number | null;
+  height?: number | null;
+  aspect_ratio: ArtifactAspect | null;
   status: ArtifactStatus;
   metadata_json?: Record<string, unknown>;
   created_at: string;
@@ -58,8 +74,8 @@ export interface ConversationArtifact {
 export interface Conversation {
   id: string;
   title: string;
-  language: ChatLanguage;
-  active_theme_id: string | null;
+  language: ChatLanguage | null;
+  active_theme: ChatThemeSnapshot | null;
   pinned: boolean;
   archived: boolean;
   pinned_at: string | null;
@@ -67,9 +83,10 @@ export interface Conversation {
   updated_at: string;
   messages: ConversationMessage[];
   artifacts: ConversationArtifact[];
+  has_older_messages?: boolean;
 }
 
-/** Phase A share result: plain text only. No public URL until a real share route exists. */
+/** Phase A/B share result: plain text only. No public URL. */
 export interface ConversationSharePayload {
   title: string;
   text: string;
@@ -84,19 +101,32 @@ export interface SendMessageInput {
   generateImage?: boolean;
   skillHint?: SkillHint | null;
   retryArtifactId?: string;
+  activeTheme?: ChatThemeSnapshot | null;
+  language?: ChatLanguage;
 }
 
 export interface ChatTurnResult {
   conversation: Conversation;
 }
 
+export interface ListConversationsOptions {
+  archived?: boolean;
+  q?: string;
+}
+
 export interface ChatApi {
   createConversation(): Promise<Conversation>;
-  listConversations(): Promise<ConversationSummary[]>;
+  listConversations(
+    options?: ListConversationsOptions,
+  ): Promise<ConversationSummary[]>;
   listArchivedConversations(): Promise<ConversationSummary[]>;
+  searchConversations(
+    query: string,
+    options?: { archived?: boolean },
+  ): Promise<ConversationSummary[]>;
   getConversation(id: string): Promise<Conversation>;
   sendMessage(
-    conversationId: string,
+    conversationId: string | null,
     input: SendMessageInput,
   ): Promise<ChatTurnResult>;
   generateImage(conversationId: string): Promise<ChatTurnResult>;

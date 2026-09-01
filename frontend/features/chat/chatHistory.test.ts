@@ -18,7 +18,7 @@ function summary(
     id,
     title,
     language: "fa",
-    active_theme_id: null,
+    active_theme: null,
     pinned: false,
     archived: false,
     pinned_at: null,

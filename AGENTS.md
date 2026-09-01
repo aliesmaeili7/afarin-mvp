@@ -3,16 +3,22 @@
 This project is a Persian-first AI SaaS for small businesses,
 Instagram sellers, and teachers.
 
-Afarin has two content paths:
+Afarin has two generation paths and a chat workspace:
 
 - Advertising — product-photo campaign generation (wizard under `/create`)
 - Educational — one-prompt teaching posts (under `/create/education`)
+- Chat — conversational workspace under `/chat` (persistence in Phase B;
+  Orchestrator in Phase C). Do not fold chat history into Campaign or
+  EducationalPost.
 
 When implementing a feature, state which path it touches. Do not fold
 educational work into the advertising Campaign model.
 
 The canonical product specification is:
 docs/MVP_SPEC.md
+
+Chat workspace architecture:
+docs/CHAT_ARCHITECTURE.md
 
 Always read the relevant sections of that specification before
 implementing a feature.

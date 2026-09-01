@@ -42,6 +42,14 @@ uv run python -m scripts.verify_flow   # the API contract, incl. the emailed cod
 cd ../frontend && node scripts/verify-ui.mjs   # the same journey in a browser
 ```
 
+Chat Phase B (real HTTP, signed-in account). Frontend must be served with `NEXT_PUBLIC_API_MODE=http`:
+
+```bash
+uv run python -m scripts.verify_chat_migrate   # full Alembic chain on a throwaway database
+uv run python -m scripts.verify_chat_flow      # API: lazy create, theme, attachment, isolation
+cd ../frontend && npm run verify:chat:http     # the same checklist in a browser
+```
+
 ## Hosted Supabase
 
 `supabase start` reads `supabase/config.toml`, so local development needs no

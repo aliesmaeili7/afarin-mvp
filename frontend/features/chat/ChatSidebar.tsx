@@ -22,6 +22,9 @@ export function ChatSidebar({
   onToggleCollapsed,
   onNavigate,
   controls,
+  listLoading,
+  listError,
+  onRetryList,
 }: {
   summaries: ConversationSummary[];
   activeId: string | null;
@@ -31,9 +34,12 @@ export function ChatSidebar({
   onToggleCollapsed: () => void;
   onNavigate?: () => void;
   controls: ConversationControls;
+  listLoading?: boolean;
+  listError?: boolean;
+  onRetryList?: () => void;
 }) {
   const { t } = useI18n();
-  const { pinned, groups } = sidebarSections(summaries, search);
+  const { pinned, groups } = sidebarSections(summaries, "");
 
   return (
     <aside
@@ -81,13 +87,34 @@ export function ChatSidebar({
         <>
           <ConversationSearch value={search} onChange={onSearch} />
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <ConversationList
-              pinned={pinned}
-              groups={groups}
-              activeId={activeId}
-              onNavigate={onNavigate}
-              controls={controls}
-            />
+            {listLoading ? (
+              <div className="flex flex-col gap-2 px-3 py-4" data-chat="history-loading">
+                <div className="h-10 animate-pulse rounded-chat-md bg-chat-surface-secondary" />
+                <div className="h-10 animate-pulse rounded-chat-md bg-chat-surface-secondary" />
+                <div className="h-10 animate-pulse rounded-chat-md bg-chat-surface-secondary" />
+              </div>
+            ) : listError ? (
+              <div className="px-4 py-6">
+                <p className="text-sm text-chat-text-secondary">{t("chat.loadError")}</p>
+                {onRetryList ? (
+                  <button
+                    type="button"
+                    onClick={onRetryList}
+                    className="mt-3 h-11 rounded-full bg-chat-accent-soft px-4 text-sm font-semibold text-chat-accent"
+                  >
+                    {t("common.retry")}
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <ConversationList
+                pinned={pinned}
+                groups={groups}
+                activeId={activeId}
+                onNavigate={onNavigate}
+                controls={controls}
+              />
+            )}
           </div>
         </>
       )}

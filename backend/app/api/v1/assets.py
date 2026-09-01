@@ -7,6 +7,7 @@ from app.core.errors import ApiError
 from app.db.models import Brand, Campaign
 from app.schemas.requests import ResolveAssetsIn
 from app.services.campaigns.ownership import get_owned_campaign
+from app.services.chat.ownership import get_owned_chat_conversation
 from app.services.education.ownership import get_owned_post
 from app.services.storage import is_public, parse, resolve_paths
 from app.services.storage.paths import owner_scope
@@ -59,6 +60,13 @@ async def _may_read(session: AsyncSession, principal: Principal, scope) -> bool:
         # No anonymous branch: an educational post always has an owning user.
         try:
             await get_owned_post(session, principal, scope.id)
+        except ApiError:
+            return False
+        return True
+
+    if scope.kind == "chat":
+        try:
+            await get_owned_chat_conversation(session, principal, scope.id)
         except ApiError:
             return False
         return True

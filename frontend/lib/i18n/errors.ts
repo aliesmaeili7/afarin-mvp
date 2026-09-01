@@ -53,6 +53,9 @@ const MESSAGE_KEYS: Record<string, TranslationKey> = {
   "تعداد تلاش‌ها زیاد بود. چند دقیقه دیگه دوباره امتحان کن.": "errors.rateLimited",
   "این حساب هنوز فعال نشده. از ورود با کد ایمیل استفاده کن.": "errors.emailNotConfirmed",
   "حساب ساخته شد. برای ورود همان ایمیل و رمز رو بزن.": "errors.accountCreatedSignIn",
+  "این گفتگو پیدا نشد.": "errors.chatNotFound",
+  "برای ذخیره گفتگو اول باید وارد بشی.": "errors.chatSignInRequired",
+  "یه پیام بنویس یا یک تصویر پیوست کن.": "errors.chatMessageRequired",
 };
 
 const STAGE_KEYS = {

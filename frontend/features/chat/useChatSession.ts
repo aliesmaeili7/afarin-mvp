@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { chatApi } from "@/lib/api/chat";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { chatApi, chatApiMode } from "@/lib/api/chat";
 import type {
   ChatAttachment,
   ChatTheme,
   Conversation,
+  ConversationMessage,
   ConversationSummary,
   SendMessageInput,
 } from "@/lib/api/chat/types";
+import { useSessionStore } from "@/features/auth/sessionStore";
 
 export interface PendingGeneration {
   startedAt: number;
@@ -16,18 +18,40 @@ export interface PendingGeneration {
 }
 
 export function useChatSession(conversationId: string | null) {
+  const userId = useSessionStore((state) => state.session?.user.id ?? null);
+  const sessionLoaded = useSessionStore((state) => state.loaded);
   const [summaries, setSummaries] = useState<ConversationSummary[]>([]);
   const [themes, setThemes] = useState<ChatTheme[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [pending, setPending] = useState<PendingGeneration | null>(null);
+  const [pendingUser, setPendingUser] = useState<ConversationMessage | null>(
+    null,
+  );
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [listError, setListError] = useState(false);
+  const [conversationError, setConversationError] = useState(false);
+  const conversationRef = useRef<Conversation | null>(null);
+  conversationRef.current = conversation;
+
+  const refreshList = useCallback(async (query = "") => {
+    setListError(false);
+    try {
+      const items = query.trim()
+        ? await chatApi.searchConversations(query)
+        : await chatApi.listConversations();
+      setSummaries(items);
+    } catch {
+      setListError(true);
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    void chatApi.listConversations().then((items) => {
-      if (!cancelled) setSummaries(items);
-    });
     void chatApi.listThemes().then((items) => {
       if (!cancelled) setThemes(items);
     });
@@ -37,69 +61,92 @@ export function useChatSession(conversationId: string | null) {
   }, []);
 
   useEffect(() => {
-    if (!conversationId) return;
-    let cancelled = false;
-    void chatApi.getConversation(conversationId).then(
-      (item) => {
-        if (cancelled) return;
-        setConversation(item);
-        setNotFound(false);
-      },
-      () => {
-        if (cancelled) return;
-        setConversation(null);
-        setNotFound(true);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationId]);
+    if (!sessionLoaded && chatApiMode === "http") return;
+    setListLoading(true);
+    void refreshList();
+  }, [refreshList, userId, sessionLoaded]);
 
-  const refreshList = useCallback(async () => {
-    setSummaries(await chatApi.listConversations());
+  const loadConversation = useCallback(async (id: string) => {
+    setConversationError(false);
+    setNotFound(false);
+    if (conversationRef.current?.id !== id) setConversationLoading(true);
+    try {
+      const item = await chatApi.getConversation(id);
+      setConversation(item);
+      setNotFound(false);
+    } catch {
+      setConversation(null);
+      setNotFound(true);
+      setConversationError(true);
+    } finally {
+      setConversationLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setConversation(null);
+      setNotFound(false);
+      setConversationLoading(false);
+      setPendingUser(null);
+      return;
+    }
+    void loadConversation(conversationId);
+  }, [conversationId, userId, loadConversation]);
 
   const applyResult = useCallback(
     async (next: Conversation) => {
       setConversation(next);
+      setPendingUser(null);
       await refreshList();
       return next;
     },
     [refreshList],
   );
 
-  const ensureConversation = useCallback(async () => {
-    if (conversation) return conversation;
-    const created = await chatApi.createConversation();
-    await refreshList();
-    setConversation(created);
-    return created;
-  }, [conversation, refreshList]);
-
   const runTurn = useCallback(
     async (
       input: SendMessageInput,
       language: "fa" | "en",
-      start: (id: string) => Promise<{ conversation: Conversation }>,
+      start: (id: string | null) => Promise<{ conversation: Conversation }>,
     ) => {
       if (busy) return null;
       setBusy(true);
-      setPending({ startedAt: Date.now(), language });
+      const expectsGeneration = Boolean(
+        input.generateImage || input.retryArtifactId || input.skillHint,
+      );
+      if (expectsGeneration) {
+        setPending({ startedAt: Date.now(), language });
+      }
+      const optimistic: ConversationMessage = {
+        id: `pending-${Date.now()}`,
+        conversation_id: conversation?.id ?? "draft",
+        role: "user",
+        content: input.content,
+        language,
+        created_at: new Date().toISOString(),
+        pending: true,
+        metadata_json: input.attachment
+          ? { attachment: input.attachment }
+          : input.skillHint
+            ? { explicit_skill_hint: input.skillHint }
+            : undefined,
+      };
+      setPendingUser(optimistic);
       try {
-        const current = await ensureConversation();
-        const result = await start(current.id);
+        const result = await start(conversation?.id ?? conversationId);
         setPending(null);
         await applyResult(result.conversation);
         return result.conversation;
       } catch {
         setPending(null);
+        setPendingUser(null);
         return null;
       } finally {
         setBusy(false);
       }
     },
-    [applyResult, busy, ensureConversation],
+    [applyResult, busy, conversation?.id, conversationId],
   );
 
   const send = useCallback(
@@ -111,9 +158,10 @@ export function useChatSession(conversationId: string | null) {
 
   const generateImage = useCallback(
     async (language: "fa" | "en") => {
-      return runTurn({ content: "", generateImage: true }, language, (id) =>
-        chatApi.generateImage(id),
-      );
+      return runTurn({ content: "", generateImage: true }, language, (id) => {
+        if (!id) return chatApi.sendMessage(null, { content: "", generateImage: true });
+        return chatApi.generateImage(id);
+      });
     },
     [runTurn],
   );
@@ -136,71 +184,121 @@ export function useChatSession(conversationId: string | null) {
 
   const setTheme = useCallback(
     async (themeId: string | null) => {
-      const current = await ensureConversation();
-      const next = await chatApi.setActiveTheme(current.id, themeId);
-      await applyResult(next);
-      return next;
+      if (!conversationId || !conversation) return null;
+      const previous = conversation;
+      const previousList = summaries;
+      const snapshot =
+        themes.find((theme) => theme.id === themeId) ?? null;
+      setConversation({
+        ...conversation,
+        active_theme: snapshot
+          ? {
+              id: snapshot.id,
+              source: "chat_catalog",
+              name: snapshot.name,
+              style_json: {},
+            }
+          : null,
+      });
+      try {
+        const next = await chatApi.setActiveTheme(conversationId, themeId);
+        await applyResult(next);
+        return next;
+      } catch (error) {
+        setConversation(previous);
+        setSummaries(previousList);
+        throw error;
+      }
     },
-    [applyResult, ensureConversation],
+    [applyResult, conversation, conversationId, summaries, themes],
+  );
+
+  const mutateSummary = useCallback(
+    async (
+      id: string,
+      optimistic: Partial<ConversationSummary>,
+      run: () => Promise<Conversation>,
+    ) => {
+      const previous = summaries;
+      setSummaries((current) =>
+        current.map((item) =>
+          item.id === id ? { ...item, ...optimistic } : item,
+        ),
+      );
+      try {
+        const next = await run();
+        if (conversation?.id === id) setConversation(next);
+        await refreshList();
+        return next;
+      } catch (error) {
+        setSummaries(previous);
+        throw error;
+      }
+    },
+    [conversation?.id, refreshList, summaries],
   );
 
   const rename = useCallback(
     async (id: string, title: string) => {
-      const next = await chatApi.renameConversation(id, title);
-      if (conversation?.id === id) setConversation(next);
-      await refreshList();
-      return next;
+      return mutateSummary(id, { title }, () =>
+        chatApi.renameConversation(id, title),
+      );
     },
-    [conversation?.id, refreshList],
+    [mutateSummary],
   );
 
   const pin = useCallback(
     async (id: string) => {
-      const next = await chatApi.pinConversation(id);
-      if (conversation?.id === id) setConversation(next);
-      await refreshList();
-      return next;
+      return mutateSummary(
+        id,
+        { pinned: true, pinned_at: new Date().toISOString(), archived: false },
+        () => chatApi.pinConversation(id),
+      );
     },
-    [conversation?.id, refreshList],
+    [mutateSummary],
   );
 
   const unpin = useCallback(
     async (id: string) => {
-      const next = await chatApi.unpinConversation(id);
-      if (conversation?.id === id) setConversation(next);
-      await refreshList();
-      return next;
+      return mutateSummary(id, { pinned: false, pinned_at: null }, () =>
+        chatApi.unpinConversation(id),
+      );
     },
-    [conversation?.id, refreshList],
+    [mutateSummary],
   );
 
   const archive = useCallback(
     async (id: string) => {
-      const next = await chatApi.archiveConversation(id);
-      if (conversation?.id === id) setConversation(next);
-      await refreshList();
-      return next;
+      return mutateSummary(id, { archived: true, pinned: false }, () =>
+        chatApi.archiveConversation(id),
+      );
     },
-    [conversation?.id, refreshList],
+    [mutateSummary],
   );
 
   const restore = useCallback(
     async (id: string) => {
-      const next = await chatApi.restoreConversation(id);
-      if (conversation?.id === id) setConversation(next);
-      await refreshList();
-      return next;
+      return mutateSummary(id, { archived: false }, () =>
+        chatApi.restoreConversation(id),
+      );
     },
-    [conversation?.id, refreshList],
+    [mutateSummary],
   );
 
   const remove = useCallback(
     async (id: string) => {
-      await chatApi.deleteConversation(id);
-      if (conversation?.id === id) setConversation(null);
-      await refreshList();
+      const previous = summaries;
+      setSummaries((current) => current.filter((item) => item.id !== id));
+      try {
+        await chatApi.deleteConversation(id);
+        if (conversation?.id === id) setConversation(null);
+        await refreshList();
+      } catch (error) {
+        setSummaries(previous);
+        throw error;
+      }
     },
-    [conversation?.id, refreshList],
+    [conversation?.id, refreshList, summaries],
   );
 
   return {
@@ -208,8 +306,13 @@ export function useChatSession(conversationId: string | null) {
     themes,
     conversation,
     pending,
+    pendingUser,
     notFound,
     busy,
+    listLoading,
+    conversationLoading,
+    listError,
+    conversationError,
     send,
     generateImage,
     retry,
@@ -220,6 +323,10 @@ export function useChatSession(conversationId: string | null) {
     archive,
     restore,
     remove,
+    refreshList,
+    reloadConversation: conversationId
+      ? () => loadConversation(conversationId)
+      : undefined,
   };
 }
 
@@ -279,7 +386,11 @@ export function fileToAttachment(file: File): Promise<ChatAttachment> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      resolve({ name: file.name, dataUrl: String(reader.result) });
+      resolve({
+        name: file.name,
+        dataUrl: String(reader.result),
+        mime_type: file.type,
+      });
     };
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);

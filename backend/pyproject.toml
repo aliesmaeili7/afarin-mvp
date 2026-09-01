@@ -57,6 +57,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 # Assertions on Persian messages must stay byte-identical to the strings users see.
 "tests/*.py" = ["E501"]
 "scripts/verify_flow.py" = ["E501"]
+"scripts/verify_chat_flow.py" = ["E501"]
+"scripts/verify_chat_migrate.py" = ["E501"]
 "scripts/eval_images.py" = ["E501"]
 "scripts/eval_master_crop.py" = ["E501"]
 "scripts/creative_eval/*.py" = ["E501"]

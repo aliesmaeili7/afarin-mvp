@@ -1,9 +1,11 @@
 import type {
-  ChatTheme,
   Conversation,
   ConversationArtifact,
   ConversationMessage,
 } from "./types";
+import { CHAT_THEMES, snapshotForThemeId } from "./catalog";
+
+export { CHAT_THEMES };
 
 const SQUARE = "public://mock/chat/square.svg";
 const PORTRAIT = "public://mock/chat/portrait.svg";
@@ -14,39 +16,6 @@ function at(offsetMs: number): string {
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
-
-export const CHAT_THEMES: ChatTheme[] = [
-  {
-    id: "saved-clay",
-    name: "خمیری و بازیگوش",
-    group: "saved",
-    swatch: "linear-gradient(135deg, #f6c27a, #f08a5d)",
-  },
-  {
-    id: "saved-math",
-    name: "ریاضی بنفش",
-    group: "saved",
-    swatch: "linear-gradient(135deg, #7c3aed, #c3a7ff)",
-  },
-  {
-    id: "catalog-clay",
-    name: "Clay",
-    group: "catalog",
-    swatch: "linear-gradient(135deg, #e7c9a5, #d4a574)",
-  },
-  {
-    id: "catalog-pastel",
-    name: "Pastel",
-    group: "catalog",
-    swatch: "linear-gradient(135deg, #f8d5e0, #cde7f0)",
-  },
-  {
-    id: "catalog-modern",
-    name: "Modern",
-    group: "catalog",
-    swatch: "linear-gradient(135deg, #17121f, #6c6382)",
-  },
-];
 
 function msg(
   conversationId: string,
@@ -129,7 +98,7 @@ export function createSeedConversations(): Conversation[] {
       id: "conv-decimals",
       title: "ماموریت ممیز کوچولو",
       language: "fa",
-      active_theme_id: "saved-clay",
+      active_theme: snapshotForThemeId("saved-clay"),
       created_at: at(6 * HOUR),
       updated_at: decimals,
       messages: [
@@ -158,7 +127,7 @@ export function createSeedConversations(): Conversation[] {
       id: "conv-shoe",
       title: "تبلیغ کفش سفید",
       language: "fa",
-      active_theme_id: "catalog-modern",
+      active_theme: snapshotForThemeId("catalog-modern"),
       created_at: at(8 * HOUR),
       updated_at: shoe,
       messages: [
@@ -187,7 +156,7 @@ export function createSeedConversations(): Conversation[] {
       id: "conv-english",
       title: "Elegant shoe ad",
       language: "en",
-      active_theme_id: "catalog-modern",
+      active_theme: snapshotForThemeId("catalog-modern"),
       created_at: at(DAY + 5 * HOUR),
       updated_at: english,
       messages: [
@@ -216,7 +185,7 @@ export function createSeedConversations(): Conversation[] {
       id: "conv-mixed",
       title: "کمپین luxury",
       language: "fa",
-      active_theme_id: "catalog-pastel",
+      active_theme: snapshotForThemeId("catalog-pastel"),
       created_at: at(3 * DAY + HOUR),
       updated_at: mixed,
       messages: [
@@ -245,7 +214,7 @@ export function createSeedConversations(): Conversation[] {
       id: "conv-long",
       title: "تمرین کسرها",
       language: "fa",
-      active_theme_id: "saved-math",
+      active_theme: snapshotForThemeId("saved-math"),
       created_at: longStart,
       updated_at: at(5 * DAY - 11 * 4 * 60 * 1000),
       messages: [
@@ -282,7 +251,7 @@ export function createSeedConversations(): Conversation[] {
       id: "conv-failed",
       title: "کمپین نوروز",
       language: "fa",
-      active_theme_id: null,
+      active_theme: snapshotForThemeId(null),
       created_at: at(10 * DAY + HOUR),
       updated_at: failed,
       messages: [

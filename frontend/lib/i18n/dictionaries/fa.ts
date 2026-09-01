@@ -114,6 +114,9 @@ export const fa = {
     emailNotConfirmed: "این حساب هنوز فعال نشده. از ورود با کد ایمیل استفاده کن.",
     accountCreatedSignIn: "حساب ساخته شد. برای ورود همان ایمیل و رمز رو بزن.",
     assetEditWrongOwner: "ممکنه لینک اشتباه باشه یا این تصویر مال شما نباشه.",
+    chatNotFound: "این گفتگو پیدا نشد.",
+    chatSignInRequired: "برای ذخیره گفتگو اول باید وارد بشی.",
+    chatMessageRequired: "یه پیام بنویس یا یک تصویر پیوست کن.",
   },
   dates: {
     today: "امروز",
@@ -808,5 +811,10 @@ export const fa = {
     delete: "حذف",
     deleteTitle: "این گفتگو حذف شود؟",
     deleteBody: "از تاریخچه گفتگوها حذف می‌شود و دیگر در فهرست دیده نمی‌شود.",
+    historyLoading: "در حال بارگذاری گفتگوها…",
+    conversationLoading: "در حال بارگذاری گفتگو…",
+    loadError: "بارگذاری گفتگو ممکن نشد.",
+    sendFailed: "ارسال پیام ممکن نشد. دوباره امتحان کن.",
+    signInToSave: "برای ذخیره گفتگو وارد شو.",
   },
 } as const;

@@ -117,6 +117,9 @@ export const en: DeepStringify<typeof fa> = {
     emailNotConfirmed: "This account isn’t active yet. Sign in with an email code.",
     accountCreatedSignIn: "Account created. Sign in with the same email and password.",
     assetEditWrongOwner: "The link may be wrong, or this image isn’t yours.",
+    chatNotFound: "This chat wasn’t found.",
+    chatSignInRequired: "Sign in first to save chats.",
+    chatMessageRequired: "Write a message or attach an image.",
   },
   dates: {
     today: "Today",
@@ -817,5 +820,10 @@ export const en: DeepStringify<typeof fa> = {
     delete: "Delete",
     deleteTitle: "Delete this chat?",
     deleteBody: "It will disappear from conversation history and won’t show in the list.",
+    historyLoading: "Loading chats…",
+    conversationLoading: "Loading conversation…",
+    loadError: "Couldn’t load this conversation.",
+    sendFailed: "Couldn’t send the message. Please try again.",
+    signInToSave: "Sign in to save this chat.",
   },
 };

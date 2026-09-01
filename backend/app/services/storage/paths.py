@@ -52,7 +52,7 @@ def parse(path: str) -> StorageRef | None:
 class OwnerScope:
     """Which record's ownership governs an object, derived from its key."""
 
-    kind: str  # "campaign" | "brand" | "education"
+    kind: str  # "campaign" | "brand" | "education" | "chat"
     id: uuid.UUID
 
 
@@ -69,6 +69,8 @@ def owner_scope(ref: StorageRef) -> OwnerScope | None:
             return OwnerScope("brand", uuid.UUID(parts[1]))
         if len(parts) >= 2 and parts[0] == "education":
             return OwnerScope("education", uuid.UUID(parts[1]))
+        if len(parts) >= 2 and parts[0] == "chat":
+            return OwnerScope("chat", uuid.UUID(parts[1]))
     except ValueError:
         return None
     return None
@@ -114,3 +116,11 @@ def brand_asset_key(brand_id: uuid.UUID, asset_id: uuid.UUID, ext: str) -> str:
 
 def education_image_key(post_id: uuid.UUID, token: str) -> str:
     return f"education/{post_id}/post-{token}.jpg"
+
+
+def chat_attachment_key(conversation_id: uuid.UUID, token: str, ext: str) -> str:
+    return f"chat/{conversation_id}/attachments/{token}.{ext}"
+
+
+def chat_artifact_key(conversation_id: uuid.UUID, token: str, ext: str) -> str:
+    return f"chat/{conversation_id}/artifacts/{token}.{ext}"

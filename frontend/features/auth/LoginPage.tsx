@@ -13,6 +13,13 @@ import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import { AuthForm } from "./AuthForm";
 import { useSessionStore } from "./sessionStore";
 
+function chatReturnPath(): string {
+  if (typeof window === "undefined") return "/dashboard";
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (next === "/chat" || next?.startsWith("/chat/")) return next;
+  return "/dashboard";
+}
+
 export function LoginPage() {
   const router = useRouter();
   const { t } = useI18n();
@@ -26,7 +33,7 @@ export function LoginPage() {
   }, [sessionLoaded, loadSession]);
 
   useEffect(() => {
-    if (sessionLoaded && session) router.replace("/dashboard");
+    if (sessionLoaded && session) router.replace(chatReturnPath());
   }, [session, sessionLoaded, router]);
 
   return (
@@ -62,7 +69,7 @@ export function LoginPage() {
               submitLabel={t("auth.submitLogin")}
               onVerified={async (next) => {
                 setSession(next);
-                router.replace("/dashboard");
+                router.replace(chatReturnPath());
               }}
               onGoogle={async () => {
                 const redirect = new URL("/auth/callback", window.location.origin);
@@ -70,7 +77,7 @@ export function LoginPage() {
                 const current = await api.getSession();
                 if (current) {
                   setSession(current);
-                  router.replace("/dashboard");
+                  router.replace(chatReturnPath());
                 }
               }}
             />

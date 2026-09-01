@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify:chat": "node scripts/verify-chat.mjs"
+    "verify:chat": "node scripts/verify-chat.mjs",
+    "verify:chat:http": "node scripts/verify-chat-http.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

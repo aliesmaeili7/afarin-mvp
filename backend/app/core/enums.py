@@ -127,6 +127,20 @@ EDUCATION_THEME_SOURCES = ("builtin", "user")
 EDUCATION_LANGUAGES = ("fa", "en")
 
 
+# --- Chat persistence (Phase B) --------------------------------------------
+#
+# A generic conversation domain, not a campaign and not an educational post.
+# Artifact types include future media so the CHECK does not have to be rewritten
+# when Phase C/E adds them; Phase B only writes `image`.
+
+CHAT_LANGUAGES = ("fa", "en")
+CHAT_ROLES = ("user", "assistant")
+CHAT_ARTIFACT_TYPES = ("image", "audio", "video", "subtitle", "document")
+CHAT_ARTIFACT_STATUSES = ("generating", "ready", "failed")
+CHAT_ARTIFACT_ASPECTS = ("1:1", "4:5")
+CHAT_SKILL_HINTS = ("advertising", "education", "general_image")
+
+
 def sql_in(values: tuple[str, ...]) -> str:
     """Renders a value tuple as a SQL IN list for CHECK constraints."""
     return ", ".join(f"'{value}'" for value in values)

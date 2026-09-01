@@ -9,6 +9,7 @@ from app.api.v1 import (
     brands,
     campaigns,
     catalog,
+    chat,
     education,
     generation,
     session,
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(assets.router)
     app.include_router(catalog.router)
     app.include_router(education.router)
+    app.include_router(chat.router)
 
     @app.get("/health", tags=["ops"])
     async def health() -> dict[str, str]:

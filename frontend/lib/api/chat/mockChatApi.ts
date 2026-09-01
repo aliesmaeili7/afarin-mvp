@@ -1,6 +1,7 @@
 import { inferMessageLanguage } from "@/features/chat/chatDirection";
 import { formatConversationShareText } from "@/features/chat/conversationShare";
-import { CHAT_THEMES, createSeedConversations } from "./mockChatData";
+import { CHAT_THEMES, snapshotForThemeId } from "./catalog";
+import { createSeedConversations } from "./mockChatData";
 import type {
   ArtifactAspect,
   ChatApi,
@@ -9,6 +10,7 @@ import type {
   Conversation,
   ConversationSharePayload,
   ConversationSummary,
+  ListConversationsOptions,
   SendMessageInput,
 } from "./types";
 
@@ -60,7 +62,7 @@ function toSummary(item: Conversation): ConversationSummary {
     id: item.id,
     title: item.title,
     language: item.language,
-    active_theme_id: item.active_theme_id,
+    active_theme: item.active_theme,
     pinned: item.pinned,
     archived: item.archived,
     pinned_at: item.pinned_at,
@@ -73,7 +75,16 @@ function sortByUpdated(items: Conversation[]): Conversation[] {
   return items.slice().sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 }
 
-function titleFrom(content: string, language: ChatLanguage): string {
+function matchesQuery(item: Conversation, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  if (item.title.toLowerCase().includes(needle)) return true;
+  return item.messages.some((message) =>
+    message.content.toLowerCase().includes(needle),
+  );
+}
+
+function titleFrom(content: string, language: ChatLanguage | null): string {
   const trimmed = content.trim().replace(/\s+/g, " ");
   if (!trimmed) return language === "en" ? "New chat" : "گفتگوی جدید";
   return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
@@ -136,9 +147,9 @@ async function completeTurn(
 ): Promise<ChatTurnResult> {
   await pause();
   const now = new Date().toISOString();
-  const language = input.content.trim()
+  const language: ChatLanguage = input.content.trim()
     ? inferMessageLanguage(input.content)
-    : conversation.language;
+    : conversation.language ?? "fa";
   const generate = wantsImage(input);
 
   if (input.content.trim() || input.attachment) {
@@ -149,9 +160,10 @@ async function completeTurn(
       content: input.content.trim(),
       language,
       created_at: now,
-      metadata_json: input.attachment
-        ? { attachment: input.attachment }
-        : undefined,
+      metadata_json: {
+        ...(input.attachment ? { attachment: input.attachment } : {}),
+        ...(input.skillHint ? { explicit_skill_hint: input.skillHint } : {}),
+      },
     });
     if (
       conversation.title === "گفتگوی جدید" ||
@@ -195,7 +207,7 @@ export const mockChatApi: ChatApi = {
       id: nextId("conv"),
       title: "گفتگوی جدید",
       language: "fa",
-      active_theme_id: null,
+      active_theme: null,
       pinned: false,
       archived: false,
       pinned_at: null,
@@ -208,16 +220,25 @@ export const mockChatApi: ChatApi = {
     return clone(conversation);
   },
 
-  async listConversations() {
-    return sortByUpdated(conversations.filter((item) => !item.archived)).map(
-      toSummary,
-    );
+  async listConversations(options: ListConversationsOptions = {}) {
+    const archived = Boolean(options.archived);
+    return sortByUpdated(
+      conversations.filter(
+        (item) =>
+          item.archived === archived && matchesQuery(item, options.q ?? ""),
+      ),
+    ).map(toSummary);
   },
 
   async listArchivedConversations() {
-    return sortByUpdated(conversations.filter((item) => item.archived)).map(
-      toSummary,
-    );
+    return mockChatApi.listConversations({ archived: true });
+  },
+
+  async searchConversations(query, options = {}) {
+    return mockChatApi.listConversations({
+      archived: options.archived,
+      q: query,
+    });
   },
 
   async getConversation(id) {
@@ -225,6 +246,14 @@ export const mockChatApi: ChatApi = {
   },
 
   async sendMessage(conversationId, input) {
+    if (!conversationId) {
+      const created = await mockChatApi.createConversation();
+      const stored = requireConversation(created.id);
+      if (input.activeTheme !== undefined) {
+        stored.active_theme = input.activeTheme;
+      }
+      return completeTurn(stored, input);
+    }
     return completeTurn(requireConversation(conversationId), input);
   },
 
@@ -237,7 +266,7 @@ export const mockChatApi: ChatApi = {
 
   async setActiveTheme(conversationId, themeId) {
     const conversation = requireConversation(conversationId);
-    conversation.active_theme_id = themeId;
+    conversation.active_theme = snapshotForThemeId(themeId);
     conversation.updated_at = new Date().toISOString();
     return clone(conversation);
   },
