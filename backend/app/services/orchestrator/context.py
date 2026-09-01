@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ChatArtifact, ChatConversation, ChatMessage
+from app.services.orchestrator.reference import resolve_reference_artifacts
 
 MAX_MESSAGES = 12
 MAX_ARTIFACTS = 5
@@ -26,6 +27,8 @@ class BoundedChatContext(BaseModel):
     recent_artifacts: list[dict[str, Any]]
     has_product_image: bool = False
     recent_route: str | None = None
+    reference_resolution: dict[str, Any] | None = None
+    has_ready_image_reference: bool = False
 
 
 async def build_bounded_context(
@@ -74,7 +77,16 @@ async def build_bounded_context(
             recent_route = route
             break
 
-    has_image = _has_product_image(messages, artifacts, ref_ids)
+    resolution = await resolve_reference_artifacts(
+        session,
+        conversation_id=conversation.id,
+        user_id=conversation.user_id,
+        user_message=user_message,
+        explicit_ids=ref_ids,
+    )
+    has_image = _has_product_image(
+        messages, artifacts, ref_ids
+    ) or _has_campaign_product(artifacts)
 
     return BoundedChatContext(
         conversation_id=conversation.id,
@@ -100,11 +112,17 @@ async def build_bounded_context(
                 "artifact_type": item.artifact_type,
                 "aspect_ratio": item.aspect_ratio,
                 "skill": (item.metadata_json or {}).get("skill"),
+                "origin_route": (item.metadata_json or {}).get("skill"),
+                "source_domain": (item.metadata_json or {}).get("source_domain"),
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "explicitly_referenced_this_turn": item.id in set(ref_ids),
             }
             for item in artifacts
         ],
         has_product_image=has_image,
         recent_route=recent_route,
+        reference_resolution=resolution.as_context(),
+        has_ready_image_reference=resolution.has_image(),
     )
 
 
@@ -125,6 +143,16 @@ def _has_product_image(
         return False
     wanted = set(reference_ids)
     return any(item.id in wanted and item.storage_path for item in artifacts)
+
+
+def _has_campaign_product(artifacts: list[ChatArtifact]) -> bool:
+    for item in artifacts:
+        meta = item.metadata_json or {}
+        if meta.get("campaign_id") or (
+            meta.get("skill") == "advertising" and meta.get("source_domain_id")
+        ):
+            return True
+    return False
 
 
 def context_as_user_payload(context: BoundedChatContext) -> str:

@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { ArtifactAspect, ChatLanguage } from "@/lib/api/chat/types";
 import type { PendingGeneration } from "../useChatSession";
 import { ChatActivityIndicator } from "./ChatActivityIndicator";
+import { artifactAspectClass } from "../chatActivity";
 
 export function GenerationPlaceholder({
   pending,
@@ -48,7 +49,7 @@ export function GenerationPlaceholder({
       <div
         className={cn(
           "chat-shimmer w-full max-h-64 overflow-hidden rounded-chat-lg",
-          aspect === "4:5" ? "aspect-[4/5]" : "aspect-square",
+          artifactAspectClass(aspect),
           "bg-[linear-gradient(110deg,var(--chat-surface-secondary)_25%,var(--chat-accent-soft)_45%,var(--chat-surface-secondary)_65%)]",
           "bg-[length:200%_100%] animate-[shimmer_1.6s_linear_infinite]",
         )}

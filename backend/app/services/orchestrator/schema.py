@@ -10,6 +10,7 @@ Route = Literal[
     "advertising",
     "education",
     "general_image",
+    "image_edit",
     "general_chat",
     "clarify",
     "unsupported",
@@ -26,6 +27,7 @@ ORCHESTRATOR_SCHEMA: dict[str, Any] = {
                 "advertising",
                 "education",
                 "general_image",
+                "image_edit",
                 "general_chat",
                 "clarify",
                 "unsupported",
@@ -43,6 +45,13 @@ ORCHESTRATOR_SCHEMA: dict[str, Any] = {
         "needs_clarification": {"type": "boolean"},
         "clarification_question": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "generation_instruction": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "edit_instruction": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "target_aspect_ratio": {
+            "anyOf": [
+                {"type": "string", "enum": ["1:1", "4:5", "9:16"]},
+                {"type": "null"},
+            ]
+        },
         "requested_image_count": {
             "anyOf": [{"type": "integer", "enum": [1, 3]}, {"type": "null"}]
         },
@@ -56,6 +65,8 @@ ORCHESTRATOR_SCHEMA: dict[str, Any] = {
         "needs_clarification",
         "clarification_question",
         "generation_instruction",
+        "edit_instruction",
+        "target_aspect_ratio",
         "requested_image_count",
     ],
 }
@@ -72,5 +83,7 @@ class OrchestratorDecision(BaseModel):
     needs_clarification: bool = False
     clarification_question: str | None = None
     generation_instruction: str | None = None
+    edit_instruction: str | None = None
+    target_aspect_ratio: Literal["1:1", "4:5", "9:16"] | None = None
     requested_image_count: Literal[1, 3] | None = None
     orchestrator_called: bool = Field(default=True, exclude=True)

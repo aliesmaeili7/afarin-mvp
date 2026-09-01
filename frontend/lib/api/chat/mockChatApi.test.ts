@@ -194,4 +194,80 @@ describe("mock ChatApi", () => {
     expect(done.artifacts[0]?.status).toBe("ready");
     expect(done.messages.at(-1)?.metadata_json?.activity_phase).toBeUndefined();
   });
+
+  it("edits a referenced image without replacing the original", async () => {
+    const created = await chatApi.createConversation();
+    const first = await chatApi.sendMessage(created.id, {
+      content: "یه تصویر از یک فنجان چای بساز",
+      skillHint: "general_image",
+    });
+    const sourceId = first.conversation.artifacts[0]?.id;
+    expect(sourceId).toBeTruthy();
+    const edited = await chatApi.sendMessage(created.id, {
+      content: "روشن‌ترش کن",
+      referenceArtifactIds: [sourceId!],
+    });
+    const users = edited.conversation.messages.filter((item) => item.role === "user");
+    expect(users.at(-1)?.metadata_json?.reference_artifact_ids).toEqual([sourceId]);
+    expect(edited.conversation.artifacts).toHaveLength(2);
+    expect(edited.conversation.artifacts[0]?.id).toBe(sourceId);
+    expect(edited.conversation.artifacts[1]?.metadata_json?.skill).toBe("image_edit");
+    expect(edited.conversation.artifacts[1]?.metadata_json?.source_artifact_ids).toEqual(
+      [sourceId],
+    );
+    expect(edited.conversation.messages.at(-1)?.metadata_json?.route).toBe("image_edit");
+  });
+
+  it("does not generate when a reference is used only for a caption", async () => {
+    const created = await chatApi.createConversation();
+    const first = await chatApi.sendMessage(created.id, {
+      content: "یه تصویر بساز",
+      skillHint: "general_image",
+    });
+    const sourceId = first.conversation.artifacts[0]?.id;
+    const follow = await chatApi.sendMessage(created.id, {
+      content: "یه کپشن براش بده",
+      referenceArtifactIds: [sourceId!],
+    });
+    expect(follow.conversation.artifacts).toHaveLength(1);
+    expect(follow.conversation.messages.at(-1)?.metadata_json?.route).toBe(
+      "general_chat",
+    );
+  });
+
+  it("advances preparing_edit then generating_image", async () => {
+    const created = await chatApi.createConversation();
+    const first = await chatApi.sendMessage(created.id, {
+      content: "یه تصویر بساز",
+      skillHint: "general_image",
+    });
+    const sourceId = first.conversation.artifacts[0]?.id;
+    setChatMockDelay(40);
+    const { conversation } = await chatApi.sendMessage(created.id, {
+      content: "روشن‌ترش کن",
+      referenceArtifactIds: [sourceId!],
+    });
+    expect(conversation.messages.at(-1)?.metadata_json?.activity_phase).toBe(
+      "preparing_edit",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const mid = await chatApi.getConversation(created.id);
+    expect(mid.messages.at(-1)?.metadata_json?.activity_phase).toBe(
+      "generating_image",
+    );
+  });
+
+  it("reframes to 9:16 when asked for a story", async () => {
+    const created = await chatApi.createConversation();
+    const first = await chatApi.sendMessage(created.id, {
+      content: "یه تصویر بساز",
+      skillHint: "general_image",
+    });
+    const sourceId = first.conversation.artifacts[0]?.id;
+    const edited = await chatApi.sendMessage(created.id, {
+      content: "همین رو استوری کن",
+      referenceArtifactIds: [sourceId!],
+    });
+    expect(edited.conversation.artifacts.at(-1)?.aspect_ratio).toBe("9:16");
+  });
 });

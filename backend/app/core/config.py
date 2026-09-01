@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     chat_orchestrator_model: str = ""
     # Chat-only general image. Do not reuse IMAGE_MODEL / Seedream here.
     general_image_model: str = "openai/gpt-image-2"
+    # Chat image edits only. Do not reuse IMAGE_MODEL / Seedream here.
+    chat_image_edit_model: str = "openai/gpt-image-2"
     # Until credits exist: initial creative generation + this many minus one
     # user-requested «سه نسخه جدید» rounds.
     max_creative_attempts_per_campaign: int = 3
@@ -141,6 +143,10 @@ class Settings(BaseSettings):
     @property
     def general_image_model_resolved(self) -> str:
         return self.general_image_model.strip() or "openai/gpt-image-2"
+
+    @property
+    def chat_image_edit_model_resolved(self) -> str:
+        return self.chat_image_edit_model.strip() or "openai/gpt-image-2"
 
 
 @lru_cache

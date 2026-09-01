@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import messages
 from app.core.config import get_settings
+from app.core.errors import ApiError
 from app.db.models import (
     Campaign,
     CampaignCopy,
@@ -18,10 +21,13 @@ from app.db.models import (
     Product,
     ProductImage,
 )
+from app.providers.image import get_image_provider
+from app.services.campaigns import jobs as job_records
 from app.services.campaigns.creative import generate_candidates
 from app.services.campaigns.crop import CropRect
 from app.services.campaigns.product_media import save_crop
 from app.services.orchestrator.activity import set_activity_phase
+from app.services.orchestrator.edit_text import wants_rendered_ad_as_product
 from app.services.orchestrator.skills.base import (
     ProducedImage,
     SkillContext,
@@ -110,9 +116,23 @@ class AdvertisingSkill:
                     context.assistant_message.id, "finalizing"
                 )
 
-        await generate_candidates(
-            session, campaign, job, source="custom", on_progress=on_progress
-        )
+        provider_name = get_image_provider().name
+        try:
+            usage = await generate_candidates(
+                session, campaign, job, source="custom", on_progress=on_progress
+            )
+        except Exception as error:
+            job_records.mark_image_failed(job, error, provider=provider_name)
+            if isinstance(error, ApiError) and error.message_fa in (
+                messages.INPUT_QUALITY_NEEDS_FIX,
+                messages.CREATIVE_ATTEMPTS_EXHAUSTED,
+            ):
+                campaign.status = "brief_complete"
+            else:
+                campaign.status = "partial_failed"
+            campaign.updated_at = datetime.now(UTC)
+            await session.commit()
+            raise
         await session.refresh(campaign)
 
         attempt_id = campaign.current_visual_attempt_id
@@ -158,7 +178,19 @@ class AdvertisingSkill:
             for index, item in enumerate(candidates)
         ]
         if not images:
-            raise RuntimeError("advertising produced no images")
+            empty = RuntimeError("advertising produced no images")
+            job_records.mark_image_failed(job, empty, provider=provider_name)
+            campaign.status = "partial_failed"
+            campaign.updated_at = datetime.now(UTC)
+            await session.commit()
+            raise empty
+
+        job_records.mark_image_succeeded(
+            job,
+            usage,
+            provider=provider_name,
+            output=dict(job.input_json or {}),
+        )
 
         attempt_ids = [str(item.attempt_id) for item in candidates]
         return SkillResult(
@@ -182,6 +214,12 @@ def _assistant_copy(context: SkillContext, caption: str | None) -> str:
 async def _load_product_bytes(
     session: AsyncSession, context: SkillContext
 ) -> tuple[bytes | None, str]:
+    """
+    Prefer the original product photo, not a rendered ad.
+
+    The rendered campaign image is used only when the user explicitly asks
+    to treat it as the product photo.
+    """
     attachment = (context.user_message.metadata_json or {}).get("attachment") or {}
     path = attachment.get("storage_path")
     mime = str(attachment.get("mime_type") or "image/png")
@@ -190,21 +228,14 @@ async def _load_product_bytes(
         if data:
             return data, mime
 
-    if context.reference_artifact_ids:
-        rows = list(
-            await session.scalars(
-                select(ChatArtifact).where(
-                    ChatArtifact.conversation_id == context.conversation.id,
-                    ChatArtifact.id.in_(context.reference_artifact_ids),
-                    ChatArtifact.status == "ready",
-                )
-            )
-        )
-        for row in rows:
-            if row.storage_path:
-                data = await _download(row.storage_path)
-                if data:
-                    return data, row.mime_type or "image/jpeg"
+    if wants_rendered_ad_as_product(context.user_text):
+        rendered = await _load_referenced_artifact_bytes(session, context)
+        if rendered[0]:
+            return rendered
+
+    from_campaign = await _load_campaign_product_bytes(session, context)
+    if from_campaign[0]:
+        return from_campaign
 
     recent = list(
         await session.scalars(
@@ -224,6 +255,92 @@ async def _load_product_bytes(
             data = await _download(path)
             if data:
                 return data, str(att.get("mime_type") or "image/png")
+    return None, ""
+
+
+async def _load_referenced_artifact_bytes(
+    session: AsyncSession, context: SkillContext
+) -> tuple[bytes | None, str]:
+    ids = list(context.reference_artifact_ids or context.source_artifact_ids)
+    if not ids:
+        return None, ""
+    rows = list(
+        await session.scalars(
+            select(ChatArtifact).where(
+                ChatArtifact.conversation_id == context.conversation.id,
+                ChatArtifact.id.in_(ids),
+                ChatArtifact.status == "ready",
+            )
+        )
+    )
+    for row in rows:
+        if row.storage_path:
+            data = await _download(row.storage_path)
+            if data:
+                return data, row.mime_type or "image/jpeg"
+    return None, ""
+
+
+async def _load_campaign_product_bytes(
+    session: AsyncSession, context: SkillContext
+) -> tuple[bytes | None, str]:
+    campaign_ids: list[uuid.UUID] = []
+    ids = list(context.reference_artifact_ids or context.source_artifact_ids)
+    rows: list[ChatArtifact] = []
+    if ids:
+        rows = list(
+            await session.scalars(
+                select(ChatArtifact).where(
+                    ChatArtifact.conversation_id == context.conversation.id,
+                    ChatArtifact.id.in_(ids),
+                    ChatArtifact.status == "ready",
+                )
+            )
+        )
+    if not rows:
+        rows = list(
+            await session.scalars(
+                select(ChatArtifact)
+                .where(
+                    ChatArtifact.conversation_id == context.conversation.id,
+                    ChatArtifact.status == "ready",
+                    ChatArtifact.artifact_type == "image",
+                )
+                .order_by(ChatArtifact.created_at.desc())
+                .limit(8)
+            )
+        )
+    for row in rows:
+        meta = row.metadata_json or {}
+        raw = meta.get("campaign_id") or (
+            meta.get("source_domain_id")
+            if meta.get("source_domain") == "advertising"
+            or meta.get("skill") == "advertising"
+            else None
+        )
+        if not raw:
+            continue
+        try:
+            campaign_ids.append(uuid.UUID(str(raw)))
+        except (ValueError, TypeError):
+            continue
+    for campaign_id in campaign_ids:
+        campaign = await session.get(Campaign, campaign_id)
+        if campaign is None or campaign.user_id != context.user_id:
+            continue
+        if campaign.product_id is None:
+            continue
+        images = list(
+            await session.scalars(
+                select(ProductImage)
+                .where(ProductImage.product_id == campaign.product_id)
+                .order_by(ProductImage.is_primary.desc())
+            )
+        )
+        for image in images:
+            data = await _download(image.storage_path)
+            if data:
+                return data, "image/png"
     return None, ""
 
 

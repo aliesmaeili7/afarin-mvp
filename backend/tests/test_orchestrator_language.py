@@ -23,6 +23,7 @@ def test_artifact_language_is_independent_of_reply() -> None:
     assert artifact_language("یه پست آموزشی بساز") is None
     assert artifact_language("Make an ad for this.") is None
     assert artifact_language("کپشن انگلیسی باشه") == "en"
+    assert artifact_language("تیترش رو انگلیسی کن") == "en"
 
 
 def test_requested_image_count() -> None:

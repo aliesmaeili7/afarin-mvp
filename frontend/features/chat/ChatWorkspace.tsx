@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
 import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import { toDisplayError } from "@/lib/i18n/errors";
+import { resolveStaticAssetUrl } from "@/lib/api";
 import { chatApiMode } from "@/lib/api/chat";
 import { snapshotForThemeId } from "@/lib/api/chat/catalog";
 import type {
@@ -349,6 +350,14 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
           theme={activeTheme}
           onRemoveTheme={() => void handleTheme(null)}
           referenceLabel={reference ? t("chat.referenceChip") : null}
+          referenceThumb={
+            reference
+              ? (reference.url ??
+                (reference.storage_path
+                  ? resolveStaticAssetUrl(reference.storage_path)
+                  : null))
+              : null
+          }
           onRemoveReference={() => setReference(null)}
           creationAction={creationAction}
           onSelectCreation={setCreationAction}

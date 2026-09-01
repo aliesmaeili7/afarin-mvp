@@ -137,7 +137,7 @@ CHAT_LANGUAGES = ("fa", "en")
 CHAT_ROLES = ("user", "assistant")
 CHAT_ARTIFACT_TYPES = ("image", "audio", "video", "subtitle", "document")
 CHAT_ARTIFACT_STATUSES = ("generating", "ready", "failed")
-CHAT_ARTIFACT_ASPECTS = ("1:1", "4:5")
+CHAT_ARTIFACT_ASPECTS = ("1:1", "4:5", "9:16")
 CHAT_SKILL_HINTS = ("advertising", "education", "general_image")
 
 

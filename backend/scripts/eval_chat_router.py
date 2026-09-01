@@ -36,16 +36,65 @@ CASES = [
     {"id": "image_fa", "text": "یه تصویر از یک فنجان چای بساز"},
     {"id": "music", "text": "یه آهنگ بساز"},
     {"id": "vague", "text": "یه چیزی برام بساز"},
+    {
+        "id": "edit_fa",
+        "text": "روشن‌ترش کن",
+        "has_image": True,
+        "recent_route": "general_image",
+    },
+    {
+        "id": "edit_en",
+        "text": "make this brighter",
+        "has_image": True,
+        "recent_route": "general_image",
+    },
+    {
+        "id": "another_edu",
+        "text": "یکی دیگه شبیه همین بساز",
+        "has_image": True,
+        "recent_route": "education",
+        "skill": "education",
+    },
+    {
+        "id": "caption_with_ref",
+        "text": "یه کپشن براش بده",
+        "has_image": True,
+        "recent_route": "general_image",
+    },
+    {"id": "edit_no_ref", "text": "روشن‌ترش کن", "has_image": False},
 ]
 
 
-def _context(text: str) -> BoundedChatContext:
+def _context(case: dict) -> BoundedChatContext:
+    text = case["text"]
+    has_image = bool(case.get("has_image"))
+    artifact_id = str(uuid.uuid4())
+    artifacts = []
+    if has_image:
+        artifacts.append(
+            {
+                "id": artifact_id,
+                "artifact_type": "image",
+                "aspect_ratio": "1:1",
+                "skill": case.get("skill") or "general_image",
+                "origin_route": case.get("recent_route") or "general_image",
+            }
+        )
     return BoundedChatContext(
         conversation_id=uuid.uuid4(),
         latest_user_text=text,
         latest_user_message_id=uuid.uuid4(),
         recent_messages=[{"role": "user", "content": text, "language": "fa"}],
-        recent_artifacts=[],
+        recent_artifacts=artifacts,
+        recent_route=case.get("recent_route"),
+        has_ready_image_reference=has_image,
+        reference_resolution={
+            "status": "resolved" if has_image else "none",
+            "source": "sole_image" if has_image else "none",
+            "artifact_ids": [artifact_id] if has_image else [],
+            "has_attachment": False,
+            "explicitly_referenced_this_turn": False,
+        },
     )
 
 
@@ -56,7 +105,7 @@ async def run() -> dict:
     provider = OpenRouterOrchestratorProvider()
     rows = []
     for case in CASES:
-        decision = await provider.complete(_context(case["text"]))
+        decision = await provider.complete(_context(case))
         rows.append(
             {
                 "id": case["id"],

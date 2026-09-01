@@ -11,7 +11,8 @@
     "test": "vitest run",
     "verify:chat": "node scripts/verify-chat.mjs",
     "verify:chat:http": "node scripts/verify-chat-http.mjs",
-    "verify:chat:phase-c": "node scripts/verify-chat-phase-c.mjs"
+    "verify:chat:phase-c": "node scripts/verify-chat-phase-c.mjs",
+    "verify:chat:live-gates": "node scripts/verify-chat-live-gates.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

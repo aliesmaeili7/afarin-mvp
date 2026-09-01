@@ -19,6 +19,7 @@ ACTIVITY_PHASES = frozenset(
         "preparing_advertising",
         "preparing_education",
         "preparing_image",
+        "preparing_edit",
         "generating_image",
         "finalizing",
     }
@@ -28,6 +29,7 @@ PREPARING_FOR_ROUTE: dict[str, str] = {
     "advertising": "preparing_advertising",
     "education": "preparing_education",
     "general_image": "preparing_image",
+    "image_edit": "preparing_edit",
 }
 
 

@@ -2,7 +2,7 @@ export type ChatLanguage = "fa" | "en";
 export type ChatRole = "user" | "assistant";
 export type ArtifactType = "image" | "audio" | "video" | "subtitle" | "document";
 export type ArtifactStatus = "generating" | "ready" | "failed";
-export type ArtifactAspect = "1:1" | "4:5";
+export type ArtifactAspect = "1:1" | "4:5" | "9:16";
 export type ChatThemeGroup = "saved" | "catalog";
 
 export interface ChatTheme {

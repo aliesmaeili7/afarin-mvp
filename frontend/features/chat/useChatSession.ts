@@ -17,7 +17,7 @@ export interface PendingGeneration {
   startedAt: number;
   language: "fa" | "en";
   phase?: ChatActivityPhase;
-  aspectRatio?: "1:1" | "4:5";
+  aspectRatio?: "1:1" | "4:5" | "9:16";
   expectsImage?: boolean;
   imageCount?: number;
 }

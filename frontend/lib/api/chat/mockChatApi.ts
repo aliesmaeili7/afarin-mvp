@@ -26,7 +26,7 @@ type MockJob = {
   startedAt: number;
   assistantId: string;
   artifactId: string;
-  route: "advertising" | "education" | "general_image";
+  route: "advertising" | "education" | "general_image" | "image_edit";
   language: ChatLanguage;
 };
 
@@ -102,12 +102,53 @@ function titleFrom(content: string, language: ChatLanguage | null): string {
   return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
 }
 
+function isEditRequest(text: string): boolean {
+  return /روشن‌تر|تاریک‌تر|پس‌زمینه|بک‌گراند|حذف کن|تیتر|عوض کن|استوری|مربعش|make this brighter|remove the|change the title|change the background|vertical|square/i.test(
+    text,
+  );
+}
+
+function isRegenerateRequest(text: string): boolean {
+  return /یکی\s+دیگه|یه\s+نسخه\s+دیگه|another (one|version)|one more/i.test(
+    text,
+  );
+}
+
+function isCaptionRequest(text: string): boolean {
+  return /کپشن|caption/i.test(text);
+}
+
+function isDeicticLatest(text: string): boolean {
+  return /عکس قبلی|تصویر قبلی|همین|همون|آخری|this one|the previous image|the last image/i.test(
+    text,
+  );
+}
+
+function lastReadyImage(conversation: Conversation | undefined) {
+  if (!conversation) return undefined;
+  return [...conversation.artifacts]
+    .reverse()
+    .find((item) => item.artifact_type === "image" && item.status === "ready");
+}
+
 function generationRoute(
   input: SendMessageInput,
-): "advertising" | "education" | "general_image" {
+  conversation?: Conversation,
+): "advertising" | "education" | "general_image" | "image_edit" {
   if (input.skillHint === "advertising") return "advertising";
   if (input.skillHint === "education") return "education";
   if (input.skillHint === "general_image") return "general_image";
+  const origin =
+    lastReadyImage(conversation)?.metadata_json?.skill ??
+    [...(conversation?.messages ?? [])]
+      .reverse()
+      .find((item) => item.role === "assistant")?.metadata_json?.route;
+  if (isRegenerateRequest(input.content)) {
+    if (origin === "advertising" || origin === "education" || origin === "general_image") {
+      return origin;
+    }
+  }
+  if (isEditRequest(input.content)) return "image_edit";
   if (/تبلیغ|کفش|luxury|ad\b|shoe|editorial|instagram ad/i.test(input.content)) {
     return "advertising";
   }
@@ -149,29 +190,64 @@ function advanceMockJob(conversation: Conversation): void {
   assistant.metadata_json = { ...rest, status: "ready" };
   assistant.content = assistantCopy(job.language, true, "");
   artifact.status = "ready";
-  artifact.storage_path = artifact.aspect_ratio === "4:5" ? PORTRAIT : SQUARE;
+  artifact.storage_path =
+    artifact.aspect_ratio === "9:16"
+      ? PORTRAIT
+      : artifact.aspect_ratio === "4:5"
+        ? PORTRAIT
+        : SQUARE;
   mockJobs.delete(conversation.id);
 }
 
-function wantsImage(input: SendMessageInput): boolean {
+function wantsImage(
+  input: SendMessageInput,
+  conversation: Conversation,
+): boolean {
   if (input.generateImage || input.retryArtifactId) return true;
-  if (input.referenceArtifactIds?.length) return true;
+  if (/__fail_edit__/i.test(input.content)) return true;
   if (input.skillHint) return true;
   const text = input.content;
   if (!text.trim()) return false;
-  if (/کپشن|caption/i.test(text)) return false;
+  if (isCaptionRequest(text)) return false;
+  if (isEditRequest(text)) {
+    const ready = conversation.artifacts.filter(
+      (item) => item.artifact_type === "image" && item.status === "ready",
+    );
+    if (input.referenceArtifactIds?.length || input.attachment) return true;
+    if (isDeicticLatest(text) && ready.length) return true;
+    if (ready.length === 1) return true;
+    return false;
+  }
   return /تصویر|عکس|پست|تبلیغ|بساز|ad\b|image|illustration|post/i.test(text);
 }
 
-function pickAspect(input: SendMessageInput): ArtifactAspect {
+function pickAspect(
+  input: SendMessageInput,
+  conversation: Conversation,
+): ArtifactAspect {
+  if (/استوری|عمودی|9:16|story|vertical/i.test(input.content)) return "9:16";
+  if (/مربع|1:1|square/i.test(input.content)) return "1:1";
+  if (/فید|4:5|feed/i.test(input.content)) return "4:5";
   if (input.skillHint === "advertising") return "4:5";
   if (input.skillHint === "education" || input.skillHint === "general_image") {
     return "1:1";
+  }
+  const referenced = conversation.artifacts.find((item) =>
+    input.referenceArtifactIds?.includes(item.id),
+  );
+  if (referenced?.aspect_ratio) return referenced.aspect_ratio;
+  const latest = lastReadyImage(conversation);
+  if (isEditRequest(input.content) && latest?.aspect_ratio) {
+    return latest.aspect_ratio;
   }
   if (/تبلیغ|کفش|luxury|ad\b|shoe|editorial|instagram ad/i.test(input.content)) {
     return "4:5";
   }
   return "1:1";
+}
+
+function pathForAspect(aspect: ArtifactAspect): string {
+  return aspect === "1:1" ? SQUARE : PORTRAIT;
 }
 
 function assistantCopy(
@@ -223,22 +299,17 @@ async function completeTurn(
       (item) => item.id === artifact?.message_id,
     );
     if (artifact && assistant) {
-      const route = generationRoute({
-        content: "",
-        skillHint:
-          assistant.metadata_json?.route === "advertising" ||
-          assistant.metadata_json?.route === "education" ||
-          assistant.metadata_json?.route === "general_image"
-            ? assistant.metadata_json.route
-            : "general_image",
-      });
+      const stored = assistant.metadata_json?.route;
+      const route =
+        stored === "advertising" ||
+        stored === "education" ||
+        stored === "general_image" ||
+        stored === "image_edit"
+          ? stored
+          : "general_image";
       artifact.status = delayMs === 0 ? "ready" : "generating";
       artifact.storage_path =
-        delayMs === 0
-          ? artifact.aspect_ratio === "4:5"
-            ? PORTRAIT
-            : SQUARE
-          : null;
+        delayMs === 0 ? pathForAspect(artifact.aspect_ratio ?? "1:1") : null;
       assistant.metadata_json = {
         ...(assistant.metadata_json ?? {}),
         status: delayMs === 0 ? "ready" : "generating",
@@ -265,7 +336,16 @@ async function completeTurn(
     }
   }
 
-  const generate = wantsImage(input);
+  const failEdit = /__fail_edit__/i.test(input.content);
+  const generate = wantsImage(input, conversation) || failEdit;
+  const readyImages = conversation.artifacts.filter(
+    (item) => item.artifact_type === "image" && item.status === "ready",
+  );
+  const ambiguousEdit =
+    isEditRequest(input.content) &&
+    !generate &&
+    !input.referenceArtifactIds?.length &&
+    readyImages.length > 1;
 
   if (input.content.trim() || input.attachment) {
     conversation.messages.push({
@@ -278,6 +358,9 @@ async function completeTurn(
       metadata_json: {
         ...(input.attachment ? { attachment: input.attachment } : {}),
         ...(input.skillHint ? { explicit_skill_hint: input.skillHint } : {}),
+        ...(input.referenceArtifactIds?.length
+          ? { reference_artifact_ids: input.referenceArtifactIds }
+          : {}),
       },
     });
     if (
@@ -289,39 +372,74 @@ async function completeTurn(
   }
 
   const assistantId = nextId("msg");
-  const route = generate ? generationRoute(input) : null;
+  const route = failEdit
+    ? "image_edit"
+    : generate
+      ? generationRoute(input, conversation)
+      : null;
   conversation.messages.push({
     id: assistantId,
     conversation_id: conversation.id,
     role: "assistant",
-    content: assistantCopy(language, generate && delayMs === 0, input.content),
+    content: ambiguousEdit
+      ? language === "en"
+        ? "Which image do you mean? Tap Use as reference on that photo and I’ll edit exactly that one."
+        : "کدوم تصویر رو می‌گی؟ اگه روی همون عکس «استفاده به‌عنوان مرجع» بزنی، دقیقاً همونو تغییر می‌دم."
+      : !generate && isEditRequest(input.content)
+        ? language === "en"
+          ? "Which image should I change? Send a photo or choose one from this chat as a reference."
+          : "کدوم تصویر رو می‌خوای تغییر بدم؟ یه عکس بفرست یا یکی از تصاویر گفتگو رو به‌عنوان مرجع انتخاب کن."
+        : assistantCopy(language, generate && delayMs === 0 && !failEdit, input.content),
     language,
     created_at: now,
     metadata_json: generate
       ? {
           route: route ?? "general_image",
-          status: delayMs === 0 ? "ready" : "generating",
-          ...(delayMs === 0
+          status: failEdit
+            ? "failed"
+            : delayMs === 0
+              ? "ready"
+              : "generating",
+          ...(failEdit ? { failed: true, retryable: true } : {}),
+          ...(delayMs === 0 || failEdit
             ? {}
             : { activity_phase: preparingPhaseFor(route) }),
         }
-      : { route: "general_chat", status: "ready" },
+      : {
+          route: "clarify",
+          status: "ready",
+          ...(ambiguousEdit || isEditRequest(input.content)
+            ? { needs_clarification: true }
+            : { route: "general_chat", status: "ready" }),
+        },
   });
 
   if (generate) {
     const artifactId = nextId("art");
-    const aspect = pickAspect(input);
+    const aspect = pickAspect(input, conversation);
+    const source = conversation.artifacts.find((item) =>
+      input.referenceArtifactIds?.includes(item.id),
+    ) ?? lastReadyImage(conversation);
     conversation.artifacts.push({
       id: artifactId,
       conversation_id: conversation.id,
       message_id: assistantId,
       artifact_type: "image",
-      storage_path: delayMs === 0 ? (aspect === "4:5" ? PORTRAIT : SQUARE) : null,
+      storage_path:
+        failEdit || delayMs > 0 ? null : pathForAspect(aspect),
       aspect_ratio: aspect,
-      status: delayMs === 0 ? "ready" : "generating",
+      status: failEdit ? "failed" : delayMs === 0 ? "ready" : "generating",
       created_at: now,
+      metadata_json:
+        route === "image_edit"
+          ? {
+              skill: "image_edit",
+              source_artifact_ids: source ? [source.id] : [],
+              generation: 2,
+            }
+          : { skill: route ?? "general_image" },
     });
-    if (delayMs > 0 && route) {
+    if (delayMs > 0 && route && !failEdit) {
       mockJobs.set(conversation.id, {
         startedAt: Date.now(),
         assistantId,

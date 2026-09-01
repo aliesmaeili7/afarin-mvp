@@ -29,6 +29,7 @@ export function ChatComposer({
   theme,
   onRemoveTheme,
   referenceLabel,
+  referenceThumb,
   onRemoveReference,
   creationAction,
   onSelectCreation,
@@ -46,6 +47,7 @@ export function ChatComposer({
   theme: ChatTheme | null;
   onRemoveTheme: () => void;
   referenceLabel: string | null;
+  referenceThumb?: string | null;
   onRemoveReference: () => void;
   creationAction: CreationAction | null;
   onSelectCreation: (action: CreationAction) => void;
@@ -143,9 +145,19 @@ export function ChatComposer({
             {referenceLabel ? (
               <span
                 data-chat="reference-chip"
-                className="inline-flex h-9 items-center gap-2 rounded-full bg-chat-surface-secondary pe-1 ps-3 text-xs font-semibold text-chat-text"
+                className="inline-flex h-9 max-w-full items-center gap-2 rounded-full bg-chat-surface-secondary pe-1 ps-1.5 text-xs font-semibold text-chat-text"
               >
-                {referenceLabel}
+                {referenceThumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={referenceThumb}
+                    alt=""
+                    width={28}
+                    height={28}
+                    className="size-7 shrink-0 rounded-full object-cover"
+                  />
+                ) : null}
+                <span className="truncate ps-1">{referenceLabel}</span>
                 <ChatIconButton
                   label={t("chat.referenceRemove")}
                   onClick={onRemoveReference}

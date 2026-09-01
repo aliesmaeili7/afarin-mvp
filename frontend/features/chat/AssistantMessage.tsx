@@ -50,6 +50,11 @@ export function AssistantMessage({
           phase={phase}
           language={message.language}
           imageCount={imageCount}
+          route={
+            typeof message.metadata_json?.route === "string"
+              ? message.metadata_json.route
+              : undefined
+          }
           onRetry={() => onRetry(artifact.id)}
           onUseAsReference={() => onUseAsReference(artifact)}
         />

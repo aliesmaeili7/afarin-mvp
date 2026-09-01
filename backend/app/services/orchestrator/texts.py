@@ -18,6 +18,10 @@ ACK = {
         "fa": "باشه، تصویرش رو می‌سازم.",
         "en": "Got it — I’ll make that image.",
     },
+    "image_edit": {
+        "fa": "باشه، تغییرات رو روی تصویر اعمال می‌کنم.",
+        "en": "Got it — I’ll apply that to the image.",
+    },
 }
 
 CLARIFY_ADS = {
@@ -28,6 +32,14 @@ CLARIFY_IMAGE = {
     "fa": "چی رو برات تصویر کنم؟ یه موضوع کوتاه بگو.",
     "en": "What should I draw? Give me a short subject.",
 }
+CLARIFY_EDIT = {
+    "fa": "کدوم تصویر رو می‌خوای تغییر بدم؟ یه عکس بفرست یا یکی از تصاویر گفتگو رو به‌عنوان مرجع انتخاب کن.",
+    "en": "Which image should I change? Send a photo or choose one from this chat as a reference.",
+}
+CLARIFY_EDIT_AMBIGUOUS = {
+    "fa": "کدوم تصویر رو می‌گی؟ اگه روی همون عکس «استفاده به‌عنوان مرجع» بزنی، دقیقاً همونو تغییر می‌دم.",
+    "en": "Which image do you mean? Tap Use as reference on that photo and I’ll edit exactly that one.",
+}
 UNSUPPORTED = {
     "fa": "این قابلیت هنوز فعال نیست. می‌تونم برات تبلیغ، پست آموزشی یا تصویر بسازم.",
     "en": "That isn’t available yet. I can make ads, teaching posts, or images.",
@@ -35,6 +47,10 @@ UNSUPPORTED = {
 TRY_AGAIN = {
     "fa": "یه لحظه نتونستم درست بفهمم چی می‌خوای. دوباره بگو؟",
     "en": "I couldn’t quite tell what you needed. Try saying it again?",
+}
+EDIT_FAILED = {
+    "fa": "نتونستم تغییرات رو روی تصویر اعمال کنم. دوباره امتحان کنم؟",
+    "en": "I couldn't apply those changes to the image. Want me to try again?",
 }
 GENERIC_CHAT = {
     "fa": "بگو چی لازم داری؛ می‌تونم تبلیغ، پست آموزشی یا تصویر برات بسازم.",

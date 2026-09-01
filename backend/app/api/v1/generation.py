@@ -300,10 +300,9 @@ async def _run_images(
 
     provider_name = get_image_provider().name
     try:
-        await creative_visuals.generate_candidates(
+        usage = await creative_visuals.generate_candidates(
             session, campaign, locked or job, source="smart"
         )
-        usage = None
         failures: list[dict] = []
     except Exception as error:
         logger.exception("creative image generation failed")

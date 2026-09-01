@@ -21,27 +21,26 @@ from app.core.enums import FEED_SCENE_TYPES, STORY_SCENE_TYPES
 from app.core.errors import generation_failed, invalid, not_found
 from app.db.models import (
     Campaign,
-    CampaignAsset,
     CampaignCopy,
     CampaignVisualAttempt,
     CampaignVisualCandidate,
     GenerationJob,
 )
 from app.providers.image import get_image_provider
-from app.providers.image.base import ImageApiError, ImageRequest, ImageResult, ImageUsage
-from app.providers.image.creative_prompts import build_repair_prompt
+from app.providers.image.base import (
+    ImageUsage,
+)
 from app.providers.vision import get_creative_agent
 from app.providers.vision.base import (
-    CandidateQuality,
     CreativeAgentContext,
-    QualityContext,
-    QualityReport,
 )
 from app.services.campaigns import cost as budgets
 from app.services.campaigns import jobs as job_records
 from app.services.campaigns import queries
-from app.services.campaigns.creative_core import generate_recipe_set
-from app.services.campaigns.stages import set_job_stage
+from app.services.campaigns.creative_core import (
+    RecipeSetResult,
+    generate_recipe_set,
+)
 from app.services.campaigns.product_media import (
     load_creative_reference_bytes,
     load_original_bytes,
@@ -53,6 +52,7 @@ from app.services.campaigns.reference_prep import (
     assert_not_blocked,
     prepare_clean_jpeg,
 )
+from app.services.campaigns.stages import set_job_stage
 from app.services.storage import get_storage, visual_candidate_key
 from app.services.storage.paths import StorageRef
 
@@ -68,7 +68,7 @@ async def generate_candidates(
     *,
     source: str = "smart",
     on_progress: Callable[[str], Awaitable[None]] | None = None,
-) -> None:
+) -> ImageUsage:
     await budgets.assert_can_start_attempt(session, campaign)
     cleaned = await _require_clean_reference(session, campaign)
     context = await agent_context_for(session, campaign)
@@ -164,6 +164,7 @@ async def generate_candidates(
     if out.error:
         raise generation_failed()
 
+    usage = _image_usage_from_recipe(out)
     await _persist_copy(session, campaign, payload)
     n = len(out.candidates)
     await _record_image_budget(job, attempt.attempt_number, n)
@@ -217,6 +218,7 @@ async def generate_candidates(
     campaign.status = "ready"
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
+    return usage
 
 
 async def focus_concept(
@@ -318,7 +320,9 @@ async def _persist_copy(
         )
         _add_copy(session, campaign.id, "cta", str(copy.get("cta") or ""), slot_meta)
         tags = copy.get("hashtags") or []
-        hashtags = " ".join(str(tag) for tag in tags) if isinstance(tags, list) else str(tags)
+        hashtags = (
+            " ".join(str(tag) for tag in tags) if isinstance(tags, list) else str(tags)
+        )
         _add_copy(session, campaign.id, "hashtags", hashtags, slot_meta)
     await session.flush()
 
@@ -406,6 +410,38 @@ async def _record_image_budget(
     payload["output_counts"] = {"candidate": n}
     payload["roles"] = ["candidate"]
     job.input_json = payload
+
+
+def _image_usage_from_recipe(out: RecipeSetResult) -> ImageUsage:
+    cost: Decimal | None = None
+    latency = 0
+    model: str | None = None
+    prompt = 0
+    completion = 0
+    has_prompt = False
+    has_completion = False
+    for frame in (*out.candidates, *out.repairs):
+        latency += int(frame.latency_ms or 0)
+        if frame.cost_usd is not None:
+            cost = (cost or Decimal("0")) + Decimal(str(frame.cost_usd))
+        if frame.model:
+            model = frame.model
+        usage = frame.usage or {}
+        if usage.get("prompt_tokens") is not None:
+            prompt += int(usage["prompt_tokens"])
+            has_prompt = True
+        if usage.get("completion_tokens") is not None:
+            completion += int(usage["completion_tokens"])
+            has_completion = True
+        if not model and usage.get("model"):
+            model = str(usage["model"])
+    return ImageUsage(
+        latency_ms=latency,
+        cost_usd=cost,
+        model=model,
+        prompt_tokens=prompt if has_prompt else None,
+        completion_tokens=completion if has_completion else None,
+    )
 
 
 async def _store_candidate(

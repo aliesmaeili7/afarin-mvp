@@ -15,6 +15,8 @@ describe("chat chrome direction", () => {
     expect(t("en", "chat.rename")).toBe("Rename");
     expect(t("fa", "chat.deleteTitle")).toBe("این گفتگو حذف شود؟");
     expect(t("en", "chat.deleteTitle")).toBe("Delete this chat?");
+    expect(t("fa", "chat.referenceChip")).toBe("مرجع: آخرین تصویر");
+    expect(t("en", "chat.referenceChip")).toBe("Reference: last image");
   });
 
   it("uses a bottom sheet on mobile and a popover on desktop", () => {

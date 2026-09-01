@@ -28,6 +28,11 @@ class SkillContext:
     active_theme: dict[str, Any] | None
     reference_artifact_ids: list[uuid.UUID]
     route: Route
+    edit_instruction: str | None = None
+    target_aspect_ratio: str | None = None
+    source_artifact_ids: list[uuid.UUID] = field(default_factory=list)
+    source_attachment_path: str | None = None
+    source_message_id: uuid.UUID | None = None
 
 
 @dataclass

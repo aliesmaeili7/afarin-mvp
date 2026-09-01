@@ -10,11 +10,19 @@ from app.core.config import get_settings
 from app.core.errors import generation_failed
 from app.providers.llm.openrouter.client import OpenRouterClient, parse_json_object
 from app.services.orchestrator.context import BoundedChatContext
+from app.services.orchestrator.edit_text import (
+    is_caption_request,
+    is_edit_request,
+    is_regenerate_request,
+    parse_target_aspect,
+)
 from app.services.orchestrator.language import artifact_language, reply_language
 from app.services.orchestrator.prompt import ORCHESTRATOR_SYSTEM_PROMPT
 from app.services.orchestrator.schema import ORCHESTRATOR_SCHEMA, OrchestratorDecision
 from app.services.orchestrator.texts import (
     ACK,
+    CLARIFY_EDIT,
+    CLARIFY_EDIT_AMBIGUOUS,
     CLARIFY_IMAGE,
     GENERIC_CHAT,
     UNSUPPORTED,
@@ -89,6 +97,44 @@ class StubOrchestratorProvider:
                 assistant_message=CLARIFY_IMAGE[lang],
                 needs_clarification=True,
             )
+        if is_caption_request(text):
+            return _decision(
+                "general_chat",
+                lang,
+                art,
+                assistant_message=_chat_reply(text, lang),
+            )
+        origin = _origin_skill(context)
+        if is_regenerate_request(text) and origin in {
+            "advertising",
+            "education",
+            "general_image",
+        }:
+            return _decision(origin, lang, art, preamble=ACK[origin][lang])
+        if is_edit_request(text):
+            if context.has_ready_image_reference:
+                aspect = parse_target_aspect(text)
+                return _decision(
+                    "image_edit",
+                    lang,
+                    art,
+                    preamble=ACK["image_edit"][lang],
+                    edit_instruction=text.strip(),
+                    target_aspect_ratio=aspect,
+                )
+            resolution = context.reference_resolution or {}
+            clarify = (
+                CLARIFY_EDIT_AMBIGUOUS[lang]
+                if resolution.get("status") == "ambiguous"
+                else CLARIFY_EDIT[lang]
+            )
+            return _decision(
+                "clarify",
+                lang,
+                art,
+                assistant_message=clarify,
+                needs_clarification=True,
+            )
         if _EDU.search(text):
             return _decision("education", lang, art, preamble=ACK["education"][lang])
         if _ADS.search(text):
@@ -105,6 +151,16 @@ class StubOrchestratorProvider:
             art,
             assistant_message=_chat_reply(text, lang),
         )
+
+
+def _origin_skill(context: BoundedChatContext) -> str | None:
+    if context.recent_route in {"advertising", "education", "general_image"}:
+        return context.recent_route
+    for item in reversed(context.recent_artifacts or []):
+        skill = item.get("skill") or item.get("origin_route")
+        if skill in {"advertising", "education", "general_image"}:
+            return skill
+    return None
 
 
 def _chat_reply(text: str, lang: str) -> str:
@@ -126,6 +182,8 @@ def _decision(
     preamble: str | None = None,
     assistant_message: str | None = None,
     needs_clarification: bool = False,
+    edit_instruction: str | None = None,
+    target_aspect_ratio: str | None = None,
 ) -> OrchestratorDecision:
     return OrchestratorDecision(
         route=route,  # type: ignore[arg-type]
@@ -136,6 +194,8 @@ def _decision(
         needs_clarification=needs_clarification,
         clarification_question=assistant_message if needs_clarification else None,
         generation_instruction=None,
+        edit_instruction=edit_instruction,
+        target_aspect_ratio=target_aspect_ratio,  # type: ignore[arg-type]
         requested_image_count=None,
         orchestrator_called=True,
     )

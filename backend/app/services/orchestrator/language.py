@@ -38,9 +38,10 @@ _REPLY_FA = re.compile(
 
 _ARTIFACT_EN = re.compile(
     r"متن(?:ش|ش)?\s*انگلیسی"
+    r"|تیتر(?:ش)?\s*رو\s*انگلیسی"
     r"|کپشن\s*انگلیسی"
     r"|caption\s+in\s+english"
-    r"|english\s+(caption|text|copy|headline)"
+    r"|english\s+(caption|text|copy|headline|title)"
     r"|on[- ]image\s+text\s+in\s+english"
     r"|پوستر\s*.{0,24}انگلیسی"
     r"|انگلیسی\s*باشه",

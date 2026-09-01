@@ -6,6 +6,7 @@ export type ChatActivityPhase =
   | "preparing_advertising"
   | "preparing_education"
   | "preparing_image"
+  | "preparing_edit"
   | "generating_image"
   | "finalizing";
 
@@ -15,6 +16,7 @@ export function preparingPhaseFor(
   if (route === "advertising") return "preparing_advertising";
   if (route === "education") return "preparing_education";
   if (route === "general_image") return "preparing_image";
+  if (route === "image_edit") return "preparing_edit";
   return "thinking";
 }
 
@@ -32,4 +34,12 @@ export function activityCopy(
     return dict[phase as keyof typeof dict];
   }
   return dict.thinking;
+}
+
+export function artifactAspectClass(
+  aspect: string | null | undefined,
+): string {
+  if (aspect === "9:16") return "aspect-[9/16]";
+  if (aspect === "4:5") return "aspect-[4/5]";
+  return "aspect-square";
 }

@@ -1017,7 +1017,9 @@ EducationalPost. See `docs/CHAT_ARCHITECTURE.md`.
 Phase A is the Persian-first chat UX. Phase B persists user-owned
 conversations, messages, artifacts, and theme snapshots. Phase C connects a
 Persian-native Orchestrator and skills (Advertising, Education, general image,
-general chat). Phase D is editing and memory.
+general chat). Phase D is conversational image editing and reference handling
+in the current conversation (reference-conditioned generation, not
+inpainting). Memory, voice, and cross-chat assets remain later work.
 
 Do not call advertising or education generation from the chat UI. Chat
 components speak only to `ChatApi`.

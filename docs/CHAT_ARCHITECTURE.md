@@ -13,7 +13,7 @@ ChatApi
              ↓
         chat persistence  →  Orchestrator (services/orchestrator)
                                     ↓
-                          Advertising / Education / General image skills
+                          Advertising / Education / General image / Image edit skills
                                     ↓
                           existing Creative Agent / EducationalAgent / ImageProvider
 ```
@@ -32,7 +32,7 @@ Persian-first RTL workspace at `/chat` and `/chat/[conversationId]`. Desktop sid
 
 User-owned conversations, messages, artifacts, theme snapshots, and history.
 
-### Phase C — Orchestrator + skills (this document)
+### Phase C — Orchestrator + skills (done)
 
 Paid routes persist `activity_phase` on the generating assistant (`preparing_*` → `generating_image` → ads-only `finalizing`). Phase writes merge one JSONB key and are best-effort. The frontend polls `getConversation` and shows `ChatActivityIndicator`; unhinted text uses a client-only thinking state. No extra model calls.
 
@@ -46,9 +46,15 @@ Skills:
 
 Deleting a conversation removes only `chat/` storage objects.
 
-### Phase D — not this work
+### Phase D — Conversational image editing (done)
 
-Image editing, memory/summarization, cross-chat assets, voice/music/video.
+Current-conversation reference resolution plus an internal `image_edit` skill. Edits are **reference-conditioned generation** via `ImageRequest.references` (`CHAT_IMAGE_EDIT_MODEL`, default `openai/gpt-image-2`), not mask/inpainting. Every edit creates a new chat-owned artifact under `chat/{id}/artifacts/` with lineage in `metadata_json`. Campaign and EducationalPost records are not mutated.
+
+“Use as reference” sends `reference_artifact_ids`; the server re-checks ownership. Direct changes (“روشن‌ترش کن”) route to `image_edit`. “Another version” returns to the originating creation skill. For advertising regenerations, the original campaign product photo is reused; the rendered ad is not used as the product image unless the user explicitly asks.
+
+Activity: `preparing_edit` → `generating_image` → `ready`. Chat artifacts may be `1:1`, `4:5`, or `9:16`.
+
+Memory, voice, music, video, subtitles, projects, and cross-chat asset libraries remain future work.
 
 ---
 
@@ -137,4 +143,4 @@ Phase C HTTP/live browser smoke (paid image turns; several minutes):
 cd frontend && npm run verify:chat:phase-c
 ```
 
-`verify:chat` (no `:http`) is the Phase A mock UI walk and does not prove persistence.
+`verify:chat` (no `:http`) is the mock UI walk, including Phase D reference-chip edits. It does not prove persistence.

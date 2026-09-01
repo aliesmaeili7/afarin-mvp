@@ -16,7 +16,9 @@ describe("chat activity copy", () => {
     expect(activityCopy("generating_image", "fa")).toBe(
       "دارم تصویرت رو می‌سازم…",
     );
-    expect(activityCopy("finalizing", "fa")).toBe("دارم نتیجه رو آماده می‌کنم…");
+    expect(activityCopy("preparing_edit", "fa")).toBe(
+      "دارم تغییرات رو آماده می‌کنم…",
+    );
   });
 
   it("maps phases to English", () => {
@@ -25,6 +27,7 @@ describe("chat activity copy", () => {
       "Preparing your educational post…",
     );
     expect(activityCopy("generating_image", "en")).toBe("Creating your image…");
+    expect(activityCopy("preparing_edit", "en")).toBe("Preparing your changes…");
     expect(activityCopy("finalizing", "en")).toBe("Finishing up…");
   });
 
@@ -51,6 +54,7 @@ describe("chat activity copy", () => {
     expect(preparingPhaseFor("education")).toBe("preparing_education");
     expect(preparingPhaseFor("advertising")).toBe("preparing_advertising");
     expect(preparingPhaseFor("general_image")).toBe("preparing_image");
+    expect(preparingPhaseFor("image_edit")).toBe("preparing_edit");
     expect(preparingPhaseFor(null)).toBe("thinking");
   });
 

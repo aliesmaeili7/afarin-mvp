@@ -311,8 +311,56 @@ try {
   await page.locator('[data-chat="image-artifact"]').waitFor({ timeout: 20000 });
   check("education image ready", await visible(page, '[data-chat="image-artifact"]'));
 
+  await page.locator('[data-chat="use-as-reference"]').last().click();
+  await page.locator('[data-chat="reference-chip"]').waitFor({ timeout: 8000 });
+  check("reference chip shown", await visible(page, '[data-chat="reference-chip"]'));
+  await page.locator('[data-chat="composer"] textarea').fill("روشن‌ترش کن");
+  await page.locator('[data-chat="send"]:not([disabled])').click();
+  check(
+    "preparing edit",
+    await page.locator('[data-chat-phase="preparing_edit"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  check(
+    "edit generating image",
+    await page.locator('[data-chat-phase="generating_image"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await page.locator('[data-chat="image-artifact"]').nth(1).waitFor({ timeout: 20000 });
+  check(
+    "original still visible after edit",
+    (await page.locator('[data-chat="image-artifact"]').count()) >= 2,
+  );
+  await page.locator('[data-chat="use-as-reference"]').last().click();
+  check("edited result is a new reference", await visible(page, '[data-chat="reference-chip"]'));
+  await page.locator('[data-chat="composer"] textarea').fill("__fail_edit__");
+  await page.locator('[data-chat="send"]:not([disabled])').click();
+  check(
+    "failed edit",
+    await page.locator('[data-chat="generation-failed"]').waitFor({ timeout: 15000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await page.getByRole("button", { name: "دوباره بساز" }).last().click();
+  check(
+    "retry failed edit",
+    await page.locator('[data-chat="activity"], [data-chat="image-artifact"]').first().waitFor({
+      timeout: 20000,
+    }).then(() => true, () => false),
+  );
+
+  await page.locator('[data-chat="image-artifact"]').last().waitFor({ timeout: 20000 });
+  await page.keyboard.press("Escape");
+
   await page.locator('[data-chat="new-chat"]').click();
+  await page.locator('[data-chat="empty"]').waitFor({ timeout: 8000 });
   await page.locator('[data-chat="plus"]').click();
+  await page.locator('[data-chat="plus-menu"]').waitFor({ timeout: 8000 });
   await page.locator('[data-chat-action="advertising"]').click();
   await page.locator('[data-chat="composer"] textarea').fill("یه تبلیغ از این کفش بساز");
   await page.locator('[data-chat="send"]:not([disabled])').click();
@@ -424,7 +472,7 @@ try {
   await phone.goto(`${APP}/chat`, { waitUntil: "domcontentloaded" });
   await phone.locator('[data-chat="empty"]').waitFor({ timeout: 15000 });
   await phone.locator('[data-chat="composer"] textarea').fill("سلام");
-  await phone.locator('[data-chat="send"]:not([disabled])').click();
+  await phone.locator('[data-chat="send"]:not([disabled])').evaluate((el) => el.click());
   check(
     "mobile thinking",
     await phone.locator('[data-chat-phase="thinking"]').waitFor({ timeout: 8000 }).then(
@@ -439,7 +487,7 @@ try {
   await phone.locator('[data-chat="plus"]').click();
   await phone.locator('[data-chat-action="generate"]').click();
   await phone.locator('[data-chat="composer"] textarea').fill("یه تصویر رنگی بساز");
-  await phone.locator('[data-chat="send"]:not([disabled])').click();
+  await phone.locator('[data-chat="send"]:not([disabled])').evaluate((el) => el.click());
   check(
     "mobile generating",
     await phone.locator('[data-chat="generation-placeholder"]').waitFor({ timeout: 8000 }).then(
@@ -449,6 +497,29 @@ try {
   );
   await shot(phone, "mobile-generating");
   await phone.locator('[data-chat="image-artifact"]').waitFor({ timeout: 20000 });
+
+  await phone.locator('[data-chat="use-as-reference"]').last().click();
+  check(
+    "mobile reference chip",
+    await phone.locator('[data-chat="reference-chip"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await phone.locator('[data-chat="composer"] textarea').fill("روشن‌ترش کن");
+  await phone.locator('[data-chat="send"]:not([disabled])').evaluate((el) => el.click());
+  check(
+    "mobile preparing edit",
+    await phone.locator('[data-chat-phase="preparing_edit"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await phone.locator('[data-chat="image-artifact"]').nth(1).waitFor({ timeout: 20000 });
+  check(
+    "mobile edited result",
+    (await phone.locator('[data-chat="image-artifact"]').count()) >= 2,
+  );
 
   await phone.goto(`${APP}/chat/conv-failed`, { waitUntil: "domcontentloaded" });
   check(

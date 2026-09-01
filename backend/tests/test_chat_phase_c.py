@@ -139,6 +139,72 @@ async def test_advertising_with_product_image(client: AsyncClient, storage) -> N
     assert artifacts[0]["aspect_ratio"] == "4:5"
     assert artifacts[0]["metadata_json"]["skill"] == "advertising"
     assert "/campaigns/" in artifacts[0]["storage_path"]
+    campaign_id = artifacts[0]["metadata_json"]["campaign_id"]
+    from sqlalchemy import select
+
+    from app.db.models import Campaign, GenerationJob
+    from app.db.session import get_sessionmaker
+
+    async with get_sessionmaker()() as session:
+        campaign = await session.get(Campaign, uuid.UUID(campaign_id))
+        job = await session.scalar(
+            select(GenerationJob).where(
+                GenerationJob.campaign_id == uuid.UUID(campaign_id),
+                GenerationJob.job_type == "campaign_generation",
+            )
+        )
+    assert campaign is not None and campaign.status == "ready"
+    assert job is not None
+    assert job.status == "succeeded"
+    assert job.provider == "stub"
+    assert job.actual_cost_usd is not None
+    assert job.completed_at is not None
+
+
+async def test_advertising_provider_failure_marks_job_failed(client: AsyncClient) -> None:
+    from sqlalchemy import select
+
+    from app.db.models import Campaign, GenerationJob
+    from app.db.session import get_sessionmaker
+    from app.providers.image import set_image_provider
+    from tests.fakes import FAILED, FakeImageProvider
+
+    set_image_provider(FakeImageProvider(FAILED))
+    user = uuid.uuid4()
+    created = await client.post(
+        "/api/chat/conversations",
+        files={
+            "payload": (
+                None,
+                '{"content":"یه تبلیغ از این بساز","language":"fa","action_hint":"advertising"}',
+                "application/json",
+            ),
+            "attachment": ("shoe.png", _product_png(), "image/png"),
+        },
+        headers=auth_header(user),
+    )
+    assert created.status_code == 200, created.text
+    assistant = next(
+        item for item in created.json()["messages"] if item["role"] == "assistant"
+    )
+    assert assistant["metadata_json"]["status"] == "failed"
+    async with get_sessionmaker()() as session:
+        job = await session.scalar(
+            select(GenerationJob)
+            .where(
+                GenerationJob.user_id == user,
+                GenerationJob.job_type == "campaign_generation",
+            )
+            .order_by(GenerationJob.created_at.desc())
+        )
+        campaign = (
+            await session.get(Campaign, job.campaign_id) if job is not None else None
+        )
+    assert job is not None
+    assert job.status == "failed"
+    assert job.completed_at is not None
+    assert campaign is not None
+    assert campaign.status in ("partial_failed", "brief_complete")
 
 
 async def test_general_image_stores_under_chat(client: AsyncClient) -> None:
@@ -156,6 +222,10 @@ async def test_general_image_stores_under_chat(client: AsyncClient) -> None:
     assert artifact["status"] == "ready"
     assert "/chat/" in artifact["storage_path"]
     assert "/artifacts/" in artifact["storage_path"]
+    usage = artifact["metadata_json"]["usage"]
+    assert usage["model"]
+    assert usage["latency_ms"] is not None
+    assert usage["cost_usd"] is not None
 
 
 async def test_owned_reference_persists_on_follow_up(client: AsyncClient) -> None:

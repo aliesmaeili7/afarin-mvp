@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.core.config import get_settings  # noqa: E402
 
 DB_NAME = os.environ.get("VERIFY_MIGRATE_DB", "afarin_chat_migrate_smoke")
-EXPECTED_HEAD = "c5f8a2d01b34"
+EXPECTED_HEAD = "d4a9c1e2b7f0"
 CHAT_TABLES = ("chat_conversations", "chat_messages", "chat_artifacts")
 
 failures: list[str] = []
@@ -106,7 +106,7 @@ def main() -> int:
     with psycopg.connect(admin_dsn(settings, DB_NAME)) as connection:
         head = connection.execute("select version_num from alembic_version").fetchone()
         check(
-            "head revision is chat Phase B",
+            "head revision is chat Phase D",
             bool(head) and head[0] == EXPECTED_HEAD,
             head[0] if head else "missing",
         )
@@ -137,6 +137,18 @@ def main() -> int:
             """
         ).fetchone()
         check("semantic theme column exists", swatch is not None)
+        aspect = connection.execute(
+            """
+            select pg_get_constraintdef(oid)
+            from pg_constraint
+            where conname = 'ck_chat_artifacts_aspect_ratio'
+            """
+        ).fetchone()
+        check(
+            "chat artifacts allow 9:16",
+            bool(aspect) and "9:16" in aspect[0],
+            aspect[0] if aspect else "missing",
+        )
 
     terminate_and_drop(settings)
     check("throwaway database dropped", True)

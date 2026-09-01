@@ -26,6 +26,7 @@ from app.db.session import get_sessionmaker
 from app.services.chat import service as chat_service
 from app.services.orchestrator.activity import preparing_phase_for
 from app.services.orchestrator.context import build_bounded_context
+from app.services.orchestrator.edit_text import parse_target_aspect
 from app.services.orchestrator.language import (
     ChatLanguage,
     artifact_language,
@@ -39,7 +40,10 @@ from app.services.orchestrator.skills.registry import skill_for
 from app.services.orchestrator.texts import (
     ACK,
     CLARIFY_ADS,
+    CLARIFY_EDIT,
+    CLARIFY_EDIT_AMBIGUOUS,
     CLARIFY_IMAGE,
+    EDIT_FAILED,
     TRY_AGAIN,
     ack_for,
     fallback_for,
@@ -47,7 +51,7 @@ from app.services.orchestrator.texts import (
 
 logger = logging.getLogger(__name__)
 
-PAID_ROUTES = frozenset({"advertising", "education", "general_image"})
+PAID_ROUTES = frozenset({"advertising", "education", "general_image", "image_edit"})
 _WEAK_IMAGE = re.compile(
     r"^(یه\s+)?(تصویر|عکس|image)(\s+بساز)?\.?$",
     re.IGNORECASE,
@@ -68,6 +72,11 @@ class TurnTask:
     generation_instruction: str | None
     requested_image_count: int
     reference_artifact_ids: tuple[uuid.UUID, ...]
+    edit_instruction: str | None = None
+    target_aspect_ratio: str | None = None
+    source_artifact_ids: tuple[uuid.UUID, ...] = ()
+    source_attachment_path: str | None = None
+    source_message_id: uuid.UUID | None = None
 
 
 async def handle_chat_turn(
@@ -97,6 +106,7 @@ async def handle_chat_turn(
     art_lang = artifact_language(text)
     hint = (user_message.metadata_json or {}).get("explicit_skill_hint")
     refs = _uuid_list((user_message.metadata_json or {}).get("reference_artifact_ids"))
+    bounded = await build_bounded_context(session, conversation, user_message)
 
     if hint in PAID_ROUTES:
         decision = OrchestratorDecision(
@@ -107,9 +117,8 @@ async def handle_chat_turn(
             orchestrator_called=False,
         )
     else:
-        context = await build_bounded_context(session, conversation, user_message)
         try:
-            decision = await get_orchestrator_provider().complete(context)
+            decision = await get_orchestrator_provider().complete(bounded)
         except Exception:
             logger.exception("orchestrator failed")
             await _persist_text_assistant(
@@ -121,7 +130,6 @@ async def handle_chat_turn(
         if art_lang is not None:
             decision.artifact_language = art_lang
 
-    bounded = await build_bounded_context(session, conversation, user_message)
     if decision.route == "advertising" and not bounded.has_product_image:
         await _persist_text_assistant(
             session,
@@ -144,6 +152,30 @@ async def handle_chat_turn(
         )
         await session.commit()
         return None
+    if decision.route == "image_edit":
+        status = (bounded.reference_resolution or {}).get("status")
+        if status == "ambiguous":
+            await _persist_text_assistant(
+                session,
+                conversation,
+                CLARIFY_EDIT_AMBIGUOUS[lang],
+                lang,
+                route="clarify",
+                extra={"needs_clarification": True},
+            )
+            await session.commit()
+            return None
+        if not bounded.has_ready_image_reference:
+            await _persist_text_assistant(
+                session,
+                conversation,
+                CLARIFY_EDIT[lang],
+                lang,
+                route="clarify",
+                extra={"needs_clarification": True},
+            )
+            await session.commit()
+            return None
 
     if decision.route not in PAID_ROUTES:
         content = (decision.assistant_message or "").strip() or fallback_for(
@@ -166,6 +198,23 @@ async def handle_chat_turn(
     if decision.route != "advertising":
         count = 1
 
+    edit_instruction = (decision.edit_instruction or text).strip() or text
+    target_aspect = parse_target_aspect(text) or decision.target_aspect_ratio
+    source_ids = _uuid_list(
+        (bounded.reference_resolution or {}).get("artifact_ids")
+    )
+    attachment = (user_message.metadata_json or {}).get("attachment") or {}
+    source_path = (
+        attachment.get("storage_path")
+        if isinstance(attachment.get("storage_path"), str)
+        and not source_ids
+        else None
+    )
+    source_message_id = user_message.id if source_path else None
+    aspect = await _aspect_for_turn(
+        session, decision.route, target_aspect, source_ids
+    )
+
     preamble = (decision.assistant_preamble or "").strip() or ack_for(
         decision.route, lang
     )
@@ -176,9 +225,17 @@ async def handle_chat_turn(
         language=lang,
         route=decision.route,
         count=count,
+        aspect=aspect,
         extra={
             "artifact_language": decision.artifact_language,
             "generation_instruction": decision.generation_instruction,
+            "edit_instruction": (
+                edit_instruction if decision.route == "image_edit" else None
+            ),
+            "target_aspect_ratio": target_aspect,
+            "source_artifact_ids": [str(item) for item in source_ids],
+            "source_attachment_path": source_path,
+            "source_message_id": str(source_message_id) if source_message_id else None,
             "requested_image_count": count,
             "orchestrator_called": decision.orchestrator_called,
         },
@@ -198,6 +255,11 @@ async def handle_chat_turn(
         generation_instruction=decision.generation_instruction,
         requested_image_count=count,
         reference_artifact_ids=tuple(refs),
+        edit_instruction=edit_instruction if decision.route == "image_edit" else None,
+        target_aspect_ratio=target_aspect,
+        source_artifact_ids=tuple(source_ids),
+        source_attachment_path=source_path,
+        source_message_id=source_message_id,
     )
     if _run_inline(active):
         await execute_skill_job(task)
@@ -256,6 +318,25 @@ async def retry_failed_turn(
         if user_message
         else []
     )
+    source_ids = _uuid_list(meta.get("source_artifact_ids"))
+    if not source_ids:
+        source_ids = list(refs)
+    source_path = meta.get("source_attachment_path")
+    if not isinstance(source_path, str):
+        source_path = None
+    source_message_raw = meta.get("source_message_id")
+    try:
+        source_message_id = (
+            uuid.UUID(str(source_message_raw)) if source_message_raw else None
+        )
+    except (ValueError, TypeError):
+        source_message_id = None
+    edit_instruction = meta.get("edit_instruction")
+    if not isinstance(edit_instruction, str):
+        edit_instruction = None
+    target_aspect = meta.get("target_aspect_ratio")
+    if target_aspect not in ("1:1", "4:5", "9:16"):
+        target_aspect = None
 
     meta["status"] = "generating"
     meta["failed"] = False
@@ -287,6 +368,11 @@ async def retry_failed_turn(
         generation_instruction=meta.get("generation_instruction"),
         requested_image_count=count,
         reference_artifact_ids=tuple(refs),
+        edit_instruction=edit_instruction,
+        target_aspect_ratio=target_aspect,
+        source_artifact_ids=tuple(source_ids),
+        source_attachment_path=source_path,
+        source_message_id=source_message_id,
     )
     if _run_inline(active):
         await execute_skill_job(task)
@@ -337,6 +423,11 @@ async def execute_skill_job(task: TurnTask) -> None:
                     active_theme=conversation.active_theme_json,
                     reference_artifact_ids=list(task.reference_artifact_ids),
                     route=task.route,
+                    edit_instruction=task.edit_instruction,
+                    target_aspect_ratio=task.target_aspect_ratio,
+                    source_artifact_ids=list(task.source_artifact_ids),
+                    source_attachment_path=task.source_attachment_path,
+                    source_message_id=task.source_message_id,
                 ),
             )
             await _apply_success(session, conversation, assistant, artifacts, result)
@@ -351,6 +442,23 @@ async def execute_skill_job(task: TurnTask) -> None:
 
 def _run_inline(settings: Settings) -> bool:
     return settings.image_provider == "stub"
+
+
+async def _aspect_for_turn(
+    session: AsyncSession,
+    route: Route,
+    target_aspect: str | None,
+    source_ids: list[uuid.UUID],
+) -> str:
+    if target_aspect in ("1:1", "4:5", "9:16"):
+        return target_aspect
+    if route == "advertising":
+        return "4:5"
+    if source_ids:
+        source = await session.get(ChatArtifact, source_ids[0])
+        if source is not None and source.aspect_ratio in ("1:1", "4:5", "9:16"):
+            return source.aspect_ratio
+    return "1:1"
 
 
 def _has_image_subject(text: str, has_reference: bool) -> bool:
@@ -439,6 +547,7 @@ async def _persist_generating(
     route: Route,
     count: int,
     extra: dict[str, Any],
+    aspect: str | None = None,
 ) -> tuple[ChatMessage, list[ChatArtifact]]:
     assistant = ChatMessage(
         conversation_id=conversation.id,
@@ -449,12 +558,13 @@ async def _persist_generating(
             "route": route,
             "status": "generating",
             "activity_phase": preparing_phase_for(route),
-            **extra,
+            **{key: value for key, value in extra.items() if value is not None},
         },
     )
     session.add(assistant)
     await session.flush()
-    aspect = "4:5" if route == "advertising" else "1:1"
+    if aspect not in ("1:1", "4:5", "9:16"):
+        aspect = "4:5" if route == "advertising" else "1:1"
     artifacts: list[ChatArtifact] = []
     for _ in range(max(1, count)):
         artifact = ChatArtifact(
@@ -544,7 +654,13 @@ async def _mark_failed(session: AsyncSession, task: TurnTask) -> None:
     meta.pop("activity_phase", None)
     assistant.metadata_json = meta
     flag_modified(assistant, "metadata_json")
-    assistant.content = ""
+    lang: ChatLanguage = (
+        assistant.language if assistant.language in ("fa", "en") else "fa"
+    )
+    if meta.get("route") == "image_edit":
+        assistant.content = EDIT_FAILED[lang]
+    else:
+        assistant.content = ""
     artifacts = list(
         await session.scalars(
             select(ChatArtifact).where(ChatArtifact.message_id == assistant.id)

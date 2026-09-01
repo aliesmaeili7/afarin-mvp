@@ -14,6 +14,7 @@ import { resolveStaticAssetUrl } from "@/lib/api";
 import { GenerationPlaceholder } from "./GenerationPlaceholder";
 import type { ConversationArtifact } from "@/lib/api/chat/types";
 import type { ChatActivityPhase } from "../chatActivity";
+import { artifactAspectClass } from "../chatActivity";
 import { ChatIconButton } from "../primitives/ChatIconButton";
 import { ChatPopover } from "../primitives/ChatPopover";
 
@@ -22,6 +23,7 @@ export function ImageArtifact({
   phase,
   language,
   imageCount,
+  route,
   onRetry,
   onUseAsReference,
 }: {
@@ -29,6 +31,7 @@ export function ImageArtifact({
   phase?: string | null;
   language?: "fa" | "en" | null;
   imageCount?: number;
+  route?: string;
   onRetry?: () => void;
   onUseAsReference?: () => void;
 }) {
@@ -75,7 +78,7 @@ export function ImageArtifact({
     return (
       <div data-chat="generation-failed" className="flex max-w-md flex-col gap-3">
         <p className="text-[0.95rem] leading-8 text-chat-text">
-          {t("chat.generateFailed")}
+          {route === "image_edit" ? t("chat.editFailed") : t("chat.generateFailed")}
         </p>
         <button
           type="button"
@@ -91,8 +94,7 @@ export function ImageArtifact({
 
   if (!src) return null;
 
-  const aspectClass =
-    artifact.aspect_ratio === "4:5" ? "aspect-[4/5]" : "aspect-square";
+  const aspectClass = artifactAspectClass(artifact.aspect_ratio);
 
   return (
     <figure data-chat="image-artifact" data-aspect={artifact.aspect_ratio} className="max-w-md">
@@ -123,6 +125,7 @@ export function ImageArtifact({
         </a>
         <button
           type="button"
+          data-chat="use-as-reference"
           onClick={onUseAsReference}
           className="inline-flex h-11 items-center gap-2 rounded-full px-3 text-sm font-semibold text-chat-text-secondary hover:bg-chat-surface-secondary hover:text-chat-text"
         >

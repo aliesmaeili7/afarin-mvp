@@ -47,15 +47,24 @@ class GeneralImageSkill:
         await get_storage().upload(
             ref, result.content, result.media_type or "image/jpeg"
         )
+        usage = {
+            "model": result.usage.model,
+            "latency_ms": result.usage.latency_ms,
+            "cost_usd": (
+                str(result.usage.cost_usd)
+                if result.usage.cost_usd is not None
+                else None
+            ),
+        }
         return SkillResult(
             images=[
                 ProducedImage(
                     storage_path=ref.to_path(),
                     mime_type=result.media_type or "image/jpeg",
                     aspect_ratio="1:1",
-                    metadata={"skill": self.name},
+                    metadata={"skill": self.name, "usage": usage},
                 )
             ],
             assistant_content=ack_for("general_image", context.reply_language),
-            metadata={"skill": self.name},
+            metadata={"skill": self.name, "usage": usage},
         )
