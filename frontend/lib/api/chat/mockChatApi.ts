@@ -92,6 +92,7 @@ function titleFrom(content: string, language: ChatLanguage | null): string {
 
 function wantsImage(input: SendMessageInput): boolean {
   if (input.generateImage || input.retryArtifactId) return true;
+  if (input.referenceArtifactIds?.length) return true;
   if (input.skillHint) return true;
   const text = input.content;
   if (!text.trim()) return false;

@@ -16,6 +16,7 @@ interface MessagePayload {
   language?: "fa" | "en";
   action_hint?: SendMessageInput["skillHint"];
   active_theme?: SendMessageInput["activeTheme"];
+  reference_artifact_ids?: string[];
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -44,6 +45,9 @@ function messageBody(input: SendMessageInput, includeTheme: boolean): MessagePay
     action_hint: input.skillHint ?? null,
   };
   if (includeTheme) body.active_theme = input.activeTheme ?? null;
+  if (input.referenceArtifactIds?.length) {
+    body.reference_artifact_ids = input.referenceArtifactIds;
+  }
   return body;
 }
 
@@ -174,6 +178,25 @@ export const httpChatApi: ChatApi = {
   },
 
   async sendMessage(conversationId, input) {
+    if (input.retryArtifactId && conversationId) {
+      const current = await hydrate(
+        await request<Conversation>(`/api/chat/conversations/${conversationId}`),
+      );
+      const artifact = current.artifacts.find(
+        (item) => item.id === input.retryArtifactId,
+      );
+      const messageId = artifact?.message_id;
+      if (!messageId) {
+        throw new ApiError("validation_error", "این پیام رو نمی‌شه دوباره ساخت.");
+      }
+      const conversation = await hydrate(
+        await request<Conversation>(
+          `/api/chat/conversations/${conversationId}/messages/${messageId}/retry`,
+          { method: "POST" },
+        ),
+      );
+      return { conversation };
+    }
     if (!conversationId) {
       const conversation = await postTurn(
         "/api/chat/conversations",
@@ -190,11 +213,11 @@ export const httpChatApi: ChatApi = {
     return { conversation };
   },
 
-  async generateImage() {
-    throw new ApiError(
-      "validation_error",
-      "ساخت تصویر در این مرحله فعال نیست.",
-    );
+  async generateImage(conversationId) {
+    return httpChatApi.sendMessage(conversationId, {
+      content: "",
+      skillHint: "general_image",
+    });
   },
 
   async setActiveTheme(conversationId, themeId) {

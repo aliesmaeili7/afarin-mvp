@@ -1,5 +1,5 @@
 """
-Chat persistence endpoints. Phase B stores user turns; it does not generate.
+Chat endpoints. Persistence stays in services.chat; generation is Orchestrator.
 """
 
 from __future__ import annotations
@@ -9,12 +9,12 @@ import logging
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import messages
 from app.core.deps import PrincipalDep, SessionDep, SettingsDep
-from app.core.errors import invalid
+from app.core.errors import conflict, invalid
 from app.db.models import ChatArtifact, ChatConversation, ChatMessage
 from app.schemas.chat import (
     CHAT_LIST_LIMIT_DEFAULT,
@@ -28,6 +28,11 @@ from app.schemas.chat import (
 from app.services.chat import get_owned_chat_conversation, require_chat_user
 from app.services.chat import service as chat_service
 from app.services.identity.service import get_or_create_profile
+from app.services.orchestrator.service import (
+    execute_skill_job,
+    handle_chat_turn,
+    retry_failed_turn,
+)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -136,12 +141,30 @@ async def _detail(
     return to_detail(conversation, messages, artifacts, has_older)
 
 
+async def _finish_turn(
+    session: AsyncSession,
+    conversation: ChatConversation,
+    background: BackgroundTasks,
+    settings,
+) -> ConversationOut:
+    conversation_id = conversation.id
+    task = await handle_chat_turn(session, conversation, settings=settings)
+    if task is not None:
+        background.add_task(execute_skill_job, task)
+        session.expunge_all()
+    conversation = await session.get(ChatConversation, conversation_id) or conversation
+    return await _detail(
+        session, conversation, limit=CHAT_MESSAGE_LIMIT_DEFAULT, before=None
+    )
+
+
 @router.post("/conversations", response_model=ConversationOut)
 async def create_conversation(
     request: Request,
     session: SessionDep,
     principal: PrincipalDep,
     settings: SettingsDep,
+    background: BackgroundTasks,
 ) -> ConversationOut:
     user_id = require_chat_user(principal)
     await get_or_create_profile(session, user_id, principal.email)
@@ -156,9 +179,7 @@ async def create_conversation(
         attachment_mime=mime,
         attachment_name=name,
     )
-    return await _detail(
-        session, conversation, limit=CHAT_MESSAGE_LIMIT_DEFAULT, before=None
-    )
+    return await _finish_turn(session, conversation, background, settings)
 
 
 @router.get("/conversations", response_model=list[ConversationSummaryOut])
@@ -236,10 +257,13 @@ async def create_message(
     session: SessionDep,
     principal: PrincipalDep,
     settings: SettingsDep,
+    background: BackgroundTasks,
 ) -> ConversationOut:
     conversation = await get_owned_chat_conversation(
         session, principal, conversation_id
     )
+    if await chat_service.conversation_is_generating(session, conversation.id):
+        raise conflict(messages.CHAT_BUSY)
     body, upload = await _read_message_payload(request)
     content, mime, name = await _attachment_bytes(upload)
     conversation = await chat_service.add_user_message(
@@ -251,6 +275,31 @@ async def create_message(
         attachment_mime=mime,
         attachment_name=name,
     )
+    return await _finish_turn(session, conversation, background, settings)
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/retry",
+    response_model=ConversationOut,
+)
+async def retry_message(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+    settings: SettingsDep,
+    background: BackgroundTasks,
+) -> ConversationOut:
+    conversation = await get_owned_chat_conversation(
+        session, principal, conversation_id
+    )
+    task = await retry_failed_turn(
+        session, conversation, message_id, settings=settings
+    )
+    if task is not None:
+        background.add_task(execute_skill_job, task)
+        session.expunge_all()
+    conversation = await session.get(ChatConversation, conversation_id) or conversation
     return await _detail(
         session, conversation, limit=CHAT_MESSAGE_LIMIT_DEFAULT, before=None
     )

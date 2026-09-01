@@ -100,7 +100,10 @@ export function ConversationView({
               !conversation?.messages.some((item) => item.id === pendingUser.id) ? (
                 <UserMessage message={pendingUser} />
               ) : null}
-              {pending ? <GenerationPlaceholder pending={pending} /> : null}
+              {pending &&
+              !conversation?.artifacts.some((item) => item.status === "generating") ? (
+                <GenerationPlaceholder pending={pending} />
+              ) : null}
             </>
           )}
         </div>

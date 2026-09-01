@@ -77,15 +77,14 @@ async def test_first_send_creates_one_conversation_with_user_message(
     assert body["active_theme"]["name"] == "خمیری و بازیگوش"
     assert "swatch" not in body["active_theme"]
     assert body["active_theme"]["style_json"] == {}
-    assert len(body["messages"]) == 1
+    assert len(body["messages"]) >= 1
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][0]["metadata_json"]["explicit_skill_hint"] == "education"
-    assert body["artifacts"] == []
     assert await _count("chat_conversations") == 1
-    assert await _count("chat_messages") == 1
+    assert await _count("chat_messages") >= 1
 
 
-async def test_second_message_does_not_invent_an_assistant(
+async def test_second_message_keeps_both_user_turns(
     client: AsyncClient,
 ) -> None:
     user = uuid.uuid4()
@@ -102,8 +101,8 @@ async def test_second_message_does_not_invent_an_assistant(
         headers=headers,
     )
     assert added.status_code == 200
-    roles = [item["role"] for item in added.json()["messages"]]
-    assert roles == ["user", "user"]
+    users = [item for item in added.json()["messages"] if item["role"] == "user"]
+    assert [item["content"] for item in users] == ["سلام", "یک کپشن بنویس"]
 
 
 async def test_owner_can_list_get_rename_pin_archive_restore_delete(
@@ -299,11 +298,12 @@ async def test_message_order_and_language_survive_reload(
         f"/api/chat/conversations/{conversation_id}", headers=headers
     )
     messages = detail.json()["messages"]
-    assert [item["content"] for item in messages] == [
+    users = [item for item in messages if item["role"] == "user"]
+    assert [item["content"] for item in users] == [
         "سلام",
         "Make this brighter",
     ]
-    assert [item["language"] for item in messages] == ["fa", "en"]
+    assert [item["language"] for item in users] == ["fa", "en"]
     assert detail.json()["language"] == "en"
 
 
@@ -325,7 +325,10 @@ async def test_attachment_upload_is_owner_scoped(
         headers=headers,
     )
     assert created.status_code == 200, created.text
-    attachment = created.json()["messages"][0]["metadata_json"]["attachment"]
+    user_message = next(
+        item for item in created.json()["messages"] if item["role"] == "user"
+    )
+    attachment = user_message["metadata_json"]["attachment"]
     path = attachment["storage_path"]
     assert path.startswith("supabase://product-images/chat/")
     assert "/attachments/" in path
@@ -398,7 +401,13 @@ async def test_artifact_row_persists_and_is_owner_scoped(
         headers=headers,
     )
     conversation_id = uuid.UUID(created.json()["id"])
-    message_id = uuid.UUID(created.json()["messages"][0]["id"])
+    message_id = uuid.UUID(
+        next(
+            item["id"]
+            for item in created.json()["messages"]
+            if item["role"] == "user"
+        )
+    )
     path = f"supabase://product-images/chat/{conversation_id}/artifacts/seed.png"
     storage.objects[f"product-images/chat/{conversation_id}/artifacts/seed.png"] = (
         b"fake"

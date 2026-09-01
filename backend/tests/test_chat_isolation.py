@@ -12,6 +12,12 @@ CHAT_MODULES = (
     BACKEND / "app" / "db" / "models" / "chat.py",
 )
 
+PERSISTENCE_MODULES = (
+    BACKEND / "app" / "services" / "chat",
+    BACKEND / "app" / "schemas" / "chat.py",
+    BACKEND / "app" / "db" / "models" / "chat.py",
+)
+
 FORBIDDEN_IMPORTS = (
     "app.providers.vision.openrouter",
     "app.providers.vision.stub",
@@ -32,9 +38,9 @@ FORBIDDEN_IMPORTS = (
 )
 
 
-def _python_files() -> list[Path]:
+def _python_files(targets=CHAT_MODULES) -> list[Path]:
     files: list[Path] = []
-    for target in CHAT_MODULES:
+    for target in targets:
         if target.is_dir():
             files.extend(sorted(target.rglob("*.py")))
         elif target.exists():
@@ -60,11 +66,23 @@ def test_chat_modules_exist() -> None:
 
 def test_chat_persistence_does_not_import_generation() -> None:
     offences: list[str] = []
-    for path in _python_files():
+    extra = FORBIDDEN_IMPORTS + ("app.services.orchestrator",)
+    for path in _python_files(PERSISTENCE_MODULES):
         for module in _imported_modules(path):
-            for forbidden in FORBIDDEN_IMPORTS:
+            for forbidden in extra:
                 if module == forbidden or module.startswith(f"{forbidden}."):
                     offences.append(
                         f"{path.relative_to(BACKEND)} imports {module}"
                     )
+    assert not offences, "\n".join(offences)
+
+
+def test_chat_api_does_not_import_providers_directly() -> None:
+    path = BACKEND / "app" / "api" / "v1" / "chat.py"
+    imported = _imported_modules(path)
+    offences = []
+    for module in imported:
+        for forbidden in FORBIDDEN_IMPORTS:
+            if module == forbidden or module.startswith(f"{forbidden}."):
+                offences.append(f"chat.py imports {module}")
     assert not offences, "\n".join(offences)

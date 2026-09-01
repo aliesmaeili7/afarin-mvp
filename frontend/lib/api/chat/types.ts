@@ -49,6 +49,7 @@ export interface ConversationMessage {
     attachment?: ChatAttachment;
     explicit_skill_hint?: SkillHint;
     failed?: boolean;
+    status?: string;
     [key: string]: unknown;
   };
   created_at: string;
@@ -101,6 +102,7 @@ export interface SendMessageInput {
   generateImage?: boolean;
   skillHint?: SkillHint | null;
   retryArtifactId?: string;
+  referenceArtifactIds?: string[];
   activeTheme?: ChatThemeSnapshot | null;
   language?: ChatLanguage;
 }

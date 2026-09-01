@@ -17,6 +17,16 @@ export interface PendingGeneration {
   language: "fa" | "en";
 }
 
+function conversationIsGenerating(conversation: Conversation | null): boolean {
+  if (!conversation) return false;
+  if (conversation.artifacts.some((item) => item.status === "generating")) {
+    return true;
+  }
+  return conversation.messages.some(
+    (item) => item.metadata_json?.status === "generating",
+  );
+}
+
 export function useChatSession(conversationId: string | null) {
   const userId = useSessionStore((state) => state.session?.user.id ?? null);
   const sessionLoaded = useSessionStore((state) => state.loaded);
@@ -94,6 +104,42 @@ export function useChatSession(conversationId: string | null) {
     void loadConversation(conversationId);
   }, [conversationId, userId, loadConversation]);
 
+  const generating = conversationIsGenerating(conversation);
+
+  useEffect(() => {
+    if (!conversationId || !generating) return;
+    let cancelled = false;
+    const started = Date.now();
+    const capMs = 180_000;
+
+    async function tick() {
+      if (cancelled) return;
+      if (Date.now() - started > capMs) {
+        setPending(null);
+        return;
+      }
+      try {
+        const next = await chatApi.getConversation(conversationId);
+        if (cancelled) return;
+        setConversation(next);
+        if (!conversationIsGenerating(next)) {
+          setPending(null);
+          await refreshList();
+          return;
+        }
+      } catch {
+        /* keep polling */
+      }
+      timer = window.setTimeout(tick, 1500);
+    }
+
+    let timer = window.setTimeout(tick, 1500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [conversationId, generating, refreshList]);
+
   const applyResult = useCallback(
     async (next: Conversation) => {
       setConversation(next);
@@ -135,9 +181,14 @@ export function useChatSession(conversationId: string | null) {
       setPendingUser(optimistic);
       try {
         const result = await start(conversation?.id ?? conversationId);
-        setPending(null);
-        await applyResult(result.conversation);
-        return result.conversation;
+        const next = result.conversation;
+        if (conversationIsGenerating(next)) {
+          setPending({ startedAt: Date.now(), language });
+        } else {
+          setPending(null);
+        }
+        await applyResult(next);
+        return next;
       } catch {
         setPending(null);
         setPendingUser(null);

@@ -72,3 +72,5 @@ CHAT_MESSAGE_REQUIRED = "یه پیام بنویس یا یک تصویر پیوس�
 CHAT_MESSAGE_TOO_LONG = "پیامت خیلی بلنده. کوتاه‌ترش کن."
 CHAT_TITLE_REQUIRED = "برای گفتگو یک اسم بنویس."
 CHAT_THEME_INVALID = "این تم معتبر نیست."
+CHAT_BUSY = "الان داره ساخته می‌شه. کمی صبر کن."
+CHAT_RETRY_NOT_ALLOWED = "این پیام رو نمی‌شه دوباره ساخت."

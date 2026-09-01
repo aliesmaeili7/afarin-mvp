@@ -7,9 +7,8 @@ Afarin has two generation paths and a chat workspace:
 
 - Advertising — product-photo campaign generation (wizard under `/create`)
 - Educational — one-prompt teaching posts (under `/create/education`)
-- Chat — conversational workspace under `/chat` (persistence in Phase B;
-  Orchestrator in Phase C). Do not fold chat history into Campaign or
-  EducationalPost.
+- Chat — conversational workspace under `/chat` (Phase C: Orchestrator +
+  skills). Do not fold chat history into Campaign or EducationalPost.
 
 When implementing a feature, state which path it touches. Do not fold
 educational work into the advertising Campaign model.

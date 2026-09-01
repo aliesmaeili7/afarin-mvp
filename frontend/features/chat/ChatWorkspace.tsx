@@ -139,14 +139,15 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
     const input = {
       content: draft,
       attachment,
-      generateImage: Boolean(reference),
       skillHint: creationAction,
+      referenceArtifactIds: reference ? [reference.id] : undefined,
       language,
       activeTheme: conversationId ? undefined : snapshotForThemeId(draftThemeId),
     };
     const previousDraft = draft;
     const previousAttachment = attachment;
     const previousAction = creationAction;
+    const previousReference = reference;
     setDraft("");
     setAttachment(null);
     setReference(null);
@@ -157,6 +158,7 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
       setDraft(previousDraft);
       setAttachment(previousAttachment);
       setCreationAction(previousAction);
+      setReference(previousReference);
       toast(t("chat.sendFailed"), "error");
       return;
     }

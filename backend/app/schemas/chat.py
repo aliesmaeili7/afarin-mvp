@@ -1,7 +1,8 @@
-"""Chat request and response bodies. Phase B: persistence only, no generation."""
+"""Chat request and response bodies."""
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,6 +34,7 @@ class CreateMessageIn(BaseModel):
     language: ChatLanguage | None = None
     action_hint: SkillHint | None = None
     active_theme: ThemeSnapshot | None = None
+    reference_artifact_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class ConversationPatchIn(BaseModel):

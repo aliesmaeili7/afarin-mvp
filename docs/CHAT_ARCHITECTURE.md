@@ -11,12 +11,14 @@ ChatApi
              ↓
         /api/chat
              ↓
-        chat persistence services
-             ↓
-        Postgres + private storage
+        chat persistence  →  Orchestrator (services/orchestrator)
+                                    ↓
+                          Advertising / Education / General image skills
+                                    ↓
+                          existing Creative Agent / EducationalAgent / ImageProvider
 ```
 
-React components talk only to `ChatApi`. They do not import campaign APIs, education APIs, Supabase, or model providers.
+React components talk only to `ChatApi`. They do not import campaign APIs, education APIs, Supabase, or model providers. Skills call Python services in-process. Persistence modules under `services/chat` do not import providers.
 
 ---
 
@@ -26,13 +28,27 @@ React components talk only to `ChatApi`. They do not import campaign APIs, educa
 
 Persian-first RTL workspace at `/chat` and `/chat/[conversationId]`. Desktop sidebar, mobile drawer, composer, `+` menu, action chips, theme chip, attachments, account menu, history, rename/pin/archive/delete, text-only share, mock image artifacts.
 
-### Phase B — Persistent conversations (this document)
+### Phase B — Persistent conversations (done)
 
-User-owned conversations, messages, artifacts, theme snapshots, and history. No Orchestrator. No LLM. No image model. No advertising or education generation.
+User-owned conversations, messages, artifacts, theme snapshots, and history.
 
-### Phase C — Orchestrator + skills (not implemented)
+### Phase C — Orchestrator + skills (this document)
 
-`sendMessage()` will persist the user turn, then run a Persian-native Orchestrator that routes to Advertising, Education, or general chat. The Chat API remains the user-facing seam. Do not call campaign/education routes from React.
+`sendMessage()` persists the user turn, then runs one Persian-native Orchestrator call (or skips it when an explicit `+` chip hint is set). Paid routes create a `generating` assistant + artifact, then run a skill on a **fresh DB session**. Live image generation uses FastAPI `BackgroundTasks`; stub providers run inline after commit. The frontend polls `getConversation` until `ready` or `failed`.
+
+Explicit chips skip the Orchestrator LLM. Artifact language is still detected deterministically (e.g. «متن انگلیسی باشه») and is never copied from reply language.
+
+Skills:
+
+- **Education** — internal `EducationalPost`, existing educational generator. Chat artifact references the education storage path.
+- **Advertising** — internal `Campaign` + product image from the chat attachment/reference, Creative Agent. Chat artifact references campaign candidate paths.
+- **General image** — `ImageProvider` with `GENERAL_IMAGE_MODEL` (default `openai/gpt-image-2`). Bytes live under `chat/{id}/artifacts/`.
+
+Deleting a conversation removes only `chat/` storage objects.
+
+### Phase D — not this work
+
+Image editing, memory/summarization, cross-chat assets, voice/music/video.
 
 ---
 
@@ -72,7 +88,7 @@ Object-storage upload is **not** part of that transaction. Bytes are validated f
 `NEXT_PUBLIC_API_MODE` selects the implementation (same switch as campaigns).
 
 - **mock:** seeded threads, fake assistant replies, mock artifacts. Offline UI demo.
-- **http:** persists the user message only. No fabricated assistant. Phase C will add the assistant turn to the same `ChatTurnResult`.
+- **http:** persists the user message, then the Orchestrator (or explicit hint) produces the assistant turn in the same `ChatTurnResult`. Generating artifacts poll via `GET /conversations/{id}`.
 
 ---
 
@@ -99,7 +115,7 @@ Text copy / `navigator.share()` only. `publicUrl` is always null. No public RLS.
 
 ---
 
-## Verification (Phase B)
+## Verification
 
 Requires `supabase start`, the API on `:8000`, and the frontend on `:3000` with `NEXT_PUBLIC_API_MODE=http`.
 
@@ -107,6 +123,18 @@ Requires `supabase start`, the API on `:8000`, and the frontend on `:3000` with 
 cd backend && uv run python -m scripts.verify_chat_migrate
 cd backend && uv run python -m scripts.verify_chat_flow
 cd frontend && npm run verify:chat:http
+```
+
+Live Orchestrator routing (no images):
+
+```bash
+cd backend && uv run python -m scripts.eval_chat_router
+```
+
+Phase C HTTP/live browser smoke (paid image turns; several minutes):
+
+```bash
+cd frontend && npm run verify:chat:phase-c
 ```
 
 `verify:chat` (no `:http`) is the Phase A mock UI walk and does not prove persistence.

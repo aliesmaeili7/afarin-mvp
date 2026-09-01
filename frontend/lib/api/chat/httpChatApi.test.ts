@@ -166,4 +166,33 @@ describe("http ChatApi", () => {
     const loaded = await api.getConversation("c1");
     expect(loaded.artifacts[0]?.url).toBe("https://signed/x.png");
   });
+
+  it("maps generateImage to a general_image send", async () => {
+    const api = await loadApi();
+    fetchMock.mockResolvedValueOnce(jsonResponse(conversation));
+
+    await api.generateImage("c1");
+
+    const [path, init] = fetchMock.mock.calls[0];
+    expect(String(path)).toContain("/api/chat/conversations/c1/messages");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      content: "",
+      action_hint: "general_image",
+    });
+  });
+
+  it("sends reference artifact ids with the user turn", async () => {
+    const api = await loadApi();
+    fetchMock.mockResolvedValueOnce(jsonResponse(conversation));
+
+    await api.sendMessage("c1", {
+      content: "از روی این",
+      language: "fa",
+      referenceArtifactIds: ["a1"],
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
+      reference_artifact_ids: ["a1"],
+    });
+  });
 });

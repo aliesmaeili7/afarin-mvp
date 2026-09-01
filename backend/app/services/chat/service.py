@@ -1,5 +1,5 @@
 """
-Chat persistence services. Phase B stores user turns; it does not call models.
+Chat persistence services. User turns live here; generation lives in orchestrator.
 """
 
 from __future__ import annotations
@@ -67,6 +67,10 @@ def _message_metadata(
     meta: dict[str, Any] = {}
     if body.action_hint:
         meta["explicit_skill_hint"] = body.action_hint
+    if body.reference_artifact_ids:
+        meta["reference_artifact_ids"] = [
+            str(item) for item in body.reference_artifact_ids
+        ]
     if attachment:
         meta["attachment"] = attachment
     return meta
@@ -313,6 +317,34 @@ async def load_conversation_page(
     return messages, artifacts, has_older
 
 
+async def conversation_is_generating(
+    session: AsyncSession,
+    conversation_id: uuid.UUID,
+    *,
+    exclude_assistant_id: uuid.UUID | None = None,
+) -> bool:
+    artifact_stmt = select(ChatArtifact.id).where(
+        ChatArtifact.conversation_id == conversation_id,
+        ChatArtifact.status == "generating",
+    )
+    if await session.scalar(artifact_stmt.limit(1)):
+        return True
+    messages = list(
+        await session.scalars(
+            select(ChatMessage).where(
+                ChatMessage.conversation_id == conversation_id,
+                ChatMessage.role == "assistant",
+            )
+        )
+    )
+    for item in messages:
+        if exclude_assistant_id is not None and item.id == exclude_assistant_id:
+            continue
+        if (item.metadata_json or {}).get("status") == "generating":
+            return True
+    return False
+
+
 async def patch_conversation(
     conversation: ChatConversation,
     body: ConversationPatchIn,
@@ -360,4 +392,6 @@ async def delete_conversation(
     await session.delete(conversation)
     await session.flush()
     for ref in refs:
+        if not ref.key.startswith("chat/"):
+            continue
         await _remove_quietly(ref)

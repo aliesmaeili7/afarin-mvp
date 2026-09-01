@@ -1015,20 +1015,14 @@ Standalone chat is a third surface (`/chat`), not a Campaign and not an
 EducationalPost. See `docs/CHAT_ARCHITECTURE.md`.
 
 Phase A is the Persian-first chat UX. Phase B persists user-owned
-conversations, messages, artifacts, and theme snapshots. Phase C (not
-implemented) will connect a Persian-native Orchestrator and skills.
+conversations, messages, artifacts, and theme snapshots. Phase C connects a
+Persian-native Orchestrator and skills (Advertising, Education, general image,
+general chat). Phase D is editing and memory.
 
 Do not call advertising or education generation from the chat UI. Chat
 components speak only to `ChatApi`.
 
-When Phase C lands:
-
-* generous free daily usage
-* route normal usage to a good low-cost model
-* route very heavy free usage to a cheaper model
-* premium models may consume credits
-
-Users should not need credits for ordinary short conversations.
+Credits / premium model routing are not part of Phase C.
 
 ---
 
@@ -1521,7 +1515,7 @@ DELETE /api/education/themes/{id}
 
 Authenticated writes. Anonymous `GET /conversations` returns `[]`.
 Unknown and foreign ids both 404. First send is `POST /conversations`
-(conversation + user message in one DB transaction). No generation in Phase B.
+(conversation + first user message, then the Orchestrator turn).
 
 ```text
 POST   /api/chat/conversations
@@ -1530,6 +1524,7 @@ GET    /api/chat/conversations/{id}
 PATCH  /api/chat/conversations/{id}
 DELETE /api/chat/conversations/{id}
 POST   /api/chat/conversations/{id}/messages
+POST   /api/chat/conversations/{id}/messages/{message_id}/retry
 ```
 
 ## Credits

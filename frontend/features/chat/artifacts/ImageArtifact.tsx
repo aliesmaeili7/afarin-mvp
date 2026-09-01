@@ -11,6 +11,7 @@ import {
 import { useClipboard } from "@/lib/hooks/useClipboard";
 import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import { resolveStaticAssetUrl } from "@/lib/api";
+import { GenerationPlaceholder } from "./GenerationPlaceholder";
 import type { ConversationArtifact } from "@/lib/api/chat/types";
 import { ChatIconButton } from "../primitives/ChatIconButton";
 import { ChatPopover } from "../primitives/ChatPopover";
@@ -43,6 +44,17 @@ export function ImageArtifact({
     (artifact.storage_path?.startsWith("data:")
       ? artifact.storage_path
       : resolveStaticAssetUrl(artifact.storage_path));
+
+  if (artifact.status === "generating") {
+    return (
+      <GenerationPlaceholder
+        pending={{
+          startedAt: Date.parse(artifact.created_at) || Date.now(),
+          language: "fa",
+        }}
+      />
+    );
+  }
 
   if (artifact.status === "failed") {
     return (
