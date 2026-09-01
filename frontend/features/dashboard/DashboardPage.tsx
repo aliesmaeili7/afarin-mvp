@@ -16,7 +16,7 @@ import { formatRelativeDay } from "@/lib/format/display";
 import { useAsyncData } from "@/lib/hooks/useAsyncData";
 import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { TranslationKey } from "@/lib/i18n/t";
-import type { Brand, CampaignStatus, CampaignSummary } from "@/types/domain";
+import type { Brand, CampaignStatus, CampaignSummary, EducationalPostSummary } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { useResolvedAssetUrl } from "@/features/campaign/ad-renderer/useResolvedAssetUrl";
 import { useSessionStore } from "@/features/auth/sessionStore";
@@ -63,6 +63,13 @@ export function DashboardPage() {
     },
     [sessionLoaded, session?.user.id],
   );
+  const educationalPosts = useAsyncData<EducationalPostSummary[]>(
+    async () => {
+      if (!sessionLoaded || !session) return [];
+      return api.listEducationalPosts();
+    },
+    [sessionLoaded, session?.user.id],
+  );
   const brands = useAsyncData<Brand[]>(
     async () => {
       if (!sessionLoaded) return [];
@@ -106,8 +113,8 @@ export function DashboardPage() {
             title={t("dashboard.loggedOutTitle")}
             description={t("dashboard.loggedOutDescription")}
             action={
-              <Link href="/create">
-                <Button>{t("nav.freeCampaign")}</Button>
+              <Link href="/">
+                <Button>{t("nav.startFree")}</Button>
               </Link>
             }
           />
@@ -128,14 +135,25 @@ export function DashboardPage() {
             <h1 className="text-2xl font-extrabold text-foreground">{t("dashboard.hello")}</h1>
             <p className="mt-1 text-sm leading-7 text-muted">{t("dashboard.subtitle")}</p>
           </div>
-          <Button
-            size="lg"
-            loading={creating === "new"}
-            onClick={() => startCampaign(null)}
-            iconStart={<PlusIcon width={18} height={18} />}
-          >
-            {t("dashboard.create")}
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Link href="/create/education">
+              <Button
+                size="lg"
+                variant="outline"
+                iconStart={<PlusIcon width={18} height={18} />}
+              >
+                {t("dashboard.createEducation")}
+              </Button>
+            </Link>
+            <Button
+              size="lg"
+              loading={creating === "new"}
+              onClick={() => startCampaign(null)}
+              iconStart={<PlusIcon width={18} height={18} />}
+            >
+              {t("dashboard.create")}
+            </Button>
+          </div>
         </header>
 
         <section>
@@ -161,6 +179,35 @@ export function DashboardPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {(campaigns.data ?? []).map((campaign) => (
                 <CampaignCard key={campaign.id} campaign={campaign} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section>
+          <h2 className="mb-4 text-lg font-extrabold text-foreground">
+            {t("education.myPosts")}
+          </h2>
+          {!sessionLoaded || educationalPosts.loading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+            </div>
+          ) : (educationalPosts.data ?? []).length === 0 ? (
+            <EmptyState
+              icon={<ImageIcon />}
+              title={t("dashboard.educationEmptyTitle")}
+              description={t("education.empty")}
+              action={
+                <Link href="/create/education">
+                  <Button>{t("dashboard.educationEmptyAction")}</Button>
+                </Link>
+              }
+            />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {(educationalPosts.data ?? []).map((post) => (
+                <EducationCard key={post.id} post={post} />
               ))}
             </div>
           )}
@@ -253,6 +300,53 @@ function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
             </h3>
             <Badge tone={STATUS_TONES[campaign.status]}>
               {t(`campaign.status.${campaign.status}` as TranslationKey)}
+            </Badge>
+          </div>
+          <p className="mt-1 truncate text-xs text-ink-400">{subtitle}</p>
+          <span className="mt-auto pt-2 text-sm font-semibold text-brand-700 underline-offset-4 group-hover:underline">
+            {t("common.view")}
+          </span>
+        </div>
+      </Card>
+    </Link>
+  );
+}
+
+const EDUCATION_STATUS_TONES: Record<
+  EducationalPostSummary["status"],
+  "neutral" | "brand" | "success" | "warning" | "danger"
+> = {
+  queued: "warning",
+  generating: "warning",
+  ready: "success",
+  failed: "danger",
+};
+
+function EducationCard({ post }: { post: EducationalPostSummary }) {
+  const { t, locale } = useI18n();
+  const photoUrl = useResolvedAssetUrl(post.image_storage_path);
+  const subtitle = formatRelativeDay(post.created_at, locale);
+
+  return (
+    <Link href={`/education/${post.id}`} className="group block">
+      <Card className="flex gap-3 overflow-hidden p-3 transition-shadow group-hover:shadow-lift">
+        <div className="grid w-24 shrink-0 place-items-center overflow-hidden rounded-2xl bg-ink-100 text-ink-300">
+          {photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={photoUrl} alt="" className="h-20 w-full object-cover" />
+          ) : (
+            <span className="grid h-20 w-full place-items-center">
+              <ImageIcon />
+            </span>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
+              {post.headline ?? t("education.themeUnnamed")}
+            </h3>
+            <Badge tone={EDUCATION_STATUS_TONES[post.status]}>
+              {t(`campaign.status.${post.status}` as TranslationKey)}
             </Badge>
           </div>
           <p className="mt-1 truncate text-xs text-ink-400">{subtitle}</p>

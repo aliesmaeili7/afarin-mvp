@@ -15,7 +15,7 @@ from app.db.models import Campaign, CampaignVisualAttempt, GenerationJob
 CANDIDATES_PER_ATTEMPT = 3
 REPAIRS_PER_ATTEMPT = 1
 STORIES_PER_ATTEMPT = 1
-AUTO_OUTPUT_CEILING = 5
+AUTO_OUTPUT_CEILING = 4
 
 
 def output_count_of(job: GenerationJob) -> int:

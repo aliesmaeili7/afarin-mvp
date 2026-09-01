@@ -216,3 +216,130 @@ async def test_campaign_job_records_openrouter_400(
     assert "3,686,400" in errors[0]["provider_message"]
     assert "sk-test" not in json.dumps(job.output_json)
     assert posts == 2
+
+
+def _gpt_image_capabilities() -> dict:
+    return {
+        "data": [
+            {
+                "id": "openai/gpt-image-2",
+                "supported_parameters": {
+                    "aspect_ratio": {
+                        "type": "string",
+                        "values": [
+                            "1:1",
+                            "3:2",
+                            "2:3",
+                            "4:3",
+                            "3:4",
+                            "16:9",
+                            "9:16",
+                            "21:9",
+                            "auto",
+                        ],
+                    },
+                    "quality": {
+                        "type": "string",
+                        "values": ["auto", "low", "medium", "high"],
+                    },
+                    "n": {"min": 1, "max": 10},
+                },
+            },
+            {
+                "id": "bytedance-seed/seedream-4.5",
+                "supported_parameters": {
+                    "aspect_ratio": {
+                        "type": "string",
+                        "values": ["1:1", "4:5", "9:16", "16:9"],
+                    },
+                    "resolution": {"type": "string", "values": ["1K", "2K", "4K"]},
+                },
+            },
+        ]
+    }
+
+
+_TINY_PNG = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+    "nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+)
+
+
+async def test_gpt_image_2_gets_square_prompt_without_seedream_resolution() -> None:
+    recorded: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/images/models"):
+            return httpx.Response(200, json=_gpt_image_capabilities())
+        recorded["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "model": "openai/gpt-image-2",
+                "data": [{"b64_json": _TINY_PNG}],
+                "usage": {"cost": 0.042, "prompt_tokens": 18},
+            },
+        )
+
+    prompt = "یک پوستر آموزشی مربعی 1:1 بساز"
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = OpenRouterImageClient(_settings(), http=http)
+    result = await client.generate(
+        ImageRequest(
+            prompt=prompt,
+            aspect_ratio="1:1",
+            n=1,
+            model="openai/gpt-image-2",
+        )
+    )
+    body = recorded["body"]
+    assert body["model"] == "openai/gpt-image-2"
+    assert body["prompt"] == prompt
+    assert body["aspect_ratio"] == "1:1"
+    assert "resolution" not in body
+    assert "n" not in body
+    assert "input_references" not in body
+    assert result.usage.model == "openai/gpt-image-2"
+    assert result.usage.cost_usd is not None
+    assert str(result.usage.cost_usd) == "0.042"
+
+
+async def test_advertising_requests_still_use_seedream() -> None:
+    recorded: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/images/models"):
+            return httpx.Response(200, json=_gpt_image_capabilities())
+        recorded["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": [{"b64_json": _TINY_PNG}]})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = OpenRouterImageClient(_settings(), http=http)
+    await client.generate(ImageRequest(prompt="empty studio", aspect_ratio="4:5"))
+    body = recorded["body"]
+    assert body["model"] == "bytedance-seed/seedream-4.5"
+    assert body["aspect_ratio"] == "4:5"
+    assert body["resolution"] == "2K"
+
+
+async def test_gpt_image_2_omits_resolution_when_discovery_fails() -> None:
+    recorded: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/images/models"):
+            return httpx.Response(500, json={"error": "nope"})
+        recorded["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": [{"b64_json": "aGVsbG8="}]})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = OpenRouterImageClient(_settings(), http=http)
+    await client.generate(
+        ImageRequest(
+            prompt="square 1:1 poster",
+            aspect_ratio="1:1",
+            model="openai/gpt-image-2",
+        )
+    )
+    assert recorded["body"]["model"] == "openai/gpt-image-2"
+    assert recorded["body"]["aspect_ratio"] == "1:1"
+    assert "resolution" not in recorded["body"]

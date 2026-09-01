@@ -30,7 +30,15 @@ export function CaptionsSection({
   const displayError = useDisplayError();
   const copy = useClipboard();
 
-  const [active, setActive] = useState<CopyType>("caption_short");
+  const captionTypes: CopyType[] = [
+    "caption_persuasive",
+    "caption_short",
+    "caption_friendly",
+  ];
+  const available = captionTypes.filter((type) =>
+    copies.some((item) => item.copy_type === type),
+  );
+  const [active, setActive] = useState<CopyType>(available[0] ?? "caption_persuasive");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -41,11 +49,15 @@ export function CaptionsSection({
 
   if (!current) return null;
 
-  const captionTabs: { value: CopyType; label: string }[] = [
-    { value: "caption_short", label: t("result.captionShort") },
-    { value: "caption_friendly", label: t("result.captionFriendly") },
-    { value: "caption_persuasive", label: t("result.captionPersuasive") },
-  ];
+  const captionTabs: { value: CopyType; label: string }[] = available.map((type) => ({
+    value: type,
+    label:
+      type === "caption_short"
+        ? t("result.captionShort")
+        : type === "caption_friendly"
+          ? t("result.captionFriendly")
+          : t("result.captionPersuasive"),
+  }));
 
   async function handleSave() {
     if (!current) return;

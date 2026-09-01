@@ -28,6 +28,13 @@ uv run uvicorn app.main:app --reload --port 8000
 
 Then point the frontend at it with `NEXT_PUBLIC_API_MODE=http`.
 
+Educational smoke harness (stub by default, no paid calls):
+
+```bash
+uv run python -m scripts.run_education_eval
+uv run python -m scripts.run_education_eval --case fa_math_decimals --no-image
+```
+
 Two end-to-end checks, both against the running stack:
 
 ```bash
@@ -143,6 +150,14 @@ OPENROUTER_API_KEY=... uv run pytest -m live
 ```
 
 Compare models later with `uv run python -m scripts.eval_llm`.
+
+Image generation uses the same OpenRouter image provider for both paths, with
+separate models:
+
+* `IMAGE_MODEL` (default `bytedance-seed/seedream-4.5`) — advertising only
+* `EDUCATIONAL_IMAGE_MODEL` (default `openai/gpt-image-2`) — educational posts only
+
+`IMAGE_PROVIDER=stub` never calls OpenRouter. Tests always run that way.
 
 Creative image/Director lab (dev only, never part of the wizard):
 

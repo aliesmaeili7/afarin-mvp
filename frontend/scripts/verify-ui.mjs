@@ -100,25 +100,26 @@ try {
   await page.getByRole("button", { name: "ادامه", exact: true }).click();
 
   console.log("\n3. brief");
-  await page.waitForURL(/\/create\/product/, { timeout: 20000 });
-  await page.getByLabel("اسم محصول").fill(PRODUCT);
-  await page.getByLabel("اسم برند یا کسب‌وکار").fill("زعفران آرین");
-  await page.getByRole("button", { name: "ادامه", exact: true }).click();
+  await page.waitForURL(/\/create\/(product|brief)/, { timeout: 20000 });
+  if (page.url().includes("/create/product")) {
+    await page.getByLabel("اسم محصول").fill(PRODUCT);
+    await page.getByLabel("اسم برند یا کسب‌وکار").fill("زعفران آرین");
+    await page.getByRole("button", { name: "ادامه", exact: true }).click();
+    await page.waitForURL(/\/create\/objective/, { timeout: 20000 });
+    await page.getByRole("button").filter({ hasText: "فروش محصول" }).first().click();
+    await page.getByRole("button", { name: "ادامه", exact: true }).click();
+    await page.waitForURL(/\/create\/style/, { timeout: 20000 });
+    await page.getByRole("button").filter({ hasText: "لوکس" }).first().click();
+    await page.getByRole("button", { name: "ادامه", exact: true }).click();
+  } else {
+    await page.getByRole("button").filter({ hasText: "فروش محصول" }).first().click();
+    await page.getByRole("button").filter({ hasText: "لوکس" }).first().click();
+    await page.getByRole("button", { name: "ادامه", exact: true }).click();
+  }
 
-  await page.waitForURL(/\/create\/objective/, { timeout: 20000 });
-  await page.getByRole("button").filter({ hasText: "فروش محصول" }).first().click();
-  await page.getByRole("button", { name: "ادامه", exact: true }).click();
-
-  await page.waitForURL(/\/create\/style/, { timeout: 20000 });
-  await page.getByRole("button").filter({ hasText: "لوکس" }).first().click();
-  await page.getByRole("button", { name: "ادامه", exact: true }).click();
-
-  console.log("\n4. concepts");
-  await page.waitForURL(/\/create\/concepts/, { timeout: 20000 });
-  const pick = page.getByRole("button", { name: /این رو انتخاب کن/ });
-  await pick.first().waitFor({ timeout: 90000 });
-  check("three concepts offered", (await pick.count()) === 3, `${await pick.count()}`);
-  await pick.first().click();
+  console.log("\n4. visual");
+  await page.waitForURL(/\/create\/visual/, { timeout: 20000 });
+  await page.getByRole("button", { name: /ساخت کمپین/ }).click();
 
   console.log("\n5. sign-up with an emailed code");
   await page.waitForURL(/\/create\/signup/, { timeout: 20000 });

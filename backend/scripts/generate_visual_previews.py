@@ -36,11 +36,39 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.content.visual_catalog import preview_prompt_of, public_catalog, styles, templates
+from app.content.visual_catalog import preview_prompt_of, public_catalog, templates as catalog_templates
 from app.core.config import get_settings
 from app.providers.image import get_image_provider
 from app.providers.image.base import ImageProvider, ImageRequest
-from app.providers.image.creative_prompts import HARD_NEGATIVES
+from app.providers.image.prompts import HARD_NEGATIVES
+
+_STYLE_IDS = frozenset(
+    {
+        "photoreal_commercial",
+        "fashion_editorial",
+        "anime",
+        "manga_illustrated",
+        "render_3d",
+        "clay",
+        "collage",
+        "surreal",
+        "cinematic",
+        "retro",
+        "watercolor_illustration",
+        "neon",
+        "persian_miniature_inspired",
+        "vintage_iranian_poster",
+    }
+)
+
+
+def styles() -> list[dict]:
+    return [item for item in catalog_templates() if item["id"] in _STYLE_IDS]
+
+
+def templates() -> list[dict]:
+    return [item for item in catalog_templates() if item["id"] not in _STYLE_IDS]
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DEMO_PRODUCT = ROOT / "frontend" / "public" / "demo-product.png"

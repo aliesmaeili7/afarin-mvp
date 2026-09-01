@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, File, Request, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Request, Response, UploadFile
 from sqlalchemy import func, select
 
 from app.api.v1.session import ensure_anonymous_owner
@@ -49,16 +49,12 @@ from app.schemas.requests import (
     RewriteIn,
     UpdateCampaignIn,
     UpdateCopyIn,
-    VisualRecipeIn,
 )
 from app.services.campaigns import cost as budgets
 from app.services.campaigns import creative as creative_visuals
 from app.services.campaigns import jobs as job_records
 from app.services.campaigns import materialize as materializer
-from app.services.campaigns import planner as visual_planner
 from app.services.campaigns import queries, summaries
-from app.services.campaigns import recipes as recipe_builder
-from app.services.campaigns import visuals as visualizer
 from app.services.campaigns import text_layers as type_layers
 from app.services.campaigns.crop import parse_crop
 from app.services.campaigns.ownership import get_owned_campaign
@@ -172,11 +168,20 @@ async def update_campaign(
             body.visual_style
         ) != materializer.blank_text(campaign.visual_style)
         campaign.visual_style = body.visual_style
-    if "visual_creation_mode" in provided:
-        mode = body.visual_creation_mode
-        if mode is not None and mode not in ("accurate", "creative"):
-            raise invalid(messages.VISUAL_MODE_REQUIRED)
-        campaign.visual_creation_mode = mode
+    if "requested_image_count" in provided and body.requested_image_count is not None:
+        if body.requested_image_count not in (1, 3):
+            raise invalid(messages.GENERIC)
+        campaign.requested_image_count = body.requested_image_count
+    if "visual_instruction" in provided:
+        campaign.visual_instruction = materializer.blank_text(body.visual_instruction)
+    if "selected_template_id" in provided:
+        template_id = materializer.blank_text(body.selected_template_id)
+        if template_id:
+            from app.content.visual_catalog import template_ids
+
+            if template_id not in template_ids():
+                raise invalid(messages.GENERIC)
+        campaign.selected_template_id = template_id
     if "brand_id" in provided:
         changed = changed or body.brand_id != campaign.brand_id
         campaign.brand_id = body.brand_id
@@ -391,136 +396,17 @@ async def use_sample_product(
 
 
 @router.post(
-    "/{campaign_id}/concepts/generate", response_model=list[CampaignConceptOut]
-)
-async def generate_concepts(
-    campaign_id: uuid.UUID, session: SessionDep, principal: PrincipalDep
-):
-    campaign = await get_owned_campaign(session, principal, campaign_id)
-
-    if not campaign.objective or not campaign.visual_style:
-        raise invalid(messages.BRIEF_INCOMPLETE)
-
-    campaign.concept_round = (
-        0 if campaign.concept_round is None else campaign.concept_round + 1
-    )
-
-    try:
-        result = await visual_planner.plan_directions(
-            session, campaign, principal.user_id
-        )
-    except Exception as error:
-        campaign.concept_round = (
-            None if campaign.concept_round == 0 else campaign.concept_round - 1
-        )
-        await session.commit()
-        if isinstance(error, ApiError):
-            raise
-        raise generation_failed() from error
-
-    campaign.planner_result_json = visual_planner.planner_snapshot(
-        result, analyzed_crop=await visual_planner.crop_dict_of(session, campaign)
-    )
-    if not result.input_quality.ok:
-        campaign.concept_round = (
-            None if campaign.concept_round == 0 else campaign.concept_round - 1
-        )
-        await session.commit()
-        raise invalid(messages.INPUT_QUALITY_NEEDS_FIX)
-
-    created = await visual_planner.write_directions(session, campaign, result)
-
-    campaign.selected_concept_id = None
-    campaign.status = "concepts_ready"
-    campaign.updated_at = datetime.now(UTC)
-    await session.flush()
-    return created
-
-
-@router.post("/{campaign_id}/concepts/{concept_id}/select", response_model=CampaignOut)
-async def select_concept(
-    campaign_id: uuid.UUID,
-    concept_id: uuid.UUID,
-    session: SessionDep,
-    principal: PrincipalDep,
-) -> Campaign:
-    campaign = await get_owned_campaign(session, principal, campaign_id)
-
-    concepts = await queries.concepts_of(session, campaign.id)
-    if not any(concept.id == concept_id for concept in concepts):
-        raise not_found(messages.CONCEPT_NOT_FOUND)
-
-    chosen = None
-    for concept in concepts:
-        concept.selected = concept.id == concept_id
-        if concept.selected:
-            chosen = concept
-
-    campaign.selected_concept_id = concept_id
-    campaign.status = "concept_selected"
-    if chosen is not None:
-        recipe = visual_planner.recipe_for_concept(
-            chosen, planner=campaign.planner_result_json or {}
-        )
-        if recipe is not None:
-            campaign.visual_recipe_json = recipe
-    campaign.updated_at = datetime.now(UTC)
-    await session.flush()
-    return campaign
-
-
-@router.post("/{campaign_id}/visual/recipe", response_model=CampaignOut)
-async def save_visual_recipe(
-    campaign_id: uuid.UUID,
-    body: VisualRecipeIn,
-    session: SessionDep,
-    principal: PrincipalDep,
-) -> Campaign:
-    campaign = await get_owned_campaign(session, principal, campaign_id)
-    existing = campaign.visual_recipe_json or {}
-    recommended = recipe_builder.recommended_from(existing)
-    if body.source == "smart" and not recommended:
-        recommended = {"style_id": body.style_id, "template_id": body.template_id}
-    campaign.visual_recipe_json = recipe_builder.recipe_from_ids(
-        body.style_id,
-        body.template_id,
-        source=body.source if body.source in ("smart", "custom") else "custom",
-        scene_direction=body.scene_direction or str(existing.get("scene_direction") or ""),
-        identity_constraints=(
-            body.identity_constraints
-            if body.identity_constraints is not None
-            else list(existing.get("identity_constraints") or [])
-        ),
-        title_fa=body.title_fa or existing.get("title_fa"),
-        description_fa=body.description_fa or existing.get("description_fa"),
-        warning_fa=body.warning_fa or str(existing.get("warning_fa") or ""),
-        text_safe_area=body.text_safe_area or existing.get("text_safe_area"),
-        planner=existing.get("planner") if isinstance(existing.get("planner"), dict) else {},
-        recommended=recommended or {
-            "style_id": body.style_id,
-            "template_id": body.template_id,
-        },
-    )
-    if campaign.visual_creation_mode != "creative":
-        campaign.visual_creation_mode = "creative"
-    campaign.updated_at = datetime.now(UTC)
-    await session.flush()
-    return campaign
-
-
-@router.post(
-    "/{campaign_id}/visual/candidates/{candidate_id}/select",
+    "/{campaign_id}/visual/candidates/{candidate_id}/focus",
     response_model=CampaignOut,
 )
-async def select_visual_candidate(
+async def focus_visual_candidate(
     campaign_id: uuid.UUID,
     candidate_id: uuid.UUID,
     session: SessionDep,
     principal: PrincipalDep,
 ) -> Campaign:
     campaign = await get_owned_campaign(session, principal, campaign_id)
-    user_id = principal.require_user()
-    await creative_visuals.select_winner(session, campaign, candidate_id, user_id)
+    await creative_visuals.focus_concept(session, campaign, candidate_id)
     await session.flush()
     return campaign
 
@@ -530,15 +416,12 @@ async def regenerate_visual_candidates(
     campaign_id: uuid.UUID,
     session: SessionDep,
     principal: PrincipalDep,
+    settings: SettingsDep,
+    background: BackgroundTasks,
 ) -> CampaignStatusOut:
     campaign = await get_owned_campaign(session, principal, campaign_id)
     user_id = principal.require_user()
-    if (campaign.visual_creation_mode or "accurate") != "creative":
-        raise invalid(messages.VISUAL_RECIPE_REQUIRED)
-    recipe = campaign.visual_recipe_json or {}
-    if not recipe.get("style_id"):
-        raise invalid(messages.VISUAL_RECIPE_REQUIRED)
-    if campaign.status not in ("candidates_ready", "ready", "partial_failed"):
+    if campaign.status not in ("ready", "partial_failed"):
         raise invalid(messages.CANDIDATE_REQUIRED)
     await budgets.assert_can_start_attempt(session, campaign)
 
@@ -563,8 +446,22 @@ async def regenerate_visual_candidates(
     session.add(job)
     campaign.status = "generating"
     campaign.updated_at = datetime.now(UTC)
-    await session.flush()
     from app.api.v1 import generation as generation_api
+    from app.services.campaigns.stages import progress_for_stage, set_job_stage
+
+    set_job_stage(job, "planning")
+    await session.flush()
+
+    if settings.image_provider != "stub":
+        await session.commit()
+        background.add_task(
+            generation_api._run_images_background, campaign.id, job.id
+        )
+        started = progress_for_stage("planning")
+        assert started is not None
+        return generation_api._status(
+            campaign, started.stage, started.percent, started.message_fa
+        )
 
     return await generation_api._run_images(session, campaign, job)
 
@@ -742,89 +639,6 @@ async def rewrite_asset(
     job_records.mark_succeeded(job, {"text_fa": rewritten})
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
-    return asset
-
-
-@router.post(
-    "/{campaign_id}/assets/{asset_id}/regenerate",
-    response_model=CampaignAssetOut,
-)
-async def regenerate_asset(
-    campaign_id: uuid.UUID,
-    asset_id: uuid.UUID,
-    session: SessionDep,
-    principal: PrincipalDep,
-) -> CampaignAsset:
-    campaign = await get_owned_campaign(session, principal, campaign_id)
-    if (campaign.visual_creation_mode or "accurate") == "creative":
-        raise invalid(messages.ACCURATE_REGEN_ONLY)
-    asset = await _owned_asset(session, campaign.id, asset_id)
-
-    active = await session.scalar(
-        select(GenerationJob).where(
-            GenerationJob.campaign_id == campaign.id,
-            GenerationJob.job_type.in_(("campaign_generation", "image_generation")),
-            GenerationJob.status.in_(("queued", "processing")),
-        )
-    )
-    if active is not None:
-        raise conflict(messages.GENERATION_BUSY)
-
-    aspect = (
-        visualizer.ASPECT_9X16
-        if asset.asset_type in STORY_SCENE_TYPES
-        else visualizer.ASPECT_4X5
-    )
-    previous = await session.scalar(
-        select(func.count(GenerationJob.id)).where(
-            GenerationJob.campaign_id == campaign.id,
-            GenerationJob.job_type == "image_generation",
-        )
-    )
-    variation = int(previous or 0) + 1
-
-    job = GenerationJob(
-        campaign_id=campaign.id,
-        user_id=principal.user_id,
-        job_type="image_generation",
-        status="processing",
-        started_at=datetime.now(UTC),
-        input_json={
-            "aspect": aspect,
-            "asset_type": asset.asset_type,
-            "variation": variation,
-        },
-    )
-    session.add(job)
-    await session.flush()
-
-    provider_name = get_image_provider().name
-    try:
-        usage = await visualizer.regenerate_scene(
-            session, campaign, aspect=aspect, variation=variation
-        )
-    except Exception as error:
-        job_records.mark_image_failed(job, error, provider=provider_name)
-        await session.commit()
-        if isinstance(error, ApiError):
-            raise
-        raise generation_failed() from error
-
-    if usage is None:
-        job_records.mark_image_failed(
-            job,
-            RuntimeError("scene generation returned nothing"),
-            provider=provider_name,
-        )
-        await session.commit()
-        raise generation_failed()
-
-    job_records.mark_image_succeeded(
-        job, usage, provider=provider_name, output={"aspect": aspect}
-    )
-    campaign.updated_at = datetime.now(UTC)
-    await session.flush()
-    await session.refresh(asset)
     return asset
 
 

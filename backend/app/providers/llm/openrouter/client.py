@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -68,6 +69,7 @@ class OpenRouterClient:
                     "schema": schema,
                 },
             },
+            "max_tokens": self._settings.llm_max_tokens,
             "usage": {"include": True},
         }
         headers = {
@@ -107,6 +109,10 @@ class OpenRouterClient:
 
         content = _message_content(body)
         if not content:
+            logger.warning(
+                "openrouter chat empty content finish_reason=%s",
+                _finish_reason(body),
+            )
             raise generation_failed()
 
         return CompletionResult(
@@ -128,6 +134,16 @@ def _safe_error_body(response: httpx.Response) -> str:
     return text[:800] if text else "<empty>"
 
 
+def _finish_reason(body: Any) -> str | None:
+    if not isinstance(body, dict):
+        return None
+    choices = body.get("choices") or []
+    if not choices or not isinstance(choices[0], dict):
+        return None
+    reason = choices[0].get("finish_reason")
+    return reason if isinstance(reason, str) else None
+
+
 def _message_content(body: Any) -> str:
     if not isinstance(body, dict):
         return ""
@@ -136,18 +152,59 @@ def _message_content(body: Any) -> str:
         return ""
     message = (choices[0] or {}).get("message") or {}
     content = message.get("content")
-    if isinstance(content, str):
+    if isinstance(content, str) and content.strip():
         return content.strip()
     if isinstance(content, list):
-        # Some models return a list of typed parts.
         parts = [
             part.get("text", "")
             for part in content
             if isinstance(part, dict)
             and part.get("type") in (None, "text", "output_text")
         ]
-        return "".join(parts).strip()
+        joined = "".join(parts).strip()
+        if joined:
+            return joined
+    parsed = message.get("parsed")
+    if isinstance(parsed, dict):
+        return json.dumps(parsed)
     return ""
+
+
+_TRAILING_COMMA_RE = re.compile(r",\s*([}\]])")
+
+
+def parse_json_object(content: str) -> dict[str, Any]:
+    """Parse a model response, tolerating fences, wrappers, and trailing commas."""
+    text = content.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        inner = [line for line in lines[1:] if not line.strip().startswith("```")]
+        text = "\n".join(inner).strip()
+    parsed: Any
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if parsed is None:
+        start = text.find("{")
+        end = text.rfind("}")
+        snippet = text[start : end + 1] if start >= 0 and end > start else text
+        try:
+            parsed = json.loads(snippet)
+        except json.JSONDecodeError:
+            repaired = _TRAILING_COMMA_RE.sub(r"\1", snippet)
+            try:
+                parsed = json.loads(repaired)
+            except json.JSONDecodeError as error:
+                raise ValueError("llm response is not valid JSON") from error
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except json.JSONDecodeError as error:
+            raise ValueError("llm response is not valid JSON") from error
+    if not isinstance(parsed, dict):
+        raise ValueError("llm response is not a JSON object")
+    return parsed
 
 
 def _usage_from(body: dict[str, Any], latency_ms: int, fallback_model: str) -> LlmUsage:
@@ -178,19 +235,3 @@ def _as_int(value: Any) -> int | None:
     if isinstance(value, float):
         return int(value)
     return None
-
-
-def parse_json_object(content: str) -> dict[str, Any]:
-    """Parse a model response, tolerating a fenced ```json block."""
-    text = content.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        inner = [line for line in lines[1:] if not line.strip().startswith("```")]
-        text = "\n".join(inner).strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise ValueError("llm response is not valid JSON") from error
-    if not isinstance(parsed, dict):
-        raise ValueError("llm response is not a JSON object")
-    return parsed

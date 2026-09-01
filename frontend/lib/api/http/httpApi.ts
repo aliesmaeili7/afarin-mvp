@@ -2,17 +2,20 @@ import type {
   Brand,
   Campaign,
   CampaignAsset,
-  CampaignConcept,
   CampaignCopy,
   CampaignDetail,
   CampaignStatusResponse,
   CampaignSummary,
   CropRect,
+  EducationalPost,
+  EducationalPostStatusResponse,
+  EducationalPostSummary,
+  EducationalTheme,
+  EducationalThemeList,
   Product,
   ProductImage,
   Session,
   VisualCatalog,
-  VisualRecipe,
 } from "@/types/domain";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -21,6 +24,7 @@ import {
   type AssetTextPatch,
   type BrandInput,
   type CreateCampaignInput,
+  type CreateEducationalPostInput,
   type EmailCodeRequest,
   type EmailCodeVerification,
   type EmailPasswordCredentials,
@@ -29,6 +33,7 @@ import {
   type UpdatePasswordInput,
   type ProductInput,
   type RewriteIntent,
+  type SaveEducationalThemeInput,
   type UpdateCampaignInput,
 } from "../types";
 import { request } from "./request";
@@ -115,37 +120,16 @@ export const httpApi: AfarinApi = {
     );
   },
 
-  generateConcepts(campaignId: string): Promise<CampaignConcept[]> {
-    return request<CampaignConcept[]>(
-      `/api/campaigns/${campaignId}/concepts/generate`,
-      { method: "POST" },
-    );
-  },
-
-  selectConcept(campaignId: string, conceptId: string): Promise<Campaign> {
-    return request<Campaign>(
-      `/api/campaigns/${campaignId}/concepts/${conceptId}/select`,
-      { method: "POST" },
-    );
-  },
-
   getVisualCatalog(): Promise<VisualCatalog> {
     return request<VisualCatalog>("/api/visual-catalog");
   },
 
-  saveVisualRecipe(campaignId: string, recipe: VisualRecipe): Promise<Campaign> {
-    return request<Campaign>(`/api/campaigns/${campaignId}/visual/recipe`, {
-      method: "POST",
-      body: recipe,
-    });
-  },
-
-  selectVisualCandidate(
+  focusVisualCandidate(
     campaignId: string,
     candidateId: string,
   ): Promise<Campaign> {
     return request<Campaign>(
-      `/api/campaigns/${campaignId}/visual/candidates/${candidateId}/select`,
+      `/api/campaigns/${campaignId}/visual/candidates/${candidateId}/focus`,
       { method: "POST" },
     );
   },
@@ -217,6 +201,68 @@ export const httpApi: AfarinApi = {
       `/api/campaigns/${campaignId}/assets/${assetId}/rewrite`,
       { method: "POST", body: { intent } },
     );
+  },
+
+  createEducationalPost(
+    input: CreateEducationalPostInput,
+  ): Promise<EducationalPost> {
+    return request<EducationalPost>("/api/education/posts", {
+      method: "POST",
+      body: {
+        user_prompt: input.user_prompt,
+        theme_id: input.theme_id ?? null,
+        builtin_theme_id: input.builtin_theme_id ?? null,
+      },
+    });
+  },
+
+  getEducationalPost(postId: string): Promise<EducationalPost> {
+    return request<EducationalPost>(`/api/education/posts/${postId}`);
+  },
+
+  listEducationalPosts(): Promise<EducationalPostSummary[]> {
+    return request<EducationalPostSummary[]>("/api/education/posts");
+  },
+
+  getEducationalPostStatus(
+    postId: string,
+  ): Promise<EducationalPostStatusResponse> {
+    return request<EducationalPostStatusResponse>(
+      `/api/education/posts/${postId}/status`,
+    );
+  },
+
+  async deleteEducationalPost(postId: string): Promise<void> {
+    await request<void>(`/api/education/posts/${postId}`, { method: "DELETE" });
+  },
+
+  listEducationalThemes(): Promise<EducationalThemeList> {
+    return request<EducationalThemeList>("/api/education/themes");
+  },
+
+  saveEducationalTheme(
+    input: SaveEducationalThemeInput,
+  ): Promise<EducationalTheme> {
+    return request<EducationalTheme>("/api/education/themes", {
+      method: "POST",
+      body: { post_id: input.post_id, name: input.name ?? null },
+    });
+  },
+
+  renameEducationalTheme(
+    themeId: string,
+    name: string,
+  ): Promise<EducationalTheme> {
+    return request<EducationalTheme>(`/api/education/themes/${themeId}`, {
+      method: "PATCH",
+      body: { name },
+    });
+  },
+
+  async deleteEducationalTheme(themeId: string): Promise<void> {
+    await request<void>(`/api/education/themes/${themeId}`, {
+      method: "DELETE",
+    });
   },
 
   listBrands(): Promise<Brand[]> {

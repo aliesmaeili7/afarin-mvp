@@ -6,6 +6,14 @@ import {
 } from "./generation";
 
 describe("computeGenerationProgress", () => {
+  it("uses the unified creative-agent stages", () => {
+    expect(GENERATION_STAGES.map((stage) => stage.stage)).toEqual([
+      "planning",
+      "visual",
+      "finalizing",
+    ]);
+  });
+
   it("starts on the first stage", () => {
     const progress = computeGenerationProgress(0);
     expect(progress.stage).toBe(GENERATION_STAGES[0].stage);
@@ -20,6 +28,7 @@ describe("computeGenerationProgress", () => {
       expect(computeGenerationProgress(midpoint).stage).toBe(stage.stage);
       elapsed += stage.duration_ms;
     });
+    expect(elapsed).toBe(TOTAL_GENERATION_MS);
   });
 
   it("never reports 100 percent before the work is finished", () => {

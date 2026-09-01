@@ -82,10 +82,9 @@ async def _fresh_engine() -> AsyncIterator[None]:
     set_content_provider(None)
     set_image_provider(None)
     set_cutout(None)
-    from app.providers.vision import set_prompt_architect, set_visual_planner
+    from app.providers.vision import set_creative_agent
 
-    set_visual_planner(None)
-    set_prompt_architect(None)
+    set_creative_agent(None)
     get_settings.cache_clear()
 
 
@@ -163,3 +162,12 @@ async def attach_sample_image(
         kwargs["headers"] = headers
     response = await client.post(f"/api/campaigns/{campaign_id}/images", **kwargs)
     assert response.status_code == 200
+    image_id = response.json()[0]["id"]
+    crop_kwargs: dict = {"json": {"x": 0, "y": 0, "width": 1, "height": 1}}
+    if headers:
+        crop_kwargs["headers"] = headers
+    cropped = await client.patch(
+        f"/api/campaigns/{campaign_id}/images/{image_id}/crop",
+        **crop_kwargs,
+    )
+    assert cropped.status_code == 200

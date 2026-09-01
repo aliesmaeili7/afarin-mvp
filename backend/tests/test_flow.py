@@ -9,7 +9,7 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from tests.conftest import auth_header, attach_sample_image, png_bytes
+from tests.conftest import attach_sample_image, auth_header, png_bytes
 
 
 async def _draft_campaign(client: AsyncClient) -> str:
@@ -41,19 +41,6 @@ async def _complete_brief(client: AsyncClient, campaign_id: str) -> None:
     )
     assert patch.status_code == 200
     assert patch.json()["status"] == "brief_complete"
-
-
-async def _select_first_concept(client: AsyncClient, campaign_id: str) -> None:
-    concepts = await client.post(f"/api/campaigns/{campaign_id}/concepts/generate")
-    assert concepts.status_code == 200
-    assert len(concepts.json()) == 3
-
-    concept_id = concepts.json()[0]["id"]
-    selected = await client.post(
-        f"/api/campaigns/{campaign_id}/concepts/{concept_id}/select"
-    )
-    assert selected.status_code == 200
-    assert selected.json()["selected_concept_id"] == concept_id
 
 
 async def test_anonymous_visitor_gets_a_cookie_not_a_readable_token(
@@ -97,7 +84,6 @@ async def test_unknown_campaign_reads_as_not_found(client: AsyncClient) -> None:
 async def test_generation_requires_signing_in(client: AsyncClient, storage) -> None:
     campaign_id = await _draft_campaign(client)
     await _complete_brief(client, campaign_id)
-    await _select_first_concept(client, campaign_id)
 
     response = await client.post(f"/api/campaigns/{campaign_id}/generate")
     assert response.status_code == 403
@@ -139,7 +125,6 @@ async def test_signed_in_user_can_generate_a_second_campaign(
 ) -> None:
     first_id = await _draft_campaign(client)
     await _complete_brief(client, first_id)
-    await _select_first_concept(client, first_id)
 
     headers = auth_header(uuid.uuid4())
     await client.post("/api/session/adopt", headers=headers)
@@ -160,60 +145,23 @@ async def test_signed_in_user_can_generate_a_second_campaign(
         headers=headers,
         json={"objective": "sell_product", "visual_style": "minimal"},
     )
-    concepts = await client.post(
-        f"/api/campaigns/{second_id}/concepts/generate", headers=headers
-    )
-    assert concepts.status_code == 200
-    first_detail = await client.get(f"/api/campaigns/{first_id}", headers=headers)
-    first_ids = {row["id"] for row in first_detail.json()["concepts"]}
-    second_ids = {row["id"] for row in concepts.json()}
-    assert second_ids.isdisjoint(first_ids)
-
-    await client.post(
-        f"/api/campaigns/{second_id}/concepts/{concepts.json()[0]['id']}/select",
-        headers=headers,
-    )
     started = await client.post(f"/api/campaigns/{second_id}/generate", headers=headers)
     assert started.status_code == 200
 
 
-async def test_changing_brief_invalidates_concepts(
+async def test_product_rename_keeps_brief_complete(
     client: AsyncClient, storage
 ) -> None:
     campaign_id = await _draft_campaign(client)
     await _complete_brief(client, campaign_id)
-    generated = await client.post(f"/api/campaigns/{campaign_id}/concepts/generate")
-    assert len(generated.json()) == 3
-    await client.post(
-        f"/api/campaigns/{campaign_id}/concepts/{generated.json()[0]['id']}/select"
-    )
-
-    patched = await client.patch(
-        f"/api/campaigns/{campaign_id}", json={"visual_style": "minimal"}
-    )
-    assert patched.json()["status"] == "brief_complete"
-    assert patched.json()["selected_concept_id"] is None
-
-    detail = await client.get(f"/api/campaigns/{campaign_id}")
-    assert detail.json()["concepts"] == []
-
-    regenerated = await client.post(f"/api/campaigns/{campaign_id}/concepts/generate")
-    assert len(regenerated.json()) == 3
-    kept = await client.patch(
-        f"/api/campaigns/{campaign_id}", json={"visual_style": "minimal"}
-    )
-    assert kept.json()["status"] == "concepts_ready"
-    same = await client.get(f"/api/campaigns/{campaign_id}")
-    assert len(same.json()["concepts"]) == 3
-
     renamed = await client.post(
         f"/api/campaigns/{campaign_id}/product",
         json={"name": "صابون زیتون", "brand_name": "سحند"},
     )
     assert renamed.status_code == 200
     after_rename = await client.get(f"/api/campaigns/{campaign_id}")
-    assert after_rename.json()["concepts"] == []
     assert after_rename.json()["campaign"]["status"] == "brief_complete"
+    assert after_rename.json()["product"]["name"] == "صابون زیتون"
 
 
 async def test_full_anonymous_to_dashboard_journey(
@@ -223,16 +171,20 @@ async def test_full_anonymous_to_dashboard_journey(
 
     upload = await client.post(
         f"/api/campaigns/{campaign_id}/images",
-        files=[("files", ("product.png", png_bytes(), "image/png"))],
+        files=[("files", ("product.png", png_bytes(320, 400), "image/png"))],
     )
     assert upload.status_code == 200
     stored_path = upload.json()[0]["storage_path"]
     assert stored_path.startswith("supabase://product-images/campaigns/")
     # Keyed by campaign, so adoption never has to move an object.
     assert campaign_id in stored_path
+    cropped = await client.patch(
+        f"/api/campaigns/{campaign_id}/images/{upload.json()[0]['id']}/crop",
+        json={"x": 0, "y": 0, "width": 1, "height": 1},
+    )
+    assert cropped.status_code == 200
 
     await _complete_brief(client, campaign_id)
-    await _select_first_concept(client, campaign_id)
 
     user_id = uuid.uuid4()
     headers = auth_header(user_id)
@@ -264,17 +216,14 @@ async def test_full_anonymous_to_dashboard_journey(
         "carousel_1",
         "carousel_2",
         "carousel_3",
-        "generated_background",
-        "product_cutout",
     }
     feed = next(
         asset for asset in payload["assets"] if asset["asset_type"] == "feed_final"
     )
     assert feed["storage_path"] is None
     assert feed["metadata_json"]["scene_image_path"]
-    assert feed["metadata_json"]["product_image_path"] != stored_path
     copy_types = {copy["copy_type"] for copy in payload["copies"]}
-    assert {"caption_short", "caption_friendly", "caption_persuasive"} <= copy_types
+    assert "caption_persuasive" in copy_types
     assert "story" in copy_types and "hashtags" in copy_types
 
     dashboard = await client.get("/api/campaigns", headers=headers)
@@ -340,21 +289,22 @@ async def test_brand_name_is_required(client: AsyncClient) -> None:
 
 
 @pytest.mark.parametrize(
-    ("payload", "expected"),
+    "payload",
     [
-        (
-            {"objective": "sell_product"},
-            "برای ساخت ایده، هدف و سبک تبلیغ رو انتخاب کن.",
-        ),
-        ({"visual_style": "luxury"}, "برای ساخت ایده، هدف و سبک تبلیغ رو انتخاب کن."),
+        {"objective": "sell_product"},
+        {"visual_style": "luxury"},
     ],
 )
-async def test_incomplete_brief_blocks_concepts(
-    client: AsyncClient, payload: dict, expected: str
+async def test_incomplete_brief_blocks_generation(
+    client: AsyncClient, payload: dict
 ) -> None:
     campaign_id = await _draft_campaign(client)
     await client.patch(f"/api/campaigns/{campaign_id}", json=payload)
+    headers = auth_header(uuid.uuid4())
+    await client.post("/api/session/adopt", headers=headers)
 
-    response = await client.post(f"/api/campaigns/{campaign_id}/concepts/generate")
+    response = await client.post(
+        f"/api/campaigns/{campaign_id}/generate", headers=headers
+    )
     assert response.status_code == 422
-    assert response.json()["message_fa"] == expected
+

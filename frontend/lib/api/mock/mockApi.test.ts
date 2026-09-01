@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/api/types";
 import { mockApi } from "./mockApi";
 import { resetDb } from "./mockDb";
 import { TOTAL_GENERATION_MS } from "./generation";
+import type { EducationalAgentResult } from "@/types/domain";
 
 /**
  * End-to-end exercise of the mocked backend along the real user journey, so
@@ -44,49 +45,14 @@ afterEach(() => {
 });
 
 describe("mock campaign journey", () => {
-  it("walks brief → concepts → signup → generation → finished campaign", async () => {
+  it("walks brief → signup → generation → finished campaign", async () => {
     const campaignId = await completeBrief();
 
-    const concepts = await mockApi.generateConcepts(campaignId);
-    expect(concepts).toHaveLength(3);
-    expect(new Set(concepts.map((c) => c.title_fa)).size).toBe(3);
-    expect(concepts[0].headline_fa).toContain("زعفران ممتاز");
-    expect(concepts[0].raw_json.style_id).toBe("photoreal_commercial");
-    expect(concepts[0].raw_json.template_id).toBe("hero_product");
-
-    const secondRound = await mockApi.generateConcepts(campaignId);
-    expect(secondRound.map((c) => c.title_fa)).not.toEqual(
-      concepts.map((c) => c.title_fa),
-    );
-
-    const selected = await mockApi.selectConcept(campaignId, secondRound[0].id);
-    expect(selected.status).toBe("concept_selected");
-    expect(selected.visual_recipe_json).toMatchObject({
-      style_id: "fashion_editorial",
-      source: "smart",
-      recommended: { style_id: "fashion_editorial" },
+    await mockApi.updateCampaign(campaignId, {
+      requested_image_count: 1,
+      selected_template_id: "hero_product",
     });
 
-    const accurate = await mockApi.updateCampaign(campaignId, {
-      visual_creation_mode: "accurate",
-    });
-    expect(accurate.visual_recipe_json).toMatchObject({
-      style_id: "fashion_editorial",
-      recommended: { style_id: "fashion_editorial" },
-    });
-
-    const overridden = await mockApi.saveVisualRecipe(campaignId, {
-      style_id: "neon",
-      template_id: "cinematic_environment",
-      source: "custom",
-    });
-    expect(overridden.visual_recipe_json).toMatchObject({
-      style_id: "neon",
-      source: "custom",
-      recommended: { style_id: "fashion_editorial" },
-    });
-
-    // The signup gate is enforced by the API, not only by the UI.
     await expect(mockApi.startGeneration(campaignId)).rejects.toBeInstanceOf(
       ApiError,
     );
@@ -104,7 +70,6 @@ describe("mock campaign journey", () => {
     expect(inProgress.percent).toBeLessThan(100);
     expect(["queued", "generating"]).toContain(inProgress.status);
 
-    // Only Date is faked so the API's own setTimeout delays still resolve.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + TOTAL_GENERATION_MS + 5000);
 
@@ -132,12 +97,12 @@ describe("mock campaign journey", () => {
     expect(copyTypes).toContain("hashtags");
     expect(copyTypes).toContain("reel_concept");
     expect(copyTypes.filter((type) => type === "story")).toHaveLength(3);
+    expect(detail.visual_candidates).toHaveLength(1);
 
     expect(
       detail.copies.find((copy) => copy.copy_type === "caption_short")?.content,
     ).toContain("زعفران ممتاز");
 
-    // The brief flows into the composed asset rather than being thrown away.
     const feed = detail.assets.find((asset) => asset.asset_type === "feed_final");
     expect(feed?.metadata_json).toMatchObject({
       brand_name: "سحند",
@@ -148,8 +113,6 @@ describe("mock campaign journey", () => {
 
   it("is idempotent when generation is triggered repeatedly", async () => {
     const campaignId = await completeBrief();
-    const concepts = await mockApi.generateConcepts(campaignId);
-    await mockApi.selectConcept(campaignId, concepts[0].id);
     await mockApi.verifyEmailCode({ email: "repeat@example.com", code: "123456" });
 
     const first = await mockApi.startGeneration(campaignId);
@@ -173,8 +136,6 @@ describe("mock campaign journey", () => {
 
   it("summarises a finished campaign with its feed ad, not the raw photo", async () => {
     const campaignId = await completeBrief();
-    const concepts = await mockApi.generateConcepts(campaignId);
-    await mockApi.selectConcept(campaignId, concepts[0].id);
     await mockApi.verifyEmailCode({ email: "thumb@example.com", code: "123456" });
 
     const [beforeGeneration] = await mockApi.listCampaigns();
@@ -190,9 +151,9 @@ describe("mock campaign journey", () => {
 
     const [ready] = await mockApi.listCampaigns();
     expect(ready.thumbnail_spec).toMatchObject({
-      headline_fa: concepts[0].headline_fa,
       product_image_path: "public://mock/product-saffron.svg",
     });
+    expect(ready.thumbnail_spec?.headline_fa).toBeTruthy();
     // Still null in Phase 1: the browser composes the ad, so the card falls
     // back to the source photo only when there is no spec to render.
     expect(ready.thumbnail_path).toBe("public://mock/product-saffron.svg");
@@ -200,8 +161,6 @@ describe("mock campaign journey", () => {
 
   it("rejects a campaign belonging to somebody else", async () => {
     const campaignId = await completeBrief();
-    const concepts = await mockApi.generateConcepts(campaignId);
-    await mockApi.selectConcept(campaignId, concepts[0].id);
     await mockApi.verifyEmailCode({ email: "owner@example.com", code: "123456" });
     await mockApi.signOut();
     await mockApi.verifyEmailCode({ email: "stranger@example.com", code: "123456" });
@@ -235,8 +194,6 @@ describe("mock campaign journey", () => {
 
   it("rewrites caption and headline through closed intents", async () => {
     const campaignId = await completeBrief();
-    const concepts = await mockApi.generateConcepts(campaignId);
-    await mockApi.selectConcept(campaignId, concepts[0].id);
     await mockApi.verifyEmailCode({ email: "rewrite@example.com", code: "123456" });
     await mockApi.startGeneration(campaignId);
 
@@ -264,8 +221,6 @@ describe("mock campaign journey", () => {
 
   it("lets a signed-in user generate a second campaign without signing up again", async () => {
     const firstId = await completeBrief();
-    const firstConcepts = await mockApi.generateConcepts(firstId);
-    await mockApi.selectConcept(firstId, firstConcepts[0].id);
     await expect(mockApi.startGeneration(firstId)).rejects.toBeInstanceOf(ApiError);
 
     await mockApi.verifyEmailCode({ email: "repeat@shop.com", code: "123456" });
@@ -280,49 +235,24 @@ describe("mock campaign journey", () => {
       objective: "sell_product",
       visual_style: "minimal",
     });
-    const secondConcepts = await mockApi.generateConcepts(second.id);
-    expect(secondConcepts).toHaveLength(3);
-    const first = await mockApi.getCampaign(firstId);
-    expect(secondConcepts.map((item) => item.id)).not.toEqual(
-      first.concepts.map((item) => item.id),
-    );
-    await mockApi.selectConcept(second.id, secondConcepts[0].id);
     const started = await mockApi.startGeneration(second.id);
     expect(["queued", "generating"]).toContain(started.status);
   }, 60_000);
 
-  it("never shows another campaign's concepts on a fresh draft", async () => {
+  it("never shows another campaign's package on a fresh draft", async () => {
     const firstId = await completeBrief();
-    const firstConcepts = await mockApi.generateConcepts(firstId);
-    expect(firstConcepts[0].headline_fa).toContain("زعفران");
-
     const second = await mockApi.createCampaign({});
     const detail = await mockApi.getCampaign(second.id);
-    expect(detail.concepts).toEqual([]);
+    expect(detail.assets).toEqual([]);
     expect(detail.campaign.id).not.toBe(firstId);
   }, 60_000);
 
-  it("invalidates concepts when the brief changes", async () => {
+  it("keeps a brief complete after the product name changes", async () => {
     const campaignId = await completeBrief();
-    const generated = await mockApi.generateConcepts(campaignId);
-    await mockApi.selectConcept(campaignId, generated[0].id);
-
-    const patched = await mockApi.updateCampaign(campaignId, {
-      visual_style: "minimal",
-    });
-    expect(patched.status).toBe("brief_complete");
-    expect(patched.selected_concept_id).toBeNull();
-    expect((await mockApi.getCampaign(campaignId)).concepts).toEqual([]);
-
-    const regenerated = await mockApi.generateConcepts(campaignId);
-    expect(regenerated).toHaveLength(3);
-    await mockApi.updateCampaign(campaignId, { visual_style: "minimal" });
-    expect((await mockApi.getCampaign(campaignId)).concepts).toHaveLength(3);
-
     await mockApi.saveProduct(campaignId, { name: "صابون زیتون" });
     const afterRename = await mockApi.getCampaign(campaignId);
-    expect(afterRename.concepts).toEqual([]);
     expect(afterRename.campaign.status).toBe("brief_complete");
+    expect(afterRename.product?.name).toBe("صابون زیتون");
   }, 60_000);
 });
 
@@ -377,3 +307,81 @@ describe("password recovery for OTP-only accounts", () => {
     expect(viaCode.user.email).toBe("both@shop.com");
   });
 });
+
+describe("mock educational journey", () => {
+  it("rejects anonymous create and keeps themes listable", async () => {
+    await expect(
+      mockApi.createEducationalPost({ user_prompt: "یک پست درباره کسرها" }),
+    ).rejects.toMatchObject({ code: "unauthorized" });
+
+    const themes = await mockApi.listEducationalThemes();
+    expect(themes.builtin.length).toBeGreaterThan(0);
+    expect(themes.saved).toEqual([]);
+  });
+
+  it("creates one square post from a single prompt after signup", async () => {
+    await mockApi.signUpWithPassword({
+      email: "teacher@example.com",
+      password: "teachpass1",
+    });
+
+    const created = await mockApi.createEducationalPost({
+      user_prompt:
+        "برای کلاس ششم یک پست درباره اعداد اعشاری مثل 0.5 و 1.25 بساز",
+    });
+    expect(created.status).toBe("queued");
+    expect(created.selected_theme_id).toBeNull();
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 20_000);
+
+    const status = await mockApi.getEducationalPostStatus(created.id);
+    expect(status.status).toBe("ready");
+    expect(status.percent).toBe(100);
+
+    const post = await mockApi.getEducationalPost(created.id);
+    expect(post.language).toBe("fa");
+    expect(post.render_spec_json.render_mode).toBe("educational");
+    expect(
+      "image_path" in post.render_spec_json && post.render_spec_json.image_path,
+    ).toBeTruthy();
+    expect(post.render_spec_json).not.toHaveProperty("text_layers");
+    expect(post.render_spec_json).not.toHaveProperty("cta_fa");
+    expect(post.render_spec_json).not.toHaveProperty("headline_fa");
+    expect(post.render_spec_json).not.toHaveProperty("template_id");
+    const agent = post.agent_json as EducationalAgentResult;
+    expect(agent.final_prompt).toContain("0.5");
+    expect(agent.final_prompt).toContain("1.25");
+    expect(agent).not.toHaveProperty("content");
+    expect(post.theme_json).not.toHaveProperty("typography");
+  });
+
+  it("saves a generated theme without the lesson itself", async () => {
+    await mockApi.signUpWithPassword({
+      email: "theme@example.com",
+      password: "themepass1",
+    });
+    const created = await mockApi.createEducationalPost({
+      user_prompt: "یک پست درباره کسرهای مساوی",
+    });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 20_000);
+    await mockApi.getEducationalPostStatus(created.id);
+
+    const saved = await mockApi.saveEducationalTheme({ post_id: created.id });
+    expect(saved.source).toBe("user");
+    expect(JSON.stringify(saved.theme_json)).not.toContain(created.user_prompt);
+    expect(saved.theme_json).not.toHaveProperty("final_prompt");
+    expect(saved.theme_json).not.toHaveProperty("educational_concept");
+
+    const listed = await mockApi.listEducationalThemes();
+    expect(listed.saved.map((theme) => theme.id)).toContain(saved.id);
+
+    const reused = await mockApi.createEducationalPost({
+      user_prompt: "یک پست درباره ضرب",
+      theme_id: saved.id,
+    });
+    expect(reused.selected_theme_id).toBe(saved.id);
+  });
+});
+

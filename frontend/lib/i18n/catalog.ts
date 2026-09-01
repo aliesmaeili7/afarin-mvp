@@ -35,6 +35,7 @@ const TEMPLATE_IDS = [
 
 export const VISUAL_STYLE_IDS = STYLE_IDS;
 export const VISUAL_TEMPLATE_IDS = TEMPLATE_IDS;
+export const VISUAL_CATALOG_IDS = [...STYLE_IDS, ...TEMPLATE_IDS] as const;
 
 export type VisualStyleId = (typeof STYLE_IDS)[number];
 export type VisualTemplateId = (typeof TEMPLATE_IDS)[number];
@@ -53,12 +54,13 @@ export function catalogLabel(
   id: string,
   fallback: string,
 ): string {
-  if (kind === "styles" && isStyleId(id)) {
+  if (isStyleId(id)) {
     return t(locale, `visual.styles.${id}.label` as TranslationKey);
   }
-  if (kind === "templates" && isTemplateId(id)) {
+  if (isTemplateId(id)) {
     return t(locale, `visual.templates.${id}.label` as TranslationKey);
   }
+  void kind;
   return fallback;
 }
 
@@ -68,11 +70,12 @@ export function catalogDescription(
   id: string,
   fallback: string,
 ): string {
-  if (kind === "styles" && isStyleId(id)) {
+  if (isStyleId(id)) {
     return t(locale, `visual.styles.${id}.description` as TranslationKey);
   }
-  if (kind === "templates" && isTemplateId(id)) {
+  if (isTemplateId(id)) {
     return t(locale, `visual.templates.${id}.description` as TranslationKey);
   }
+  void kind;
   return fallback;
 }

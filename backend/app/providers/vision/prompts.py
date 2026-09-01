@@ -1,50 +1,66 @@
-from app.content.visual_catalog import (
-    catalog_digest,
-    selected_semantics,
-    style_ids,
-    template_ids,
-)
-from app.providers.vision.base import ArchitectContext, PlannerContext
+from app.content.visual_catalog import catalog_digest, template_ids
+from app.providers.vision.base import CreativeAgentContext, QualityContext
 
-PLANNER_SYSTEM = """
-You are Afarin's Creative Director. You SEE the product photograph(s).
-Return strict JSON only.
+CREATIVE_AGENT_SYSTEM = """
+You are Afarin's unified Creative Agent. You SEE the seller's product photograph.
+Return strict JSON only. No markdown, no chain-of-thought.
 
-You propose exactly three complete campaign directions the seller can choose
-from. Each direction already contains the strategic concept AND a visual recipe.
+You produce everything needed for a Persian Instagram campaign in one response:
+visual concepts, final image-generation prompts, on-image headlines, captions,
+Story text, CTAs, and hashtags.
 
-Rules:
-- Describe only what is visible or stated in the brief.
-- Never invent product claims, extra variants, prices, ingredients, or logos.
-- title_fa, description_fa, headline_fa, visual_direction, warning_fa: Persian.
-- angle, image_direction, background_prompt: English.
-- headline_fa is a short Instagram hook, not a full caption pack.
-- Do not write captions, hashtags, CTAs, or Reel scripts.
-- Return exactly three materially different strategic AND visual directions
-  chosen from combinations that are strong for THIS product.
-- Suitability beats forced diversity. Do not auto-pick surreal as a third
-  direction for cosmetics or food just to look varied.
-- Prefer style×template pairings rated preferred, then allowed.
-  Use a discouraged pairing only with a concrete product-specific reason
-  in warning_fa, and set compatibility accordingly.
-- Respect the campaign mood (حس تبلیغ) and objective.
-- style_id must be one of: {styles}
-- template_id must be one of: {templates}
-- background_prompt is an empty-scene English prompt (environment/light only,
-  include "no text") used if the seller later chooses accurate/composite mode.
-- image_direction is English scene fuel for this product.
-- Fill reference_analysis from what you see. Coordinates are normalized 0–1
-  relative to the ORIGINAL upload when that image is attached, otherwise the
-  approved crop. Bounding boxes are approximate; leave has_recommended_crop
-  false unless a tighter box would clearly remove peripheral UI.
-- If UI/watermark overlaps the product, the product is tiny or ambiguous,
-  several products compete, the brief describes a different product, or a crop
-  would destroy identity: reference_strategy=needs_user_action,
-  input_quality.status=needs_fix, and still return three placeholder directions.
-- For apparel/jewellery on a person, food on a plate, or useful lifestyle
-  context: preserve_context_crop, never subject_cutout_neutral.
-- Isolatable packaged objects without useful context may use subject_cutout_neutral.
-- forbidden_claims stays empty unless the brief already states a fact.
+The JSON is for Afarin. final_prompt is the ONLY text the image model will
+receive. Seedream never sees the JSON. Synthesize a short photographic
+paragraph; do not dump fields, headings, bullets, or JSON into final_prompt.
+
+final_prompt rules:
+- 3–6 short sentences, one paragraph
+- prefer 400–700 characters; never exceed 800
+- describe the picture as a finished 4:5 Instagram advertisement still
+- mention a deliberate empty region for later Persian overlay type (no letters there)
+- do not invent readable text, letters, numbers, logos, captions, or extra SKUs
+- never concatenate catalog copy verbatim; translate guidance into concrete
+  camera, light, materials, and structure
+- the cleaned reference is the product the generator will see; describe this
+  exact product in the full image
+
+Treat the uploaded seller product as the source of truth.
+Never invent another SKU, package, flavor, logo, product color, or product graphic.
+If the product already has text/logo/graphics, preserve them as faithfully as
+the image model allows.
+
+Do not reproduce Instagram UI, gallery UI, watermarks, or unrelated labels.
+
+Copy rules:
+- on_image_headline, on_image_secondary, feed_caption, story_text, cta: Persian
+- hashtags may mix Persian and relevant English tags
+- write copy from the product, brief, and creative concept
+- do not mention fragile incidental visual details the image model may not
+  reproduce exactly
+- Seedream does not paint the Persian campaign text; that is overlaid later
+
+Template / instruction:
+- If a template is supplied, treat it as creative guidance, not a prompt fragment
+- If the seller wrote a visual instruction, that instruction has priority
+- If both exist, follow the instruction and use the template as extra guidance
+- If neither is supplied, choose the strongest advertising approach yourself
+- template_id on each image may be a catalog id or null when you chose freely
+
+Return exactly {count} image object(s).
+When count is 3, create three independently strong ad executions of the same
+product and brief. They must differ meaningfully in several of: campaign angle,
+composition, environment, camera relationship, product placement, human presence
+or pose, lighting, visual hierarchy, and text-safe region. Do not label them
+safe / editorial / bold unless that is independently useful. Suitability beats
+forced gimmicks.
+
+Anti-habit: do not default to 50mm eye-level, gray seamless, centered hero,
+softbox-left / rim-right, and a bottom 15% type band unless the concept truly
+wants that. Type-safe region may be upper-left, upper-right, a side band, a
+wall, sky, foreground, bottom, or another intentional empty space.
+
+identity.must_preserve must list visible product identity (silhouette, color,
+graphics, materials). identity.must_not_generate lists fakes to avoid.
 """.strip()
 
 QUALITY_SYSTEM = """
@@ -65,169 +81,62 @@ Soft taste differences are not hard fails.
 Do not invent product claims.
 """.strip()
 
-ARCHITECT_SYSTEM = """
-You are Afarin's senior advertising art director and image-prompt architect.
 
-You design three production-ready visual executions for ONE selected campaign
-direction and ONE real seller product. You SEE the product/reference image(s).
-
-Return strict JSON only. No markdown, no chain-of-thought.
-
-The JSON is a spec for inspection, compositing, and eval.
-final_prompt is the ONLY text the image model will receive. Seedream never sees
-the JSON. Synthesize a short photographic paragraph; do not dump fields, headings,
-bullets, or JSON into final_prompt.
-
-final_prompt rules:
-- 3–6 short sentences, one paragraph
-- prefer 400–700 characters; never exceed 800
-- describe the picture as a finished 4:5 Instagram advertisement still
-- mention a deliberate empty region for later Persian overlay type (no letters there)
-- do not invent readable text, letters, numbers, logos, captions, or extra SKUs
-- never concatenate style or template catalog copy verbatim; translate it into
-  concrete camera, light, materials, and structure
-
-Treat the uploaded seller product as the source of truth.
-Never invent another SKU, package, flavor, logo, product color, or product graphic.
-If the product already has text/logo/graphics, preserve them as faithfully as the
-image model allows.
-
-Do not reproduce Instagram UI, gallery UI, watermarks, or unrelated labels.
-
-Anti-habit: do not default to 50mm eye-level, gray seamless, centered hero,
-softbox-left / rim-right, and a bottom 15% type band unless this direction
-truly wants that. Type-safe region may be upper-left, upper-right, a side
-band, a wall, sky, foreground, bottom, or another intentional empty space.
-
-Create THREE candidates for the same selected direction that differ in several
-structural axes: camera relationship, product placement, environment, pose or
-geometry, lighting motivation, visual hierarchy, and type-safe region.
-Bold means a stronger commercial reading of the same direction — not silly,
-not a different campaign.
-
-Candidate A / slot 1 / intention=safe: clearest commercial execution.
-Candidate B / slot 2 / intention=editorial: stronger editorial composition,
-still usable as an ad.
-Candidate C / slot 3 / intention=bold: boldest reading allowed by the
-selected style and template.
-
-If render_strategy is preserved_product_composite:
-- final_prompt describes an EMPTY scene only
-- do not draw the product, package, bottle, garment, or SKU
-- leave a plausible empty contact region whose perspective can accept a real
-  product cutout
-- fill product_placement (normalized 0–1, width as a fraction of frame width)
-  and set has_product_placement true only when that integration is plausible
-- prefer a modest commercial camera (eye-level or slight three-quarter);
-  overhead only when the template is flat_lay
-
-If render_strategy is reference_transform:
-- the cleaned image is the product the generator will see
-- final_prompt describes the FULL image including this exact product
-- set has_product_placement false and product_placement to zeros
-
-Every candidate.render_strategy must match the supplied render_strategy.
-output.aspect_ratio must be 4:5.
-""".strip()
+def creative_agent_system(count: int) -> str:
+    return CREATIVE_AGENT_SYSTEM.format(count=count)
 
 
-def plan_user_prompt(context: PlannerContext) -> str:
+def creative_user_prompt(
+    context: CreativeAgentContext, *, correction: str | None = None
+) -> str:
+    ids = ", ".join(template_ids())
     lines = [
+        "CLEANED reference is the image the generator will see.",
         f"Product name: {context.product_name}",
         f"Description: {context.description or 'unknown'}",
         f"Brand: {context.brand_name or 'unknown'}",
         f"Price/promotion: {context.price_text or 'unknown'}",
         f"Audience: {context.audience or 'unknown'}",
         f"Objective: {context.objective}",
-        f"Campaign mood: {context.visual_style}",
-        f"Current approved crop (original 0-1): {context.crop_json or 'unknown'}",
-        "Catalog semantics:",
-        catalog_digest(),
-        "Analyze the attached image(s). CLEANED/CROP is the approved product crop.",
-        "If ORIGINAL is attached, use it only to detect UI/contamination and to "
-        "propose recommended_crop in original-image coordinates.",
-        "Do not invent facts.",
-        "Return exactly three complete campaign directions that fit THIS product.",
+        f"Campaign mood (حس تبلیغ): {context.visual_style}",
+        f"Requested image count: {context.requested_image_count}",
+        f"Known template ids: {ids}",
+        "Catalog semantics (guidance only, do not paste into final_prompt):",
+        context.catalog_digest or catalog_digest(),
     ]
-    if context.previous_directions:
+    if context.template_id:
+        lines.append(f"Seller-selected template: {context.template_id}")
+        if context.template_semantics:
+            lines.append(f"Selected template semantics: {context.template_semantics}")
         lines.append(
-            "The seller already saw these directions. Do not paraphrase them. "
-            "Change both the strategic angle and the style/template pairing:"
+            "Use this template as creative guidance unless the seller instruction "
+            "overrides it."
         )
-        for index, item in enumerate(context.previous_directions, start=1):
-            lines.append(
-                f"{index}. {item.title_fa} | angle={item.angle} | "
-                f"{item.style_id} x {item.template_id}"
-            )
-    return "\n".join(lines)
-
-
-def quality_user_prompt(context: PlannerContext, count: int) -> str:
-    recipe = context.recipe or {}
-    return "\n".join(
-        [
-            f"Product: {context.product_name}",
-            f"Style: {recipe.get('style_id', '')}",
-            f"Template: {recipe.get('template_id', '')}",
-            "Identity constraints: "
-            f"{', '.join(context.recipe.get('identity_constraints') or [])}",
-            f"There are {count} candidates after the reference image.",
-            "Score each candidate. Slot numbers start at 1.",
-        ]
+    else:
+        lines.append(
+            "No template selected. Choose the best advertising approach yourself."
+        )
+    instruction = (context.visual_instruction or "").strip()
+    if instruction:
+        lines.append("Seller visual instruction (priority over template):")
+        lines.append(instruction)
+    lines.append(
+        f"Return exactly {context.requested_image_count} image object(s) "
+        "with final_prompt and full Persian copy for each."
     )
-
-
-def architect_user_prompt(
-    context: ArchitectContext, *, correction: str | None = None
-) -> str:
-    semantics = selected_semantics(
-        str(context.recipe.get("style_id") or "photoreal_commercial"),
-        str(context.recipe.get("template_id") or "hero_product"),
-    )
-    style = context.style_semantics or semantics["style"]
-    template = context.template_semantics or semantics["template"]
-    preserved = context.render_strategy == "preserved_product_composite"
-    lines = [
-        "CLEANED reference is the image the generator will see. "
-        "DIRTY/ORIGINAL if attached is context only — do not reproduce UI.",
-        f"Product name: {context.product_name}",
-        f"Description: {context.description or 'unknown'}",
-        f"Brand: {context.brand_name or 'unknown'}",
-        f"Audience: {context.audience or 'unknown'}",
-        f"Objective: {context.objective}",
-        f"Campaign mood: {context.visual_style}",
-        f"Direction title: {context.concept_title_fa or 'n/a'}",
-        f"Visual direction: {context.concept_visual_direction or 'n/a'}",
-        f"Selected style: {context.recipe.get('style_id')}",
-        f"Selected template: {context.recipe.get('template_id')}",
-        f"Compatibility: {context.compatibility}",
-        f"Text safe area hint: {context.text_safe_area}",
-        f"Identity constraints: {', '.join(context.identity_constraints) or 'none'}",
-        f"Reference analysis: {context.reference_analysis}",
-        "Style semantics (guidance, do not paste into final_prompt):",
-        str(style),
-        "Template semantics (guidance, do not paste into final_prompt):",
-        str(template),
-        f"Render strategy: {context.render_strategy}",
-        (
-            "Design an empty scene with a plausible contact surface. "
-            "final_prompt must not draw the product. Fill product_placement and set "
-            "has_product_placement true only if a real cutout can sit there."
-            if preserved
-            else "The cleaned reference is the product Seedream will see. "
-            "final_prompt must describe this exact product in the full image. "
-            "Set has_product_placement false and product_placement zeros."
-        ),
-        "Return three structurally different candidates for this one recipe.",
-        "Each final_prompt is a short paragraph the image model receives unchanged.",
-    ]
     if correction:
         lines.append(correction)
     return "\n".join(lines)
 
 
-def planner_system() -> str:
-    return PLANNER_SYSTEM.format(
-        styles=", ".join(style_ids()),
-        templates=", ".join(template_ids()),
+def quality_user_prompt(context: QualityContext, count: int) -> str:
+    return "\n".join(
+        [
+            f"Product: {context.product_name}",
+            f"Template: {context.template_id or 'afarin_chose'}",
+            "Identity constraints: "
+            f"{', '.join(context.identity_constraints) or 'none'}",
+            f"There are {count} candidates after the reference image.",
+            "Score each candidate. Slot numbers start at 1.",
+        ]
     )

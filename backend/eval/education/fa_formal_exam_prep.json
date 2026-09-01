@@ -1,0 +1,7 @@
+{
+  "id": "fa_formal_exam_prep",
+  "label": "رسمی - آمادگی کنکور",
+  "note": "Formal register for older students. Should read credible, not playful.",
+  "user_prompt": "یک پست رسمی و حرفه‌ای برای دانش‌آموزان کنکوری درباره برنامه‌ریزی مطالعه در سه ماه آخر بساز. لحن جدی و قابل اعتماد باشد.",
+  "expect_language": "fa"
+}

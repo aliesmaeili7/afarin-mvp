@@ -83,7 +83,6 @@ export interface VisualCatalogEntry {
 }
 
 export interface VisualCatalog {
-  styles: VisualCatalogEntry[];
   templates: VisualCatalogEntry[];
 }
 
@@ -187,6 +186,9 @@ export interface Campaign {
   audience: string | null;
   visual_style: VisualStyle | null;
   visual_creation_mode?: VisualCreationMode | null;
+  requested_image_count?: number;
+  visual_instruction?: string | null;
+  selected_template_id?: string | null;
   visual_recipe_json?: VisualRecipe | Record<string, unknown>;
   planner_result_json?: Record<string, unknown>;
   current_visual_attempt_id?: string | null;
@@ -347,12 +349,7 @@ export interface CampaignSummary {
   created_at: string;
 }
 
-export type GenerationStage =
-  | "planning"
-  | "visual"
-  | "captions"
-  | "story"
-  | "finalizing";
+export type GenerationStage = "planning" | "visual" | "finalizing";
 
 export interface CampaignStatusResponse {
   campaign_id: string;
@@ -375,4 +372,116 @@ export interface Session {
   user: SessionUser;
   /** Mock token. Phase 2 replaces this with a Supabase access token. */
   access_token: string;
+}
+
+/* --- Educational content ------------------------------------------------- */
+
+export type EducationalPostStatus = "queued" | "generating" | "ready" | "failed";
+
+export type EducationalThemeSource = "builtin" | "user";
+
+export interface EducationalThemePalette {
+  primary: string[];
+  secondary: string[];
+  background?: string;
+  text?: string;
+}
+
+/**
+ * Style memory only: palette, material, mood, lighting, motifs.
+ * Never layout, fonts, CTA/badge chrome, or the lesson of the post it came from.
+ */
+export interface EducationalThemeSpec {
+  name?: string;
+  palette: EducationalThemePalette;
+  illustration_style: string;
+  mood?: string;
+  lighting?: string;
+  shape_language: string;
+  decorative_motifs: string[];
+  background_treatment?: string;
+}
+
+/** A built-in theme as offered to the picker. */
+export interface BuiltinEducationalTheme extends EducationalThemeSpec {
+  id: string;
+  name: string;
+  source: EducationalThemeSource;
+}
+
+/** A theme the user saved from one of their own posts. */
+export interface EducationalTheme {
+  id: string;
+  name: string;
+  source: EducationalThemeSource;
+  theme_json: EducationalThemeSpec;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EducationalThemeList {
+  builtin: BuiltinEducationalTheme[];
+  saved: EducationalTheme[];
+}
+
+/**
+ * The agent's stored output. `final_prompt` is present for dev tooling only and
+ * is never shown to a normal user.
+ */
+export interface EducationalAgentResult {
+  language: "fa" | "en";
+  final_prompt: string;
+  theme?: {
+    name_suggestion: string;
+    primary_colors: string[];
+    secondary_colors: string[];
+    illustration_style: string;
+    mood: string;
+    lighting: string;
+    shape_language: string;
+    decorative_motifs: string[];
+  };
+  theme_style_notes?: string | null;
+  safety_notes?: string | null;
+}
+
+/** Image-only result. Advertising composition fields must not appear here. */
+export interface EducationalRenderSpec {
+  render_mode: "educational";
+  image_path: string | null;
+}
+
+export interface EducationalPost {
+  id: string;
+  user_prompt: string;
+  selected_theme_id: string | null;
+  selected_builtin_theme_id: string | null;
+  language: "fa" | "en" | null;
+  headline: string | null;
+  status: EducationalPostStatus;
+  error_message: string | null;
+  image_storage_path: string | null;
+  agent_json: EducationalAgentResult | Record<string, never>;
+  theme_json: EducationalThemeSpec | Record<string, never>;
+  render_spec_json: EducationalRenderSpec | Record<string, never>;
+  wall_time_ms: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EducationalPostSummary {
+  id: string;
+  headline: string | null;
+  status: EducationalPostStatus;
+  language: "fa" | "en" | null;
+  image_storage_path: string | null;
+  created_at: string;
+}
+
+export interface EducationalPostStatusResponse {
+  post_id: string;
+  status: EducationalPostStatus;
+  stage: GenerationStage | null;
+  percent: number;
+  message_fa: string | null;
 }

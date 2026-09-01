@@ -20,6 +20,9 @@ const POLL_INTERVAL_MS = 1200;
 /**
  * Spec §12 — a staged progress experience rather than a spinner.
  *
+ * Three steps match the Unified Creative Agent path: design the ads, render
+ * the images (in parallel), then assemble the package.
+ *
  * Progress is polled from the campaign status endpoint, so closing the tab and
  * coming back resumes wherever the job actually is.
  */
@@ -47,8 +50,7 @@ export function GenerationProgress({
         const settled =
           next.status === "ready" ||
           next.status === "partial_failed" ||
-          next.status === "failed" ||
-          next.status === "candidates_ready";
+          next.status === "failed";
 
         if (settled && !finishedRef.current) {
           finishedRef.current = true;

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.content.context import CopyContext, PreviousConcept
+from app.core.enums import VISUAL_FINAL_TYPES
 from app.db.models import (
     Brand,
     Campaign,
@@ -81,6 +82,18 @@ async def assets_of(
         .order_by(CampaignAsset.created_at)
     )
     return list(rows)
+
+
+async def failed_visual_types(
+    session: AsyncSession, campaign_id: uuid.UUID
+) -> list[str]:
+    assets = await assets_of(session, campaign_id)
+    return [
+        asset.asset_type
+        for asset in assets
+        if asset.asset_type in VISUAL_FINAL_TYPES
+        and (asset.metadata_json or {}).get("failed")
+    ]
 
 
 async def build_copy_context(session: AsyncSession, campaign: Campaign) -> CopyContext:

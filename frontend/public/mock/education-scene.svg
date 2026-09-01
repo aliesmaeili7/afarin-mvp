@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080" role="img" aria-hidden="true">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#efe6ff"/>
+      <stop offset="100%" stop-color="#dfe9ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#sky)"/>
+  <circle cx="540" cy="420" r="380" fill="url(#glow)"/>
+  <circle cx="540" cy="400" r="190" fill="#7c3aed" opacity="0.16"/>
+  <circle cx="540" cy="400" r="130" fill="#22d3ee" opacity="0.22"/>
+  <g fill="#fde047" opacity="0.9">
+    <circle cx="220" cy="230" r="16"/>
+    <circle cx="880" cy="300" r="12"/>
+    <circle cx="300" cy="520" r="10"/>
+    <circle cx="820" cy="560" r="18"/>
+  </g>
+  <g fill="none" stroke="#7c3aed" stroke-opacity="0.35" stroke-width="10" stroke-linecap="round" stroke-dasharray="4 34">
+    <path d="M180 640 C 360 560, 720 720, 900 620"/>
+  </g>
+  <rect x="0" y="700" width="1080" height="380" fill="#ffffff" opacity="0.55"/>
+</svg>

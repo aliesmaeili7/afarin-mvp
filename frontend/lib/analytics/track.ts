@@ -22,7 +22,14 @@ export type AnalyticsEvent =
   | "caption_copied"
   | "campaign_repeated"
   | "regeneration_requested"
-  | "brand_saved";
+  | "brand_saved"
+  | "education_create_viewed"
+  | "education_post_created"
+  | "education_post_ready"
+  | "education_generated"
+  | "education_theme_saved"
+  | "education_theme_reused"
+  | "education_post_downloaded";
 
 export function track(
   event: AnalyticsEvent,

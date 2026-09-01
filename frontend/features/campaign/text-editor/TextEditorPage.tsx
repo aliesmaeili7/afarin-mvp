@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import type { AssetRenderSpec, CampaignAsset, CampaignDetail } from "@/types/domain";
@@ -16,7 +16,7 @@ import { ASSET_LABELS } from "@/features/campaign/ad-renderer/templates";
 import { MAX_TEXT_LAYERS } from "@/features/campaign/ad-renderer/textLayers";
 import { EditorStage } from "./EditorStage";
 import { EditorToolbar, type TabId } from "./EditorToolbar";
-import { useEditorSession } from "./useEditorSession";
+import { campaignEditorTarget, useEditorSession } from "./useEditorSession";
 
 export function TextEditorPage({
   campaignId,
@@ -92,7 +92,11 @@ function EditorShell({
   const displayError = useDisplayError();
   const [tab, setTab] = useState<TabId>("text");
   const [leaving, setLeaving] = useState(false);
-  const session = useEditorSession(asset, campaignId);
+  const target = useMemo(
+    () => campaignEditorTarget(asset, campaignId),
+    [asset, campaignId],
+  );
+  const session = useEditorSession(target);
   const label = t(
     (ASSET_LABELS[asset.asset_type] ?? "ad.asset.fallback") as TranslationKey,
   );
@@ -150,8 +154,10 @@ function EditorShell({
 
       <div className="flex flex-1 flex-col gap-3 px-4 py-2">
         <EditorStage
-          asset={asset}
           spec={session.previewSpec}
+          width={asset.width}
+          height={asset.height}
+          showSafeArea={asset.asset_type === "story_final"}
           layers={session.layers}
           selectedId={session.selectedId}
           onSelect={session.setSelectedId}

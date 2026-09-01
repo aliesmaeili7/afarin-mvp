@@ -4,7 +4,15 @@
 
 ### Working concept
 
-A Persian-first AI product that turns an ordinary product photo into a ready-to-use Instagram advertising campaign for small businesses and Instagram sellers.
+A Persian-first AI product that creates ready-to-use Instagram visual content
+for small businesses, Instagram sellers, and teachers.
+
+There are two first-class paths:
+
+* **Advertising** — upload a product photo, receive a campaign package
+* **Educational** — write one sentence, receive a square teaching post
+
+The product should feel like a creative assistant, **not an interface for AI models**.
 
 ### Core promise
 
@@ -1226,7 +1234,8 @@ carousel_3
 
 ```text
 id
-campaign_id
+campaign_id          nullable; XOR with educational_post_id
+educational_post_id  nullable; XOR with campaign_id
 user_id
 job_type
 provider
@@ -1253,6 +1262,52 @@ succeeded
 failed
 cancelled
 ```
+
+---
+
+## educational_posts
+
+Separate from `campaigns`. Authenticated-only: `user_id` is NOT NULL and there
+is no anonymous owner.
+
+```text
+id
+user_id
+user_prompt
+selected_theme_id
+selected_builtin_theme_id
+language
+headline
+agent_json
+theme_json
+render_spec_json
+image_storage_path
+status
+error_message
+wall_time_ms
+created_at
+updated_at
+```
+
+Status: `queued`, `generating`, `ready`, `failed`.
+
+---
+
+## educational_themes
+
+Reusable visual systems, never a copied post.
+
+```text
+id
+user_id
+name
+theme_json
+source
+created_at
+updated_at
+```
+
+Source: `builtin` (catalog, not stored here) or `user`.
 
 ---
 
@@ -1302,6 +1357,8 @@ LLMProvider
 ImageProvider
 BackgroundRemovalProvider
 VideoProvider
+CreativeAgent          # advertising, multimodal
+EducationalAgent       # educational, text-only
 ```
 
 Example methods:
@@ -1375,6 +1432,31 @@ GET    /api/brands
 POST   /api/brands
 GET    /api/brands/{id}
 PATCH  /api/brands/{id}
+```
+
+## Educational posts
+
+Authenticated-only. No row is created until the user is signed in.
+
+```text
+POST   /api/education/posts
+GET    /api/education/posts
+GET    /api/education/posts/{id}
+GET    /api/education/posts/{id}/status
+PATCH  /api/education/posts/{id}/text
+DELETE /api/education/posts/{id}
+```
+
+## Educational themes
+
+`GET /themes` is open so a visitor can browse built-ins before signup.
+Saving, renaming and deleting require an account.
+
+```text
+GET    /api/education/themes
+POST   /api/education/themes
+PATCH  /api/education/themes/{id}
+DELETE /api/education/themes/{id}
 ```
 
 ## Credits
@@ -2022,3 +2104,73 @@ When beginning implementation, give Cursor this specification and then use:
 > * report the important components created
 > * identify any decisions you had to make that were not specified
 > * do not proceed to Phase 2.
+
+---
+
+# 36. Educational content
+
+Afarin also makes teaching posts. This is a separate domain from advertising
+campaigns: one natural-language prompt in, one square Instagram post out.
+
+## Phase 1 flow
+
+Homepage → Educational → one prompt → optional theme → signup if needed →
+Generate → result.
+
+The only required input is the prompt. Topic, grade, tone, title, caption and
+image direction are inferred. The only optional choice is a theme (default:
+Afarin designs one).
+
+No questionnaire. No direction-selection step. No three image variations. No
+Story or carousel in Phase 1.
+
+Educational generation is authenticated-only. A visitor may type the prompt
+and pick a theme in the browser; the `educational_posts` row is created only
+after signup, with `user_id` NOT NULL. There is no `anonymous_session_id` on
+the educational domain.
+
+## Agent
+
+One `EducationalAgent` call produces JSON: `language`, `final_prompt`, a
+style-only `theme`, and optional `theme_style_notes` / `safety_notes`. One
+semantic retry maximum.
+
+The image model receives `final_prompt` unchanged, `1:1`, `n=1`, no
+reference images, via `EDUCATIONAL_IMAGE_MODEL` (`openai/gpt-image-2`).
+Advertising campaigns keep using Seedream (`IMAGE_MODEL`). The generated
+image is the result: Afarin does not overlay headline, CTA, badge or price
+layers afterwards. If the teacher already wrote exact poster wording, the
+agent preserves it inside `final_prompt` so the image model can paint it.
+
+## Themes
+
+Built-in starter set plus user-saved visual systems (palette, illustration
+language, mood, lighting, motifs). A theme is style memory only: it must not
+create text layers, CTAs, badges or advertising template chrome. A saved theme
+is not a duplicated post: topic and the previous image prompt are dropped on
+save.
+
+## Tables
+
+`educational_posts` and `educational_themes`, both owned by `user_id`.
+Telemetry reuses `generation_jobs` with a nullable `educational_post_id` and
+an XOR check against `campaign_id`.
+
+## Future Phase 2 — Educational series / carousel (do not implement now)
+
+Phase 2 is PLAN FIRST → USER APPROVES → GENERATE SERIES.
+
+```text
+user prompt + optional saved theme
+  → Educational Agent proposes a slide-by-slide outline
+  → user reviews the outline BEFORE paying for image generation
+  → user can edit / remove / reorder slides
+  → user confirms
+  → each slide generated one by one using the SAME saved/generated theme
+  → AdCanvas overlays exact text consistently across the series
+```
+
+Each slide in the plan carries: educational purpose, headline/text, visual
+concept. The point is that the user approves the outline before any image
+spend.
+

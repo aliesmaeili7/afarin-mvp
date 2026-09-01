@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any, Literal, overload
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -38,7 +39,19 @@ def updated_timestamp() -> Mapped[datetime]:
     )
 
 
-def user_fk(*, nullable: bool = True, index: bool = True) -> Mapped[uuid.UUID | None]:
+@overload
+def user_fk(
+    *, nullable: Literal[True] = True, index: bool = True
+) -> Mapped[uuid.UUID | None]: ...
+
+
+@overload
+def user_fk(
+    *, nullable: Literal[False], index: bool = True
+) -> Mapped[uuid.UUID]: ...
+
+
+def user_fk(*, nullable: bool = True, index: bool = True) -> Any:
     """
     The owning user, as the Supabase JWT `sub` claim.
 

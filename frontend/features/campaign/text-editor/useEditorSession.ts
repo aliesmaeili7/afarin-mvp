@@ -36,11 +36,43 @@ function initialLayers(spec: AssetRenderSpec): TextLayer[] {
   return hydrateEditorLayers(spec);
 }
 
-export function useEditorSession(asset: CampaignAsset, campaignId: string) {
+/**
+ * What the editor needs to know about an advertising asset.
+ *
+ * Persistence sits behind a callback so the same editor can save different
+ * campaign assets. Educational posts do not use this editor.
+ */
+export interface EditorTarget {
+  spec: AssetRenderSpec;
+  /** Null restores the generated layout. */
+  save(layers: TextLayer[] | null): Promise<void>;
+  /** Absent when the content type has no AI copy rewrite. */
+  rewrite?(intent: RewriteIntent): Promise<AssetRenderSpec>;
+}
+
+export function campaignEditorTarget(
+  asset: CampaignAsset,
+  campaignId: string,
+): EditorTarget {
+  return {
+    spec: asset.metadata_json as AssetRenderSpec,
+    async save(layers) {
+      await api.updateAssetText(campaignId, asset.id, { text_layers: layers });
+    },
+    async rewrite(intent) {
+      const updated = await api.rewriteAssetText(campaignId, asset.id, intent);
+      return updated.metadata_json as AssetRenderSpec;
+    },
+  };
+}
+
+export function useEditorSession(target: EditorTarget) {
   const { toast } = useToast();
   const { t } = useI18n();
   const displayError = useDisplayError();
-  const spec = asset.metadata_json as AssetRenderSpec;
+  const { spec } = target;
+  const saveLayers = target.save;
+  const rewriteText = target.rewrite;
   const [layers, setLayers] = useState<TextLayer[]>(() => initialLayers(spec));
   const [selectedId, setSelectedId] = useState<string | null>(
     () => initialLayers(spec)[0]?.id ?? null,
@@ -71,14 +103,14 @@ export function useEditorSession(asset: CampaignAsset, campaignId: string) {
     async (next: TextLayer[] | null) => {
       setStatus("saving");
       try {
-        await api.updateAssetText(campaignId, asset.id, { text_layers: next });
+        await saveLayers(next);
         setStatus("saved");
       } catch (caught) {
         setStatus("error");
         toast(displayError(caught), "error");
       }
     },
-    [asset.id, campaignId, toast, displayError],
+    [saveLayers, toast, displayError],
   );
 
   const scheduleSave = useCallback(
@@ -203,14 +235,14 @@ export function useEditorSession(asset: CampaignAsset, campaignId: string) {
 
   const rewrite = useCallback(
     async (intent: RewriteIntent) => {
+      if (!rewriteText) return;
       setRewriting(true);
       try {
         if (timerRef.current) {
           clearTimeout(timerRef.current);
           await persist(layersRef.current);
         }
-        const updated = await api.rewriteAssetText(campaignId, asset.id, intent);
-        const nextSpec = updated.metadata_json as AssetRenderSpec;
+        const nextSpec = await rewriteText(intent);
         const role = intent === "new_headline" ? "headline" : "cta";
         const text =
           role === "headline" ? nextSpec.headline_fa : (nextSpec.cta_fa ?? "");
@@ -230,7 +262,7 @@ export function useEditorSession(asset: CampaignAsset, campaignId: string) {
         setRewriting(false);
       }
     },
-    [asset.id, campaignId, persist, toast, t, displayError],
+    [rewriteText, persist, toast, t, displayError],
   );
 
   const flush = useCallback(async () => {
@@ -284,6 +316,7 @@ export function useEditorSession(asset: CampaignAsset, campaignId: string) {
     undo,
     redo,
     rewrite,
+    canRewrite: rewriteText !== undefined,
     flush,
   };
 }

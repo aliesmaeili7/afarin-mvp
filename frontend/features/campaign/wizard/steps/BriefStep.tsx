@@ -68,7 +68,7 @@ export function BriefStep() {
         visual_style: style,
       });
       track("style_selected", { style });
-      router.push("/create/directions");
+      router.push("/create/visual");
     } catch (caught) {
       toast(displayError(caught), "error");
     } finally {

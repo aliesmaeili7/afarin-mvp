@@ -5,10 +5,13 @@ import type {
   CampaignAsset,
   CampaignConcept,
   CampaignCopy,
+  EducationalPost,
+  EducationalTheme,
   Product,
   ProductImage,
   Profile,
   Session,
+  VisualCandidate,
 } from "@/types/domain";
 
 /**
@@ -21,7 +24,7 @@ import type {
  */
 
 const STORAGE_KEY = "afarin.mock_db";
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 5;
 
 export interface MockGenerationJob {
   id: string;
@@ -32,6 +35,15 @@ export interface MockGenerationJob {
   completed_at: string | null;
   error_message: string | null;
 }
+
+/**
+ * Educational rows carry their owner because educational content is
+ * authenticated-only: there is no anonymous session to fall back on, and a
+ * second account signing in on the same browser must not see the first one's
+ * posts or themes.
+ */
+export type MockEducationalPost = EducationalPost & { user_id: string };
+export type MockEducationalTheme = EducationalTheme & { user_id: string };
 
 export interface MockDbShape {
   version: number;
@@ -48,7 +60,10 @@ export interface MockDbShape {
   campaign_concepts: CampaignConcept[];
   campaign_copy: CampaignCopy[];
   campaign_assets: CampaignAsset[];
+  visual_candidates: (VisualCandidate & { campaign_id: string })[];
   generation_jobs: MockGenerationJob[];
+  educational_posts: MockEducationalPost[];
+  educational_themes: MockEducationalTheme[];
   /** How many times concepts have been requested per campaign. */
   concept_rounds: Record<string, number>;
   /** Email → password. Missing for OTP-only accounts until they set one. */
@@ -83,7 +98,10 @@ function emptyDb(): MockDbShape {
     campaign_concepts: [],
     campaign_copy: [],
     campaign_assets: [],
+    visual_candidates: [],
     generation_jobs: [],
+    educational_posts: [],
+    educational_themes: [],
     concept_rounds: {},
     account_passwords: {},
     pending_password_reset: null,

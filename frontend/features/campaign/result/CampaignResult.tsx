@@ -10,10 +10,11 @@ import { SiteHeader } from "@/components/layout/SiteHeader";
 import { PlusIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
 import { useDisplayError, useI18n } from "@/lib/i18n/PreferencesProvider";
-import type { CampaignAsset, CampaignDetail } from "@/types/domain";
+import type { CampaignAsset, CampaignCopy, CampaignDetail } from "@/types/domain";
 import { BrandKitPrompt } from "@/features/brand/BrandKitPrompt";
 import { beginNewCampaign } from "@/features/campaign/wizard/useWizardStore";
 import { AssetSection } from "./AssetSection";
+import { ConceptSwitcher } from "./CandidatePicker";
 import { CaptionsSection } from "./CaptionsSection";
 import { CarouselSection } from "./CarouselSection";
 import { ReelSection } from "./ReelSection";
@@ -65,17 +66,15 @@ export function CampaignResult({
           ) : null}
         </header>
 
+        <ConceptSwitcher detail={detail} onChanged={onChanged} />
+
         {feed ? (
           <AssetSection
             asset={feed}
             campaignId={detail.campaign.id}
             title={t("result.feedTitle")}
             description={t("result.feedDescription")}
-            allowRegenerate={
-              detail.campaign.visual_creation_mode !== "creative" &&
-              (feed.metadata_json as { product_source?: string }).product_source !==
-                "generated"
-            }
+            allowRegenerate={false}
             onChanged={onChanged}
           />
         ) : null}
@@ -87,11 +86,7 @@ export function CampaignResult({
             title={t("result.storyTitle")}
             description={t("result.storyDescription")}
             previewClassName="mx-auto w-full max-w-[16rem] p-4"
-            allowRegenerate={
-              detail.campaign.visual_creation_mode !== "creative" &&
-              (story.metadata_json as { product_source?: string }).product_source !==
-                "generated"
-            }
+            allowRegenerate={false}
             onChanged={onChanged}
           />
         ) : null}
@@ -100,11 +95,11 @@ export function CampaignResult({
 
         <CaptionsSection
           campaignId={detail.campaign.id}
-          copies={detail.copies}
+          copies={copiesForFocusedSlot(detail)}
           onChanged={onChanged}
         />
 
-        <StoryIdeasSection copies={detail.copies} />
+        <StoryIdeasSection copies={copiesForFocusedSlot(detail)} />
 
         <ReelSection copies={detail.copies} />
 
@@ -139,4 +134,14 @@ export function CampaignResult({
       </Container>
     </div>
   );
+}
+
+function copiesForFocusedSlot(detail: CampaignDetail): CampaignCopy[] {
+  const slot = (detail.assets.find((asset) => asset.asset_type === "feed_final")
+    ?.metadata_json as { concept_slot?: number } | undefined)?.concept_slot;
+  if (!slot) return detail.copies;
+  const slotted = detail.copies.filter(
+    (copy) => (copy.metadata_json as { slot?: number } | undefined)?.slot === slot,
+  );
+  return slotted.length > 0 ? slotted : detail.copies;
 }

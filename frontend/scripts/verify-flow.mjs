@@ -68,27 +68,14 @@ await page.getByText("مطمئن نیستم — خودت پیشنهاد بده")
 await page.getByRole("button", { name: /لوکس/ }).click();
 await shot("04-brief");
 
-console.log("\n5. wizard step 3 — directions");
+console.log("\n5. wizard step 3 — visual");
 await page.getByRole("button", { name: "ادامه" }).click();
-await page.waitForURL("**/create/directions");
-await page
-  .getByRole("button", { name: /واقعی و واضح|هدیه لوکس|ایده/ })
-  .first()
-  .waitFor({ timeout: 15000 });
+await page.waitForURL("**/create/visual");
+await page.getByRole("button", { name: /بذار آفرین انتخاب کنه/ }).waitFor({ timeout: 15000 });
 await page.waitForTimeout(600);
-await shot("05-directions");
-const conceptTitles = await page.locator("h3, [class*='font-bold']").allInnerTexts();
-log(`directions: ${conceptTitles.slice(0, 6).join(" | ")}`);
+await shot("05-visual");
 
-console.log("\n6. regenerate directions");
-await page.getByRole("button", { name: "سه پیشنهاد جدید بده" }).click();
-await page.waitForTimeout(3000);
-
-console.log("\n7. pick a direction and accurate mode");
-await page.getByRole("button", { pressed: false }).nth(0).click();
-await page.waitForTimeout(400);
-await page.getByRole("button", { name: /دقیق/ }).click();
-await page.waitForTimeout(400);
+console.log("\n6. generate campaign");
 await page.getByRole("button", { name: "ساخت کمپین" }).click();
 
 console.log("\n8. signup gate");

@@ -1,17 +1,17 @@
 """
 The generation progress model (spec §12).
 
-A faithful port of frontend/lib/api/mock/generation.ts. Progress is derived from
-the job's `started_at` rather than held in a timer, so a refresh, a backgrounded
-tab or a reopened browser all resume at the correct stage — and generation
-survives the seller closing the page, which the spec requires.
-
-Phase 2 runs no providers, so the elapsed time is simulated. Keeping the same
-total as Phase 1 means the progress screen behaves identically; setting
-GENERATION_SIMULATED_MS to 0 makes it instant for tests.
+Stages match the Unified Creative Agent path: one idea pass, then Seedream
+images, then package assembly. For stub/theatre runs, progress is derived from
+elapsed time. Live image jobs persist the current stage on the job row so the
+status poller can advance while Seedream is still running.
 """
 
 from dataclasses import dataclass
+
+from sqlalchemy.orm.attributes import flag_modified
+
+from app.db.models import GenerationJob
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,19 +19,17 @@ class StageDefinition:
     stage: str
     weight: float
     message_fa: str
+    percent: int
 
 
-# Weights, not durations, so the total is configurable without reshaping the
-# relative length of each stage.
 STAGES: tuple[StageDefinition, ...] = (
-    StageDefinition("planning", 2600, "در حال آماده کردن ایده تبلیغ…"),
-    StageDefinition("visual", 4800, "در حال ساخت تصویر محصول…"),
-    StageDefinition("captions", 2800, "در حال نوشتن کپشن‌ها…"),
-    StageDefinition("story", 2000, "در حال آماده کردن استوری…"),
-    StageDefinition("finalizing", 1600, "تقریباً آماده‌ست…"),
+    StageDefinition("planning", 2600, "در حال طراحی تبلیغ…", 20),
+    StageDefinition("visual", 8000, "در حال ساخت تصویر…", 55),
+    StageDefinition("finalizing", 1600, "تقریباً آماده‌ست…", 90),
 )
 
 TOTAL_WEIGHT = sum(stage.weight for stage in STAGES)
+_BY_STAGE = {item.stage: item for item in STAGES}
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,3 +60,27 @@ def compute_progress(elapsed_ms: float, total_ms: int) -> Progress:
         consumed += duration
 
     return Progress(last.stage, len(STAGES) - 1, 99, last.message_fa, False)
+
+
+def progress_for_stage(stage: str | None) -> Progress | None:
+    if not stage:
+        return None
+    match = _BY_STAGE.get(stage)
+    if match is None:
+        return None
+    index = STAGES.index(match)
+    return Progress(match.stage, index, match.percent, match.message_fa, False)
+
+
+def job_stage(job: GenerationJob | None) -> str | None:
+    if job is None:
+        return None
+    value = (job.input_json or {}).get("stage")
+    return value if isinstance(value, str) else None
+
+
+def set_job_stage(job: GenerationJob, stage: str) -> None:
+    payload = dict(job.input_json or {})
+    payload["stage"] = stage
+    job.input_json = payload
+    flag_modified(job, "input_json")

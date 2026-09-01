@@ -9,6 +9,7 @@ from app.db.models.campaign import (
     CampaignVisualCandidate,
     GenerationJob,
 )
+from app.db.models.education import EducationalPost, EducationalTheme
 from app.db.models.identity import AnonymousSession, Profile
 from app.db.models.product import Product, ProductImage
 
@@ -27,6 +28,8 @@ __all__ = [
     "CampaignCopy",
     "CampaignVisualAttempt",
     "CampaignVisualCandidate",
+    "EducationalPost",
+    "EducationalTheme",
     "GenerationJob",
     "Product",
     "ProductImage",
@@ -57,4 +60,6 @@ APP_TABLES: tuple[str, ...] = (
     "generation_jobs",
     "campaign_visual_attempts",
     "campaign_visual_candidates",
+    "educational_themes",
+    "educational_posts",
 )

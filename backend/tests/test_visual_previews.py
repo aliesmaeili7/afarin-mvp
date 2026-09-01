@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from app.content.visual_catalog import preview_prompt_of, public_catalog, styles, templates
+from app.content.visual_catalog import preview_prompt_of, public_catalog
 from app.providers.image.base import ImageRequest
 from app.providers.image.stub import StubImageProvider
 from scripts.generate_visual_previews import (
@@ -19,6 +19,8 @@ from scripts.generate_visual_previews import (
     load_reference,
     main,
     preview_jobs,
+    styles,
+    templates,
     to_preview_jpeg,
     write_catalog,
     write_placeholders,
@@ -99,7 +101,7 @@ def test_catalog_and_placeholders_write_under_out_root(tmp_path: Path) -> None:
     write_placeholders(tmp_path)
     catalog = public_catalog()
     written = (tmp_path / "catalog.json").read_text(encoding="utf-8")
-    assert catalog["styles"][0]["id"] in written
+    assert catalog["templates"][0]["id"] in written
     assert "prompt_atoms" not in written
     anime = Image.open(tmp_path / "styles" / "anime.jpg")
     assert anime.size == (640, 800)

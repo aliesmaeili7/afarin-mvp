@@ -41,7 +41,12 @@
       "candidates": 1
     },
     {
-      "case": "cosmetics_01",
+      "case": "sweatshirt_01",
+      "mode": "director",
+      "candidates": 1
+    },
+    {
+      "case": "shoes_01",
       "mode": "director",
       "candidates": 1
     }

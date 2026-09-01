@@ -15,6 +15,7 @@ import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import type { TranslationKey } from "@/lib/i18n/t";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { BeforeAfter } from "./BeforeAfter";
+import { PathChooser } from "./PathChooser";
 
 const CATEGORY_KEYS: Record<string, TranslationKey> = {
   saffron: "landing.categoryFood",
@@ -81,11 +82,16 @@ export function LandingPage() {
                       fullWidth
                       iconEnd={<ArrowForwardIcon width={18} height={18} />}
                     >
-                      {t("landing.cta")}
+                      {t("landing.pathAdCta")}
                     </Button>
                   </Link>
-                  <span className="text-xs text-muted">{t("landing.noCard")}</span>
+                  <Link href="/create/education" className="w-full sm:w-auto">
+                    <Button size="lg" variant="outline" fullWidth>
+                      {t("landing.pathEduCta")}
+                    </Button>
+                  </Link>
                 </div>
+                <p className="mt-3 text-xs text-muted">{t("landing.noCard")}</p>
               </div>
 
               <div className="animate-fade-up">
@@ -97,6 +103,8 @@ export function LandingPage() {
             </div>
           </Container>
         </section>
+
+        <PathChooser />
 
         <section className="py-12 sm:py-16">
           <Container size="lg">
@@ -169,11 +177,18 @@ export function LandingPage() {
               <p className="mx-auto mt-3 max-w-md text-sm leading-8 text-white/85">
                 {t("landing.ctaBody")}
               </p>
-              <Link href="/create" className="mt-6 inline-block">
-                <Button size="lg" variant="outline" className="bg-white text-ink-900">
-                  {t("landing.start")}
-                </Button>
-              </Link>
+              <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <Link href="/create">
+                  <Button size="lg" variant="outline" className="bg-white text-ink-900">
+                    {t("landing.pathAdCta")}
+                  </Button>
+                </Link>
+                <Link href="/create/education">
+                  <Button size="lg" variant="outline" className="bg-white text-ink-900">
+                    {t("landing.pathEduCta")}
+                  </Button>
+                </Link>
+              </div>
             </div>
           </Container>
         </section>

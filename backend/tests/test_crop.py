@@ -143,7 +143,7 @@ async def test_cutout_uses_crop_not_full_screenshot(
         headers=headers,
         files=[("files", ("ig.jpg", raw, "image/jpeg"))],
     )
-    original = uploaded.json()[0]["storage_path"]
+    assert uploaded.status_code == 200
     await client.post(
         f"/api/campaigns/{campaign_id}/product",
         headers=headers,
@@ -154,24 +154,14 @@ async def test_cutout_uses_crop_not_full_screenshot(
         headers=headers,
         json={"objective": "promotion", "visual_style": "friendly"},
     )
-    concepts = await client.post(
-        f"/api/campaigns/{campaign_id}/concepts/generate", headers=headers
-    )
-    await client.post(
-        f"/api/campaigns/{campaign_id}/concepts/{concepts.json()[1]['id']}/select",
-        headers=headers,
-    )
     status = await _generate(client, headers, campaign_id)
     assert status.json()["status"] == "ready"
     detail = await client.get(f"/api/campaigns/{campaign_id}", headers=headers)
     feed = next(
         row for row in detail.json()["assets"] if row["asset_type"] == "feed_final"
     )
-    product_path = feed["metadata_json"]["product_image_path"]
-    assert product_path != original
-    assert "cutouts/" in product_path
-    assert "/products/" not in product_path
-    assert feed["metadata_json"]["product_source"] == "cutout"
+    assert feed["metadata_json"]["product_source"] == "generated"
+    assert feed["metadata_json"].get("product_image_path") in (None, "")
 
 
 async def test_missing_rembg_uses_crop_not_screenshot(

@@ -10,7 +10,7 @@ export interface WizardStep {
 export const WIZARD_STEPS: readonly WizardStep[] = [
   { index: 1, path: "/create", titleKey: "wizard.photo" },
   { index: 2, path: "/create/brief", titleKey: "wizard.brief" },
-  { index: 3, path: "/create/directions", titleKey: "wizard.directions" },
+  { index: 3, path: "/create/visual", titleKey: "wizard.visual" },
 ];
 
 export const WIZARD_TOTAL = WIZARD_STEPS.length;

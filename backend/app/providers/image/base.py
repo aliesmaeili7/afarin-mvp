@@ -11,6 +11,9 @@ class ImageRequest:
     seed: int | None = None
     references: tuple[bytes, ...] = ()
     n: int = 1
+    #: When set, the OpenRouter client uses this instead of IMAGE_MODEL.
+    #: Educational generation passes EDUCATIONAL_IMAGE_MODEL here.
+    model: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

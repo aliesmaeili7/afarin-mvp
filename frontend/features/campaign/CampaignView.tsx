@@ -15,7 +15,6 @@ import { beginNewCampaign, resumeCampaign } from "@/features/campaign/wizard/use
 import { AssetExportProvider } from "./ad-renderer/AssetExportProvider";
 import { GenerationProgress } from "./generation/GenerationProgress";
 import { CampaignResult } from "./result/CampaignResult";
-import { CandidatePicker } from "./result/CandidatePicker";
 
 /**
  * `/campaigns/{id}` renders progress or results depending on campaign status,
@@ -123,10 +122,6 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
         </Container>
       </div>
     );
-  }
-
-  if (status === "candidates_ready") {
-    return <CandidatePicker detail={data} onChanged={handleFinished} />;
   }
 
   if (

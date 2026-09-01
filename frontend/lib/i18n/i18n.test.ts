@@ -14,6 +14,7 @@ import { DEFAULT_LOCALE } from "./types";
 import {
   catalogDescription,
   catalogLabel,
+  VISUAL_CATALOG_IDS,
   VISUAL_STYLE_IDS,
   VISUAL_TEMPLATE_IDS,
 } from "./catalog";
@@ -56,6 +57,13 @@ describe("dictionaries", () => {
     expect(t("en", "result.generateThree")).toBe("Generate 3 new versions");
   });
 
+  it("translates educational chrome", () => {
+    expect(t("fa", "education.generate")).toBe("ساخت پست");
+    expect(t("en", "education.generate")).toBe("Create post");
+    expect(t("fa", "nav.newEducation")).toBe("پست آموزشی");
+    expect(t("fa", "landing.pathEdu")).toBe("آموزشی");
+  });
+
   it("interpolates variables", () => {
     expect(t("en", "wizard.conceptBadge", { n: 2 })).toBe("Idea 2");
     expect(t("fa", "wizard.conceptBadge", { n: 2 })).toBe("ایده 2");
@@ -63,20 +71,18 @@ describe("dictionaries", () => {
 });
 
 describe("visual catalog labels", () => {
-  it("covers every backend style and template id", () => {
+  it("covers every backend template id", () => {
     const catalogPath = join(
       dirname(fileURLToPath(import.meta.url)),
       "../../../backend/app/content/visual_catalog.json",
     );
     const catalog = JSON.parse(readFileSync(catalogPath, "utf8")) as {
-      styles: { id: string }[];
       templates: { id: string }[];
     };
-    expect(VISUAL_STYLE_IDS).toEqual(catalog.styles.map((item) => item.id));
-    expect(VISUAL_TEMPLATE_IDS).toEqual(catalog.templates.map((item) => item.id));
+    expect([...VISUAL_CATALOG_IDS]).toEqual(catalog.templates.map((item) => item.id));
   });
 
-  it("translates every style and template id", () => {
+  it("translates every catalog id", () => {
     for (const id of VISUAL_STYLE_IDS) {
       expect(catalogLabel("en", "styles", id, "x")).not.toBe("x");
       expect(catalogLabel("fa", "styles", id, "x")).not.toBe("x");
@@ -159,11 +165,10 @@ describe("API error display", () => {
   });
 
   it("localizes generation stages by id, not by generated campaign text", () => {
-    expect(generationStageMessage("en", "captions", "در حال نوشتن کپشن‌ها…")).toBe(
-      "Writing captions…",
+    expect(generationStageMessage("en", "planning", "در حال طراحی تبلیغ…")).toBe(
+      "Designing the ad…",
     );
-    expect(generationStageMessage("fa", "visual", null)).toBe(
-      "در حال ساخت تصویر محصول…",
-    );
+    expect(generationStageMessage("en", "finalizing", null)).toBe("Almost ready…");
+    expect(generationStageMessage("fa", "visual", null)).toBe("در حال ساخت تصویر…");
   });
 });

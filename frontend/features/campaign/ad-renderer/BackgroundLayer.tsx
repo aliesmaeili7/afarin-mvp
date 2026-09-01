@@ -6,12 +6,21 @@ import type { BackgroundDefinition } from "@/lib/content/backgrounds";
  * Everything is plain CSS/SVG so it survives the html-to-image export and
  * contains no text — the Persian headline is always a separate layer (§5.6).
  */
+const SCRIM = "linear-gradient(to top, rgba(0,0,0,0.22), rgba(0,0,0,0) 45%)";
+
 export function BackgroundLayer({
   background,
   sceneUrl,
+  scrim = true,
 }: {
   background: BackgroundDefinition;
   sceneUrl?: string | null;
+  /**
+   * The bottom darkening that keeps white ad type legible over a photo.
+   * Educational posts switch it off: the illustration is the lesson, and the
+   * text sits in a clean area the agent reserved rather than over the artwork.
+   */
+  scrim?: boolean;
 }) {
   if (sceneUrl) {
     return (
@@ -22,13 +31,9 @@ export function BackgroundLayer({
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
         />
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(to top, rgba(0,0,0,0.22), rgba(0,0,0,0) 45%)",
-          }}
-        />
+        {scrim ? (
+          <div className="absolute inset-0" style={{ background: SCRIM }} />
+        ) : null}
       </div>
     );
   }
@@ -40,13 +45,9 @@ export function BackgroundLayer({
       aria-hidden="true"
     >
       <Motif background={background} />
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(to top, rgba(0,0,0,0.22), rgba(0,0,0,0) 45%)",
-        }}
-      />
+      {scrim ? (
+        <div className="absolute inset-0" style={{ background: SCRIM }} />
+      ) : null}
     </div>
   );
 }

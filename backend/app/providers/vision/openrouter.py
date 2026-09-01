@@ -8,56 +8,40 @@ from typing import Any
 from PIL import Image
 from pydantic import ValidationError
 
-from app.content.visual_catalog import compatibility, style_ids, template_ids
+from app.content.visual_catalog import template_ids
 from app.core.config import Settings
 from app.core.errors import generation_failed
 from app.providers.llm.base import LlmUsage
 from app.providers.llm.openrouter.client import LlmClient, parse_json_object
 from app.providers.llm.openrouter.schemas import strict_schema
 from app.providers.vision.base import (
-    ArchitectCandidate,
-    ArchitectColorAndMaterial,
-    ArchitectComposition,
-    ArchitectContext,
-    ArchitectLighting,
-    ArchitectOutput,
-    ArchitectProduct,
-    ArchitectScene,
-    CampaignDirection,
+    CampaignStrategy,
     CandidateQuality,
-    CropBox,
-    ExistingTextAndGraphics,
-    IdentityFeature,
-    InputQuality,
+    ConceptCopy,
+    ConceptIdentity,
+    CreativeAgentContext,
+    CreativeAgentResult,
+    CreativeImage,
     LlmCallTrace,
-    PlannerContext,
-    PlannerResult,
-    ProductPlacement,
-    PromptArchitectResult,
+    QualityContext,
     QualityReport,
-    ReferenceAnalysis,
-    TypographySafeArea,
+    TextSafeArea,
+    VisualPlan,
     llm_image_ref,
     llm_usage_dict,
 )
 from app.providers.vision.prompts import (
-    ARCHITECT_SYSTEM,
     QUALITY_SYSTEM,
-    architect_user_prompt,
-    plan_user_prompt,
-    planner_system,
+    creative_agent_system,
+    creative_user_prompt,
     quality_user_prompt,
 )
-from app.providers.vision.schemas import (
-    LlmPlannerResult,
-    LlmPromptArchitectResult,
-    LlmQualityReport,
-)
+from app.providers.vision.schemas import LlmCreativeAgentResult, LlmQualityReport
 
 logger = logging.getLogger(__name__)
 
 
-class OpenRouterVisualPlanner:
+class OpenRouterCreativeAgent:
     name = "openrouter"
 
     def __init__(self, client: LlmClient, settings: Settings) -> None:
@@ -67,114 +51,32 @@ class OpenRouterVisualPlanner:
 
     @property
     def model(self) -> str | None:
-        return self._settings.planner_model
+        return self._settings.creative_agent_model_resolved
 
-    async def plan_directions(
+    async def create_campaign(
         self,
         image: bytes,
-        context: PlannerContext,
+        context: CreativeAgentContext,
         *,
-        original: bytes | None = None,
-    ) -> PlannerResult:
-        frames = [_for_vision(image)]
-        labels = ["approved_crop"]
-        user = plan_user_prompt(context)
-        if original and original != image:
-            frames.append(_for_vision(original))
-            labels.append("original_upload")
-            user = (
-                "Image 1 = APPROVED CROP. Image 2 = ORIGINAL UPLOAD (may contain UI).\n"
-                + user
-            )
+        correction: str | None = None,
+    ) -> CreativeAgentResult:
         payload, trace = await self._complete(
-            schema_name="creative_director",
-            schema=strict_schema(LlmPlannerResult),
-            model=LlmPlannerResult,
-            system=planner_system(),
-            user=user,
-            images=tuple(frames),
-            image_labels=labels,
+            schema_name="creative_agent",
+            schema=strict_schema(LlmCreativeAgentResult),
+            model=LlmCreativeAgentResult,
+            system=creative_agent_system(context.requested_image_count),
+            user=creative_user_prompt(context, correction=correction),
+            images=(_for_vision(image),),
+            image_labels=["cleaned_reference"],
+            llm_model=self._settings.creative_agent_model_resolved,
         )
-        quality = InputQuality(
-            status=payload.input_quality.status,
-            reasons=tuple(payload.input_quality.reasons),
-        )
-        analysis = _analysis_from(payload.reference_analysis)
-        if (
-            analysis.reference_strategy == "needs_user_action"
-            or analysis.brief_image_mismatch
-        ):
-            quality = InputQuality(
-                "needs_fix",
-                quality.reasons or analysis.blocking_reasons or ("needs_user_action",),
-            )
-        directions = tuple(
-            CampaignDirection(
-                title_fa=item.title_fa.strip(),
-                description_fa=item.description_fa.strip(),
-                angle=item.angle.strip(),
-                headline_fa=item.headline_fa.strip(),
-                visual_direction=item.visual_direction.strip(),
-                style_id=_known_style(item.style_id),
-                template_id=_known_template(item.template_id),
-                identity_constraints=tuple(
-                    row.strip() for row in item.identity_constraints if row.strip()
-                ),
-                warning_fa=item.warning_fa.strip(),
-                image_direction=item.image_direction.strip(),
-                background_prompt=_ensure_no_text(item.background_prompt.strip()),
-                text_safe_area=item.text_safe_area.strip() or "bottom",
-                compatibility=compatibility(
-                    _known_style(item.style_id), _known_template(item.template_id)
-                ),
-            )
-            for item in payload.directions
-        )
-        return PlannerResult(
-            product_visual_analysis=payload.product_visual_analysis.strip()
-            or "visible product",
-            product_type=payload.product_type.strip() or "product",
-            visual_identity=tuple(
-                row.strip() for row in payload.visual_identity if row.strip()
-            ),
-            identity_constraints=tuple(
-                row.strip() for row in payload.identity_constraints if row.strip()
-            ),
-            unsuitable_style_ids=tuple(
-                row for row in payload.unsuitable_style_ids if row in style_ids()
-            ),
-            unsuitable_template_ids=tuple(
-                row for row in payload.unsuitable_template_ids if row in template_ids()
-            ),
-            input_quality=quality,
-            directions=directions,
-            forbidden_claims=tuple(
-                row.strip() for row in payload.forbidden_claims if row.strip()
-            ),
-            reference_analysis=analysis,
-            usage=self._usage,
-            llm_trace=trace,
-        )
-
-    async def check_input_quality(
-        self, image: bytes, context: PlannerContext
-    ) -> InputQuality:
-        del context
-        if not image:
-            return InputQuality("needs_fix", ("empty",))
-        try:
-            frame = Image.open(io.BytesIO(image))
-        except Exception:
-            return InputQuality("needs_fix", ("unreadable",))
-        if min(frame.size) < 256:
-            return InputQuality("needs_fix", ("too small",))
-        return InputQuality("ok")
+        return _result_from(payload, self._usage, trace)
 
     async def score_candidates(
         self,
         reference: bytes,
         candidates: tuple[bytes, ...],
-        context: PlannerContext,
+        context: QualityContext,
     ) -> QualityReport:
         frames = [_for_vision(reference), *(_for_vision(frame) for frame in candidates)]
         labels = [
@@ -245,7 +147,7 @@ class OpenRouterVisualPlanner:
         last_error: Exception | None = None
         attempts = max(1, self._settings.llm_max_retries + 1)
         chosen_model = (
-            llm_model or self._settings.planner_model or self._settings.llm_model
+            llm_model or self._settings.creative_agent_model_resolved
         )
         labels = list(image_labels) or [
             f"image_{index + 1}" for index in range(len(images))
@@ -266,7 +168,14 @@ class OpenRouterVisualPlanner:
                 payload = model.model_validate(parse_json_object(result.content))
             except (ValueError, ValidationError) as error:
                 last_error = error
-                logger.warning("visual planner json invalid: %s", error)
+                snippet = result.content or ""
+                logger.warning(
+                    "creative agent json invalid: %s chars=%s head=%r tail=%r",
+                    error,
+                    len(snippet),
+                    snippet[:160],
+                    snippet[-160:] if snippet else "",
+                )
                 continue
             trace = LlmCallTrace(
                 name=schema_name,
@@ -287,177 +196,72 @@ class OpenRouterVisualPlanner:
         raise last_error or generation_failed()
 
 
-class OpenRouterPromptArchitect:
-    name = "openrouter"
-
-    def __init__(self, client: LlmClient, settings: Settings) -> None:
-        self._planner = OpenRouterVisualPlanner(client, settings)
-        self._settings = settings
-
-    @property
-    def model(self) -> str | None:
-        return self._settings.architect_model
-
-    async def plan_candidates(
-        self,
-        cleaned: bytes,
-        context: ArchitectContext,
-        *,
-        original: bytes | None = None,
-        correction: str | None = None,
-    ) -> PromptArchitectResult:
-        frames = [_for_vision(cleaned)]
-        labels = ["cleaned_reference"]
-        user = (
-            "Image 1 = CLEANED reference (this is what the image model will see).\n"
-            + architect_user_prompt(context, correction=correction)
-        )
-        if original and original != cleaned:
-            frames.append(_for_vision(original))
-            labels.append("original_dirty")
-            user = (
-                "Image 1 = CLEANED reference (image model input). "
-                "Image 2 = DIRTY/ORIGINAL (context only; do not reproduce UI).\n"
-                + architect_user_prompt(context, correction=correction)
-            )
-        payload, trace = await self._planner._complete(
-            schema_name="prompt_architect",
-            schema=strict_schema(LlmPromptArchitectResult),
-            model=LlmPromptArchitectResult,
-            system=ARCHITECT_SYSTEM,
-            user=user,
-            images=tuple(frames),
-            llm_model=self._settings.architect_model,
-            image_labels=labels,
-        )
-        return _architect_from(payload, self._planner._usage, trace)
-
-
-def _architect_from(
+def _result_from(
     payload: Any,
     usage: LlmUsage | None,
-    trace: LlmCallTrace | None = None,
-) -> PromptArchitectResult:
-    seen_slots: set[int] = set()
-    seen_intent: set[str] = set()
-    rows: list[ArchitectCandidate] = []
-    for item in payload.candidates:
-        if item.slot in seen_slots or item.intention in seen_intent:
-            continue
-        seen_slots.add(item.slot)
-        seen_intent.add(item.intention)
-        pose = item.composition.human_or_pose.strip()
-        graphics = item.product.existing_text_and_graphics
-        rows.append(
-            ArchitectCandidate(
-                slot=int(item.slot),
-                intention=item.intention,
-                creative_intent=item.creative_intent.strip(),
-                product=ArchitectProduct(
-                    role_in_scene=item.product.role_in_scene.strip(),
-                    identity_priority=tuple(
-                        IdentityFeature(row.feature.strip(), row.importance)
-                        for row in item.product.identity_priority
-                        if row.feature.strip()
-                    ),
-                    existing_text_and_graphics=ExistingTextAndGraphics(
-                        preserve=bool(graphics.preserve),
-                        instructions=str(graphics.instructions or "").strip(),
-                    ),
-                ),
-                scene=ArchitectScene(
-                    environment=item.scene.environment.strip(),
-                    story_or_context=item.scene.story_or_context.strip(),
-                    foreground=item.scene.foreground.strip(),
-                    background=item.scene.background.strip(),
-                    props=tuple(row.strip() for row in item.scene.props if row.strip()),
-                ),
-                composition=ArchitectComposition(
-                    camera=item.composition.camera.strip(),
-                    lens_feel=item.composition.lens_feel.strip(),
-                    product_scale=item.composition.product_scale.strip(),
-                    product_position=item.composition.product_position.strip(),
+    trace: LlmCallTrace | None,
+) -> CreativeAgentResult:
+    known = set(template_ids())
+    images: list[CreativeImage] = []
+    for item in payload.images:
+        template_id = item.visual_plan.template_id
+        if template_id and template_id not in known:
+            template_id = None
+        secondary = (item.copy.on_image_secondary or "").strip() or None
+        pose = (item.visual_plan.human_or_pose or "").strip() or None
+        images.append(
+            CreativeImage(
+                concept_title=item.concept_title.strip(),
+                creative_angle=item.creative_angle.strip(),
+                visual_plan=VisualPlan(
+                    template_id=template_id,
+                    scene=item.visual_plan.scene.strip(),
+                    composition=item.visual_plan.composition.strip(),
+                    camera=item.visual_plan.camera.strip(),
+                    lighting=item.visual_plan.lighting.strip(),
+                    palette=item.visual_plan.palette.strip(),
+                    product_role=item.visual_plan.product_role.strip(),
                     human_or_pose=pose,
-                    depth=item.composition.depth.strip(),
+                    text_safe_area=TextSafeArea(
+                        position=item.visual_plan.text_safe_area.position.strip(),
+                        description=item.visual_plan.text_safe_area.description.strip(),
+                    ),
                 ),
-                lighting=ArchitectLighting(
-                    direction=item.lighting.direction.strip(),
-                    quality=item.lighting.quality.strip(),
-                    mood=item.lighting.mood.strip(),
+                identity=ConceptIdentity(
+                    must_preserve=tuple(
+                        row.strip()
+                        for row in item.identity.must_preserve
+                        if row.strip()
+                    ),
+                    must_not_generate=tuple(
+                        row.strip()
+                        for row in item.identity.must_not_generate
+                        if row.strip()
+                    ),
                 ),
-                color_and_material=ArchitectColorAndMaterial(
-                    palette=item.color_and_material.palette.strip(),
-                    material_treatment=item.color_and_material.material_treatment.strip(),
-                ),
-                typography_safe_area=TypographySafeArea(
-                    position=item.typography_safe_area.position.strip(),
-                    description=item.typography_safe_area.description.strip(),
-                ),
-                must_preserve=tuple(
-                    row.strip() for row in item.must_preserve if row.strip()
-                ),
-                must_not_generate=tuple(
-                    row.strip() for row in item.must_not_generate if row.strip()
-                ),
-                render_strategy=item.render_strategy,
                 final_prompt=item.final_prompt.strip(),
-                has_product_placement=bool(item.has_product_placement),
-                product_placement=_placement_from(item.product_placement),
-                output=ArchitectOutput(
-                    aspect_ratio=item.output.aspect_ratio.strip(),
-                    format=item.output.format.strip(),
+                copy=ConceptCopy(
+                    on_image_headline=item.copy.on_image_headline.strip(),
+                    on_image_secondary=secondary,
+                    feed_caption=item.copy.feed_caption.strip(),
+                    story_text=item.copy.story_text.strip(),
+                    cta=item.copy.cta.strip(),
+                    hashtags=tuple(
+                        tag.strip() for tag in item.copy.hashtags if tag.strip()
+                    ),
                 ),
             )
         )
-    if len(rows) != 3:
-        raise generation_failed()
-    return PromptArchitectResult(
-        reference_summary=payload.reference_summary.strip(),
-        candidates=tuple(sorted(rows, key=lambda row: row.slot)),
+    return CreativeAgentResult(
+        product_summary=payload.product_summary.strip(),
+        campaign_strategy=CampaignStrategy(
+            core_message=payload.campaign_strategy.core_message.strip(),
+            audience_takeaway=payload.campaign_strategy.audience_takeaway.strip(),
+            tone=payload.campaign_strategy.tone.strip(),
+        ),
+        images=tuple(images),
         usage=usage,
         llm_trace=trace,
-    )
-
-
-def _placement_from(payload: Any) -> ProductPlacement:
-    return ProductPlacement(
-        x=float(payload.x),
-        y=float(payload.y),
-        width=float(payload.width),
-        rotation_degrees=float(payload.rotation_degrees),
-        contact_surface=str(payload.contact_surface or "").strip(),
-        shadow_direction=str(payload.shadow_direction or "").strip() or "down",
-        shadow_softness=str(payload.shadow_softness or "").strip() or "soft",
-    )
-
-
-def _analysis_from(payload: Any) -> ReferenceAnalysis:
-    crop = None
-    if payload.has_recommended_crop:
-        crop = CropBox(
-            x=float(payload.recommended_crop.x),
-            y=float(payload.recommended_crop.y),
-            width=float(payload.recommended_crop.width),
-            height=float(payload.recommended_crop.height),
-        )
-    return ReferenceAnalysis(
-        cleanliness=payload.cleanliness,
-        product_visibility=payload.product_visibility,
-        screenshot_ui_present=payload.screenshot_ui_present,
-        watermark_present=payload.watermark_present,
-        multiple_products=payload.multiple_products,
-        person_present=payload.person_present,
-        useful_context_present=payload.useful_context_present,
-        contamination_description=tuple(
-            row.strip() for row in payload.contamination_description if row.strip()
-        ),
-        reference_strategy=payload.reference_strategy,
-        recommended_crop=crop,
-        preserve_context_reason=payload.preserve_context_reason.strip(),
-        blocking_reasons=tuple(
-            row.strip() for row in payload.blocking_reasons if row.strip()
-        ),
-        brief_image_mismatch=payload.brief_image_mismatch,
     )
 
 
@@ -476,25 +280,10 @@ def _hard_fail(item: Any) -> bool:
     )
 
 
-def _known_style(value: str) -> str:
-    return value if value in style_ids() else "photoreal_commercial"
-
-
-def _known_template(value: str) -> str:
-    return value if value in template_ids() else "hero_product"
-
-
-def _ensure_no_text(prompt: str) -> str:
-    if "no text" in prompt.lower():
-        return prompt
-    return f"{prompt.rstrip(',')}, no text"
-
-
 _VISION_EDGE = 1024
 
 
 def _for_vision(content: bytes) -> bytes:
-    """Shrink the crop before the multimodal planner call."""
     try:
         image = Image.open(io.BytesIO(content)).convert("RGB")
     except Exception:

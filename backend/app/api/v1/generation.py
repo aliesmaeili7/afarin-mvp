@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,23 +11,27 @@ from app.core import messages
 from app.core.config import Settings
 from app.core.deps import PrincipalDep, SessionDep, SettingsDep
 from app.core.enums import VISUAL_FINAL_TYPES
-from app.core.errors import ApiError, invalid
-from app.db.models import Campaign, CampaignCopy, GenerationJob
+from app.core.errors import ApiError, generation_failed, invalid
+from app.db.models import Campaign, GenerationJob
+from app.db.session import get_sessionmaker
 from app.providers.image import get_image_provider
 from app.schemas.domain import CampaignStatusOut
 from app.services.campaigns import creative as creative_visuals
 from app.services.campaigns import jobs as job_records
-from app.services.campaigns import materialize as materializer
 from app.services.campaigns import queries
-from app.services.campaigns import visuals as visualizer
 from app.services.campaigns.ownership import get_owned_campaign
-from app.services.campaigns.stages import compute_progress
+from app.services.campaigns.stages import (
+    compute_progress,
+    job_stage,
+    progress_for_stage,
+    set_job_stage,
+)
 
 router = APIRouter(prefix="/api/campaigns", tags=["generation"])
 
 logger = logging.getLogger(__name__)
 
-_TERMINAL = ("ready", "partial_failed", "failed", "candidates_ready")
+_TERMINAL = ("ready", "partial_failed", "failed")
 _VISUAL_JOBS = ("campaign_generation", "image_generation")
 
 
@@ -57,14 +61,9 @@ async def start_generation(
     campaign = await get_owned_campaign(session, principal, campaign_id)
     user_id = principal.require_user()
 
-    if campaign.selected_concept_id is None:
-        raise invalid(messages.CONCEPT_REQUIRED)
-    if (campaign.visual_creation_mode or "accurate") == "creative":
-        recipe = campaign.visual_recipe_json or {}
-        if not recipe.get("style_id") or not recipe.get("template_id"):
-            raise invalid(messages.VISUAL_RECIPE_REQUIRED)
-
-    if campaign.status in ("ready", "partial_failed", "candidates_ready"):
+    if not campaign.objective or not campaign.visual_style:
+        raise invalid(messages.BRIEF_INCOMPLETE)
+    if campaign.status in ("ready", "partial_failed"):
         return _status(campaign, None, 100, None)
 
     active = await _active_visual_job(session, campaign.id)
@@ -125,6 +124,7 @@ async def get_campaign_status(
     session: SessionDep,
     principal: PrincipalDep,
     settings: SettingsDep,
+    background: BackgroundTasks,
 ) -> CampaignStatusOut:
     campaign = await get_owned_campaign(session, principal, campaign_id)
 
@@ -132,7 +132,7 @@ async def get_campaign_status(
         from app.services.campaigns import summaries
 
         await summaries.ensure_materialized(session, campaign)
-        failed = await visualizer.failed_visual_types(session, campaign.id)
+        failed = await queries.failed_visual_types(session, campaign.id)
         return _status(
             campaign,
             None,
@@ -146,10 +146,12 @@ async def get_campaign_status(
     if copy_job is None or copy_job.status == "failed":
         if campaign.status not in _TERMINAL:
             return _status(campaign, None, 0, None)
-        failed = await visualizer.failed_visual_types(session, campaign.id)
+        failed = await queries.failed_visual_types(session, campaign.id)
         return _status(campaign, None, 0, None, failed)
 
-    return await _advance(session, campaign, copy_job, settings, image_job)
+    return await _advance(
+        session, campaign, copy_job, settings, image_job, background
+    )
 
 
 async def _advance(
@@ -158,11 +160,11 @@ async def _advance(
     job: GenerationJob,
     settings: Settings,
     image_job: GenerationJob | None = None,
+    background: BackgroundTasks | None = None,
 ) -> CampaignStatusOut:
     """
-    Theatre timer, then copy package and images. Both jobs are queued at
-    start so they can coexist; copy still commits first so a visual failure
-    cannot take the captions with it.
+    Theatre timer for stub runs, then the Creative Agent and Seedream.
+    Live image jobs run in the background so the status poller can advance.
     """
     started = job.started_at or datetime.now(UTC)
     elapsed_ms = (datetime.now(UTC) - started).total_seconds() * 1000
@@ -189,33 +191,87 @@ async def _advance(
     )
     if locked is not None and locked.status == "failed":
         await session.refresh(campaign)
-        failed = await visualizer.failed_visual_types(session, campaign.id)
+        failed = await queries.failed_visual_types(session, campaign.id)
         return _status(campaign, None, 0, messages.GENERATION_FAILED, failed)
 
     if locked is not None and locked.status != "succeeded":
-        if not await _has_copy(session, campaign.id):
-            try:
-                await materializer.materialize_copy(session, campaign)
-            except Exception as error:
-                job_records.mark_failed(locked, error)
-                campaign.status = "failed"
-                campaign.updated_at = datetime.now(UTC)
-                await session.flush()
-                message = (
-                    error.message_fa
-                    if isinstance(error, ApiError)
-                    else messages.GENERATION_FAILED
-                )
-                return _status(campaign, None, 0, message)
-
-            job_records.mark_succeeded(locked)
-            campaign.status = "generating"
-            campaign.updated_at = datetime.now(UTC)
-            await session.flush()
+        job_records.mark_succeeded(locked)
+        campaign.status = "generating"
+        campaign.updated_at = datetime.now(UTC)
+        await session.flush()
 
     image_job = image_job or await _ensure_image_job(session, campaign, job)
+    locked_image = await session.scalar(
+        select(GenerationJob).where(GenerationJob.id == image_job.id).with_for_update()
+    )
+    if locked_image is not None:
+        image_job = locked_image
+    live = progress_for_stage(job_stage(image_job))
+    if image_job.status == "processing":
+        # A live worker is already running. Never start a second one even if
+        # the stage column has not been written yet.
+        campaign.status = "generating"
+        await session.flush()
+        shown = live or progress_for_stage("planning")
+        assert shown is not None
+        return _status(campaign, shown.stage, shown.percent, shown.message_fa)
+    if image_job.status in ("succeeded", "failed"):
+        await session.refresh(campaign)
+        failed = await queries.failed_visual_types(session, campaign.id)
+        return _status(
+            campaign,
+            None,
+            0 if campaign.status == "failed" else 100,
+            None,
+            failed,
+        )
+
+    campaign.status = "generating"
+    image_job.status = "processing"
+    set_job_stage(image_job, "planning")
+    await session.flush()
+    # Commit so a later poll can see `planning` while Seedream still runs.
+    # get_session() also commits at request end; this extra commit is what
+    # unblocks the progress UI for live image providers.
     await session.commit()
+
+    if settings.image_provider != "stub" and background is not None:
+        background.add_task(_run_images_background, campaign.id, image_job.id)
+        started_progress = progress_for_stage("planning")
+        assert started_progress is not None
+        return _status(
+            campaign,
+            started_progress.stage,
+            started_progress.percent,
+            started_progress.message_fa,
+        )
+
     return await _run_images(session, campaign, image_job)
+
+
+async def _run_images_background(campaign_id: uuid.UUID, job_id: uuid.UUID) -> None:
+    async with get_sessionmaker()() as session:
+        try:
+            campaign = await session.get(Campaign, campaign_id)
+            job = await session.get(GenerationJob, job_id)
+            if campaign is None or job is None:
+                return
+            await _run_images(session, campaign, job)
+            await session.commit()
+        except Exception:
+            logger.exception("background image generation failed")
+            await session.rollback()
+            async with get_sessionmaker()() as failed:
+                job = await failed.get(GenerationJob, job_id)
+                campaign = await failed.get(Campaign, campaign_id)
+                if job is not None and job.status not in ("succeeded", "failed"):
+                    job_records.mark_image_failed(
+                        job, generation_failed(), provider=get_image_provider().name
+                    )
+                if campaign is not None and campaign.status not in _TERMINAL:
+                    campaign.status = "partial_failed"
+                    campaign.updated_at = datetime.now(UTC)
+                await failed.commit()
 
 
 async def _run_images(
@@ -228,7 +284,7 @@ async def _run_images(
     )
     if locked is not None and locked.status in ("succeeded", "failed"):
         await session.refresh(campaign)
-        failed = await visualizer.failed_visual_types(session, campaign.id)
+        failed = await queries.failed_visual_types(session, campaign.id)
         return _status(
             campaign,
             None,
@@ -244,32 +300,23 @@ async def _run_images(
 
     provider_name = get_image_provider().name
     try:
-        if (campaign.visual_creation_mode or "accurate") == "creative":
-            source = str((campaign.visual_recipe_json or {}).get("source") or "custom")
-            await creative_visuals.generate_candidates(
-                session, campaign, locked or job, source=source
-            )
-            usage = None
-            failures: list[dict] = []
-            final_status = campaign.status
-        else:
-            final_status, usage, failures = await visualizer.attach_visuals(
-                session, campaign
-            )
+        await creative_visuals.generate_candidates(
+            session, campaign, locked or job, source="smart"
+        )
+        usage = None
+        failures: list[dict] = []
     except Exception as error:
-        logger.exception("creative/accurate image generation failed")
+        logger.exception("creative image generation failed")
         if locked is not None:
             job_records.mark_image_failed(locked, error, provider=provider_name)
         if isinstance(error, ApiError) and error.message_fa in (
             messages.INPUT_QUALITY_NEEDS_FIX,
             messages.CREATIVE_ATTEMPTS_EXHAUSTED,
-            messages.VISUAL_RECIPE_REQUIRED,
         ):
-            campaign.status = "concept_selected"
+            campaign.status = "brief_complete"
         else:
             campaign.status = "partial_failed"
-            if (campaign.visual_creation_mode or "accurate") != "creative":
-                await _mark_finals_failed(session, campaign.id)
+            await _mark_finals_failed(session, campaign.id)
         campaign.updated_at = datetime.now(UTC)
         await session.flush()
         message = (
@@ -277,36 +324,22 @@ async def _run_images(
             if isinstance(error, ApiError)
             else messages.GENERATION_FAILED
         )
-        failed = await visualizer.failed_visual_types(session, campaign.id)
+        failed = await queries.failed_visual_types(session, campaign.id)
         return _status(campaign, None, 0, message, failed)
 
     image_output = {"image_errors": failures} if failures else None
     if locked is not None:
-        if (campaign.visual_creation_mode or "accurate") == "creative":
-            output = dict(locked.input_json or {})
-            if image_output:
-                output.update(image_output)
-            job_records.mark_image_succeeded(
-                locked, usage, provider=provider_name, output=output
-            )
-            if await _has_copy(session, campaign.id):
-                campaign.status = "candidates_ready"
-        elif final_status == "partial_failed":
-            job_records.mark_image_failed(
-                locked,
-                RuntimeError("one or more scenes failed"),
-                usage,
-                provider=provider_name,
-                output=image_output,
-            )
-        else:
-            job_records.mark_image_succeeded(
-                locked, usage, provider=provider_name, output=image_output
-            )
+        output = dict(locked.input_json or {})
+        if image_output:
+            output.update(image_output)
+        job_records.mark_image_succeeded(
+            locked, usage, provider=provider_name, output=output
+        )
+        campaign.status = "ready"
 
     campaign.updated_at = datetime.now(UTC)
     await session.flush()
-    failed = await visualizer.failed_visual_types(session, campaign.id)
+    failed = await queries.failed_visual_types(session, campaign.id)
     return _status(campaign, None, 100, None, failed)
 
 
@@ -321,7 +354,7 @@ async def _ensure_image_job(
         campaign_id=campaign.id,
         user_id=copy_job.user_id,
         job_type="image_generation",
-        status="processing",
+        status="queued",
         started_at=datetime.now(UTC),
         provider=None,
         model=None,
@@ -339,15 +372,6 @@ async def _mark_finals_failed(session: AsyncSession, campaign_id: uuid.UUID) -> 
         spec = dict(asset.metadata_json or {})
         spec["failed"] = True
         asset.metadata_json = spec
-
-
-async def _has_copy(session: AsyncSession, campaign_id: uuid.UUID) -> bool:
-    row = await session.scalar(
-        select(CampaignCopy.id)
-        .where(CampaignCopy.campaign_id == campaign_id)
-        .limit(1)
-    )
-    return row is not None
 
 
 def _simulated_ms(settings: Settings) -> int:

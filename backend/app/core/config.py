@@ -69,19 +69,25 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     llm_model: str = "openai/gpt-5-mini"
     llm_base_url: str = "https://openrouter.ai/api/v1"
-    llm_timeout_seconds: float = 45
+    llm_timeout_seconds: float = 120
     llm_max_retries: int = 2
+    llm_max_tokens: int = 16384
     llm_http_referer: str = "http://localhost:3000"
     llm_app_title: str = "Afarin"
-    # Empty = LLM_MODEL. Creative planner/quality vision stays env-configurable.
-    visual_planner_model: str = ""
-    prompt_architect_model: str = ""
+    # Empty = LLM_MODEL. Creative Agent / quality vision stays env-configurable.
+    creative_agent_model: str = ""
+    # Empty = LLM_MODEL. The educational path is text-only, so it can run a
+    # cheaper non-vision model than the advertising Creative Agent.
+    educational_agent_model: str = ""
     # Until credits exist: initial creative generation + this many minus one
     # user-requested «سه نسخه جدید» rounds.
     max_creative_attempts_per_campaign: int = 3
     # Empty = dedicated 4:5 + Story outputs. `master_916` is evaluation-only.
     image_compose_strategy: Literal["dedicated", "master_916"] = "dedicated"
+    # Advertising only (campaigns). Educational posts use educational_image_model.
     image_model: str = "bytedance-seed/seedream-4.5"
+    # Educational image generation. Do not reuse IMAGE_MODEL / Seedream here.
+    educational_image_model: str = "openai/gpt-image-2"
     # Seedream 4.5 rejects 1K for 4:5 / 9:16 (under ~3.7MP). 2K is valid.
     image_resolution: str = "2K"
     image_timeout_seconds: float = 120
@@ -113,12 +119,16 @@ class Settings(BaseSettings):
         return f"{self.supabase_url.rstrip('/')}/auth/v1"
 
     @property
-    def planner_model(self) -> str:
-        return self.visual_planner_model.strip() or self.llm_model
+    def creative_agent_model_resolved(self) -> str:
+        return self.creative_agent_model.strip() or self.llm_model
 
     @property
-    def architect_model(self) -> str:
-        return self.prompt_architect_model.strip() or self.planner_model
+    def educational_agent_model_resolved(self) -> str:
+        return self.educational_agent_model.strip() or self.llm_model
+
+    @property
+    def educational_image_model_resolved(self) -> str:
+        return self.educational_image_model.strip() or "openai/gpt-image-2"
 
 
 @lru_cache

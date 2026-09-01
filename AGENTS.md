@@ -1,7 +1,15 @@
 # Project Instructions
 
-This project is a Persian-first AI SaaS for small businesses and
-Instagram sellers.
+This project is a Persian-first AI SaaS for small businesses,
+Instagram sellers, and teachers.
+
+Afarin has two content paths:
+
+- Advertising — product-photo campaign generation (wizard under `/create`)
+- Educational — one-prompt teaching posts (under `/create/education`)
+
+When implementing a feature, state which path it touches. Do not fold
+educational work into the advertising Campaign model.
 
 The canonical product specification is:
 docs/MVP_SPEC.md

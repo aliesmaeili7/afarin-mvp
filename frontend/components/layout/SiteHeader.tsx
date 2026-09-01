@@ -64,8 +64,14 @@ export function SiteHeader({ showCta = true }: { showCta?: boolean }) {
                 >
                   {t("nav.dashboard")}
                 </Link>
+                <Link
+                  href="/create/education"
+                  className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-muted transition-colors hover:bg-ink-100 hover:text-foreground sm:inline-flex"
+                >
+                  {t("nav.newEducation")}
+                </Link>
                 <Button size="sm" loading={starting} onClick={() => void handleNewCampaign()}>
-                  {t("nav.newCampaign")}
+                  {t("nav.newAd")}
                 </Button>
                 <Button
                   size="sm"
@@ -83,8 +89,8 @@ export function SiteHeader({ showCta = true }: { showCta?: boolean }) {
                     {t("nav.login")}
                   </Button>
                 </Link>
-                <Link href="/create">
-                  <Button size="sm">{t("nav.freeCampaign")}</Button>
+                <Link href="/">
+                  <Button size="sm">{t("nav.startFree")}</Button>
                 </Link>
               </>
             )}

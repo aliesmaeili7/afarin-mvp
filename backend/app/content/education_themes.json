@@ -1,0 +1,94 @@
+{
+  "themes": [
+    {
+      "id": "clay_playful",
+      "name": "خمیری و بازیگوش",
+      "name_en": "Playful Clay",
+      "source": "builtin",
+      "palette": {
+        "primary": ["#7c3aed", "#22d3ee"],
+        "secondary": ["#fde047", "#fb7185"],
+        "background": "#f6f1ff",
+        "text": "#1e1b4b"
+      },
+      "illustration_style": "soft 3D clay render, rounded matte forms, gentle ambient occlusion",
+      "mood": "playful, tactile, inviting for children",
+      "lighting": "soft wraparound studio light, warm highlights",
+      "shape_language": "pill and blob shapes, thick rounded edges, no sharp corners",
+      "decorative_motifs": ["stars", "floating cubes", "dotted paths", "small flags"],
+      "creative_guidance": "warm playful classroom energy, tactile handmade feel, invites a child to touch the scene"
+    },
+    {
+      "id": "pastel_classroom",
+      "name": "کلاس پاستلی",
+      "name_en": "Pastel Classroom",
+      "source": "builtin",
+      "palette": {
+        "primary": ["#f472b6", "#60a5fa"],
+        "secondary": ["#a7f3d0", "#fcd34d"],
+        "background": "#fdf6f0",
+        "text": "#3f3351"
+      },
+      "illustration_style": "flat pastel illustration with soft grain and light paper texture",
+      "mood": "calm, tidy, gentle",
+      "lighting": "even daylight, no harsh shadows",
+      "shape_language": "gentle rounded rectangles and soft arcs, generous white space",
+      "decorative_motifs": ["pencils", "notebooks", "small clouds", "leaf sprigs"],
+      "creative_guidance": "calm and tidy, feels like a well-kept classroom wall, never loud"
+    },
+    {
+      "id": "modern_educational",
+      "name": "آموزشی مدرن",
+      "name_en": "Modern Educational",
+      "source": "builtin",
+      "palette": {
+        "primary": ["#0ea5e9", "#111827"],
+        "secondary": ["#f97316", "#e5e7eb"],
+        "background": "#ffffff",
+        "text": "#111827"
+      },
+      "illustration_style": "clean vector infographic style, crisp geometry, confident flat fills",
+      "mood": "clear, credible, focused",
+      "lighting": "flat even illumination, high contrast shapes",
+      "shape_language": "precise geometric shapes, clear grid alignment, deliberate negative space",
+      "decorative_motifs": ["arrows", "simple charts", "numbered steps", "thin rules"],
+      "creative_guidance": "clear and credible, suits older students and formal topics, structure over decoration"
+    },
+    {
+      "id": "chalkboard",
+      "name": "تخته‌سیاه",
+      "name_en": "Chalkboard",
+      "source": "builtin",
+      "palette": {
+        "primary": ["#f8fafc", "#fcd34d"],
+        "secondary": ["#86efac", "#93c5fd"],
+        "background": "#1f2937",
+        "text": "#f8fafc"
+      },
+      "illustration_style": "chalk drawing on a dark slate board, dusty strokes, hand-sketched lines",
+      "mood": "informal, immediate, teacher-at-the-board",
+      "lighting": "classroom overhead light on a matte slate surface",
+      "shape_language": "loose hand-drawn outlines, uneven strokes, sketchy underlines",
+      "decorative_motifs": ["chalk doodles", "sketched arrows", "dashed underlines", "small diagrams"],
+      "creative_guidance": "feels like a teacher explaining at the board, informal and immediate"
+    },
+    {
+      "id": "colorful_illustrated",
+      "name": "تصویرسازی رنگی",
+      "name_en": "Colourful Illustrated",
+      "source": "builtin",
+      "palette": {
+        "primary": ["#ef4444", "#3b82f6"],
+        "secondary": ["#22c55e", "#eab308"],
+        "background": "#fffbeb",
+        "text": "#1c1917"
+      },
+      "illustration_style": "bold storybook illustration, saturated colours, visible outlines",
+      "mood": "high energy, friendly, storybook",
+      "lighting": "bright even colour, graphic rather than photographic",
+      "shape_language": "chunky friendly shapes with confident dark outlines",
+      "decorative_motifs": ["speech bubbles", "sunbursts", "little characters", "banners"],
+      "creative_guidance": "high energy and friendly, built to stop a scroll, suits younger classes and stories"
+    }
+  ]
+}

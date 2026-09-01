@@ -11,10 +11,17 @@ import type {
   CampaignSummary,
   CopyType,
   CropRect,
+  EducationalPost,
+  EducationalPostStatusResponse,
+  EducationalPostSummary,
+  EducationalTheme,
+  EducationalThemeList,
+  EducationalThemeSpec,
+  GenerationStage,
   Product,
   ProductImage,
   Session,
-  VisualRecipe,
+  VisualCandidate,
 } from "@/types/domain";
 import {
   ApiError,
@@ -22,12 +29,14 @@ import {
   type AssetTextPatch,
   type BrandInput,
   type CreateCampaignInput,
+  type CreateEducationalPostInput,
   type ProductInput,
   type EmailCodeRequest,
   type EmailCodeVerification,
   type EmailPasswordCredentials,
   type PasswordResetRequest,
   type RewriteIntent,
+  type SaveEducationalThemeInput,
   type UpdateCampaignInput,
   type UpdatePasswordInput,
 } from "@/lib/api/types";
@@ -54,6 +63,14 @@ import {
   buildStoryIdeas,
 } from "./fixtures/copy";
 import type { CopyContext } from "./fixtures/context";
+import {
+  BUILTIN_EDUCATION_THEMES,
+  buildEducationalRenderSpec,
+  buildEducationalResult,
+  designedTheme,
+  listingHeadline,
+  sanitizeEducationalTheme,
+} from "./fixtures/education";
 import { computeGenerationProgress } from "./generation";
 import { delay, getFailureMode, LATENCY } from "./latency";
 import {
@@ -66,9 +83,185 @@ import {
   SAMPLE_IMAGE_PATH,
   writeDb,
   type MockDbShape,
+  type MockEducationalPost,
+  type MockEducationalTheme,
 } from "./mockDb";
 
 const QUEUE_DURATION_MS = 900;
+
+/* --- Educational content -------------------------------------------------- */
+
+const MAX_EDUCATION_PROMPT = 2000;
+const EDUCATION_IMAGE_PATH = "public://mock/education-scene.svg";
+
+/**
+ * One agent call then one image, so the run is shorter than an advertising
+ * campaign's five assets.
+ */
+const EDUCATION_STAGES: readonly {
+  stage: GenerationStage;
+  duration_ms: number;
+  message_fa: string;
+}[] = [
+  { stage: "planning", duration_ms: 2200, message_fa: "در حال طراحی پست…" },
+  { stage: "visual", duration_ms: 6000, message_fa: "در حال ساخت تصویر…" },
+  { stage: "finalizing", duration_ms: 1200, message_fa: "تقریباً آماده‌ست…" },
+];
+
+const EDUCATION_TOTAL_MS = EDUCATION_STAGES.reduce(
+  (total, item) => total + item.duration_ms,
+  0,
+);
+
+function computeEducationProgress(elapsedMs: number): {
+  stage: GenerationStage;
+  percent: number;
+  message_fa: string;
+  done: boolean;
+} {
+  const elapsed = Math.max(0, elapsedMs);
+  if (elapsed >= EDUCATION_TOTAL_MS) {
+    const last = EDUCATION_STAGES[EDUCATION_STAGES.length - 1];
+    return { stage: last.stage, percent: 100, message_fa: last.message_fa, done: true };
+  }
+  let consumed = 0;
+  for (const item of EDUCATION_STAGES) {
+    if (elapsed < consumed + item.duration_ms) {
+      return {
+        stage: item.stage,
+        percent: Math.min(99, Math.round((elapsed / EDUCATION_TOTAL_MS) * 100)),
+        message_fa: item.message_fa,
+        done: false,
+      };
+    }
+    consumed += item.duration_ms;
+  }
+  const last = EDUCATION_STAGES[EDUCATION_STAGES.length - 1];
+  return { stage: last.stage, percent: 100, message_fa: last.message_fa, done: true };
+}
+
+/** Educational content is authenticated-only, so there is no anonymous owner. */
+function requireEducationUser(db: MockDbShape): string {
+  const userId = db.session?.user.id;
+  if (!userId) {
+    throw new ApiError("unauthorized", "برای ساخت پست آموزشی اول باید وارد بشی.");
+  }
+  return userId;
+}
+
+function findEducationalPost(
+  db: MockDbShape,
+  postId: string,
+): MockEducationalPost {
+  const userId = requireEducationUser(db);
+  const post = db.educational_posts.find((item) => item.id === postId);
+  if (!post) throw new ApiError("not_found", "این پست آموزشی پیدا نشد.");
+  if (post.user_id !== userId) {
+    throw new ApiError("unauthorized", "دسترسی به این پست برای شما مجاز نیست.");
+  }
+  return post;
+}
+
+function findEducationalTheme(
+  db: MockDbShape,
+  themeId: string,
+): MockEducationalTheme {
+  const userId = requireEducationUser(db);
+  const theme = db.educational_themes.find((item) => item.id === themeId);
+  if (!theme) throw new ApiError("not_found", "این تم پیدا نشد.");
+  if (theme.user_id !== userId) {
+    throw new ApiError("unauthorized", "دسترسی به این تم برای شما مجاز نیست.");
+  }
+  return theme;
+}
+
+/** Public shape: the owner column never leaves the mock. */
+function themeOut(theme: MockEducationalTheme): EducationalTheme {
+  const { user_id: _ownerId, ...rest } = theme;
+  return rest;
+}
+
+function postOut(post: MockEducationalPost): EducationalPost {
+  const { user_id: _ownerId, ...rest } = post;
+  return rest;
+}
+
+function resolveMockTheme(
+  db: MockDbShape,
+  userId: string,
+  input: CreateEducationalPostInput,
+): EducationalThemeSpec | null {
+  if (input.theme_id) {
+    const saved = db.educational_themes.find(
+      (item) => item.id === input.theme_id && item.user_id === userId,
+    );
+    if (!saved) throw new ApiError("not_found", "این تم پیدا نشد.");
+    return saved.theme_json;
+  }
+  if (input.builtin_theme_id) {
+    const builtin = BUILTIN_EDUCATION_THEMES.find(
+      (item) => item.id === input.builtin_theme_id,
+    );
+    if (!builtin) throw new ApiError("not_found", "این تم پیدا نشد.");
+    const { id: _id, source: _source, ...spec } = builtin;
+    return spec;
+  }
+  return null;
+}
+
+function educationStatus(post: EducationalPost): EducationalPostStatusResponse {
+  if (post.status === "ready") {
+    return {
+      post_id: post.id,
+      status: post.status,
+      stage: null,
+      percent: 100,
+      message_fa: null,
+    };
+  }
+  if (post.status === "failed") {
+    return {
+      post_id: post.id,
+      status: post.status,
+      stage: null,
+      percent: 0,
+      message_fa: post.error_message ?? "ساخت پست انجام نشد.",
+    };
+  }
+  return {
+    post_id: post.id,
+    status: post.status,
+    stage: "planning",
+    percent: 5,
+    message_fa: "در نوبت ساخت…",
+  };
+}
+
+function finishEducationalPost(
+  post: MockEducationalPost,
+  elapsedMs: number,
+): void {
+  if (getFailureMode() === "generation") {
+    post.status = "failed";
+    post.error_message = "ساخت پست انجام نشد. یک بار دیگه امتحان کن.";
+    post.updated_at = nowIso();
+    return;
+  }
+  const selected = post.theme_json as EducationalThemeSpec;
+  const theme = selected.illustration_style
+    ? selected
+    : designedTheme(post.user_prompt);
+  const result = buildEducationalResult(post.user_prompt, theme);
+  post.language = result.language;
+  post.headline = listingHeadline(post.user_prompt);
+  post.agent_json = result;
+  post.theme_json = theme;
+  post.image_storage_path = EDUCATION_IMAGE_PATH;
+  post.render_spec_json = buildEducationalRenderSpec(EDUCATION_IMAGE_PATH);
+  post.wall_time_ms = Math.round(elapsedMs);
+  post.status = "ready";
+  post.updated_at = nowIso();
+}
 
 function findCampaign(db: MockDbShape, campaignId: string): Campaign {
   const campaign = db.campaigns.find((item) => item.id === campaignId);
@@ -421,6 +614,25 @@ function materializeCampaign(
     }),
   );
 
+  db.visual_candidates = db.visual_candidates.filter(
+    (item) => item.campaign_id !== campaign.id,
+  );
+  const count = campaign.requested_image_count === 3 ? 3 : 1;
+  const productPath = primaryImagePath(db, campaign) ?? SAMPLE_IMAGE_PATH;
+  for (let slot = 1; slot <= count; slot += 1) {
+    const candidate: VisualCandidate & { campaign_id: string } = {
+      id: newId("vis"),
+      campaign_id: campaign.id,
+      slot,
+      kind: "primary",
+      storage_path: productPath,
+      hard_failed: false,
+      hidden: false,
+      created_at: nowIso(),
+    };
+    db.visual_candidates.push(candidate);
+  }
+
   campaign.status = failureMode === "partial" ? "partial_failed" : "ready";
   campaign.updated_at = nowIso();
   return campaign.status;
@@ -565,7 +777,9 @@ export const mockApi: AfarinApi = {
         objective: null,
         audience: null,
         visual_style: null,
-        visual_creation_mode: null,
+        requested_image_count: 1,
+        visual_instruction: null,
+        selected_template_id: null,
         visual_recipe_json: {},
         current_visual_attempt_id: null,
         selected_concept_id: null,
@@ -601,7 +815,9 @@ export const mockApi: AfarinApi = {
         ),
         brand: brandOf(db, campaign),
         visual_attempt: null,
-        visual_candidates: [],
+        visual_candidates: db.visual_candidates.filter(
+          (item) => item.campaign_id === campaign.id,
+        ),
       };
     });
   },
@@ -629,8 +845,14 @@ export const mockApi: AfarinApi = {
       if (patch.visual_style !== undefined) {
         campaign.visual_style = patch.visual_style;
       }
-      if (patch.visual_creation_mode !== undefined) {
-        campaign.visual_creation_mode = patch.visual_creation_mode;
+      if (patch.requested_image_count !== undefined) {
+        campaign.requested_image_count = patch.requested_image_count;
+      }
+      if (patch.visual_instruction !== undefined) {
+        campaign.visual_instruction = patch.visual_instruction;
+      }
+      if (patch.selected_template_id !== undefined) {
+        campaign.selected_template_id = patch.selected_template_id;
       }
       if (patch.brand_id !== undefined) campaign.brand_id = patch.brand_id;
 
@@ -868,119 +1090,42 @@ export const mockApi: AfarinApi = {
     });
   },
 
-  async generateConcepts(campaignId: string): Promise<CampaignConcept[]> {
-    await delay(LATENCY.concepts);
-    return mutateDb((db) => {
-      const campaign = findCampaign(db, campaignId);
-      assertOwnership(db, campaign);
-
-      if (!campaign.objective || !campaign.visual_style) {
-        throw new ApiError(
-          "validation_error",
-          "برای ساخت ایده، هدف و سبک تبلیغ رو انتخاب کن.",
-        );
-      }
-
-      const round = (db.concept_rounds[campaign.id] ?? -1) + 1;
-      db.concept_rounds[campaign.id] = round;
-
-      const created = writeConcepts(
-        db,
-        campaign,
-        buildConcepts(buildCopyContext(db, campaign)),
-        round,
-      );
-
-      campaign.selected_concept_id = null;
-      campaign.status = "concepts_ready";
-      campaign.updated_at = nowIso();
-      return created;
-    });
-  },
-
-  async selectConcept(campaignId: string, conceptId: string): Promise<Campaign> {
-    await delay(LATENCY.write);
-    return mutateDb((db) => {
-      const campaign = findCampaign(db, campaignId);
-      assertOwnership(db, campaign);
-
-      const concepts = conceptsOf(db, campaign.id);
-      const target = concepts.find((concept) => concept.id === conceptId);
-      if (!target) throw new ApiError("not_found", "این ایده پیدا نشد.");
-
-      concepts.forEach((concept) => {
-        concept.selected = concept.id === conceptId;
-      });
-      campaign.selected_concept_id = conceptId;
-      campaign.status = "concept_selected";
-      const styleId =
-        typeof target.raw_json?.style_id === "string"
-          ? target.raw_json.style_id
-          : "photoreal_commercial";
-      const templateId =
-        typeof target.raw_json?.template_id === "string"
-          ? target.raw_json.template_id
-          : "hero_product";
-      campaign.visual_recipe_json = {
-        style_id: styleId,
-        template_id: templateId,
-        source: "smart",
-        recommended: { style_id: styleId, template_id: templateId },
-        scene_direction:
-          typeof target.raw_json?.image_direction === "string"
-            ? target.raw_json.image_direction
-            : target.visual_direction,
-        identity_constraints: Array.isArray(target.raw_json?.identity_constraints)
-          ? (target.raw_json.identity_constraints as string[])
-          : [],
-        text_safe_area:
-          typeof target.raw_json?.text_safe_area === "string"
-            ? target.raw_json.text_safe_area
-            : "bottom",
-      };
-      campaign.updated_at = nowIso();
-      return { ...campaign };
-    });
-  },
-
   async getVisualCatalog() {
     const response = await fetch("/visual-previews/catalog.json");
     if (!response.ok) {
-      return { styles: [], templates: [] };
+      return { templates: [] };
     }
-    return response.json();
+    const raw = (await response.json()) as {
+      styles?: { id: string; label_fa: string; description_fa: string; preview_path: string }[];
+      templates?: { id: string; label_fa: string; description_fa: string; preview_path: string }[];
+    };
+    if (raw.styles?.length) {
+      return { templates: [...raw.styles, ...(raw.templates ?? [])] };
+    }
+    return { templates: raw.templates ?? [] };
   },
 
-  async saveVisualRecipe(campaignId: string, recipe: VisualRecipe) {
+  async focusVisualCandidate(campaignId: string, candidateId: string) {
     await delay(LATENCY.write);
     return mutateDb((db) => {
       const campaign = findCampaign(db, campaignId);
       assertOwnership(db, campaign);
-      const existing = (campaign.visual_recipe_json ?? {}) as Partial<VisualRecipe>;
-      const recommended =
-        existing.recommended ??
-        (existing.style_id && existing.template_id
-          ? { style_id: existing.style_id, template_id: existing.template_id }
-          : { style_id: recipe.style_id, template_id: recipe.template_id });
-      campaign.visual_recipe_json = {
-        ...existing,
-        ...recipe,
-        recommended,
-        source: recipe.source ?? "custom",
-      };
-      campaign.updated_at = nowIso();
-      return { ...campaign };
-    });
-  },
-
-  async selectVisualCandidate(campaignId: string, candidateId: string) {
-    await delay(LATENCY.write);
-    return mutateDb((db) => {
-      const campaign = findCampaign(db, campaignId);
-      assertOwnership(db, campaign);
+      const candidate = db.visual_candidates.find(
+        (item) => item.id === candidateId && item.campaign_id === campaign.id,
+      );
+      if (!candidate) throw new ApiError("not_found", "این تصویر پیدا نشد.");
       campaign.status = "ready";
       campaign.updated_at = nowIso();
-      void candidateId;
+      const feed = db.campaign_assets.find(
+        (asset) => asset.campaign_id === campaign.id && asset.asset_type === "feed_final",
+      );
+      if (feed) {
+        feed.metadata_json = {
+          ...(feed.metadata_json as object),
+          concept_slot: candidate.slot,
+          scene_image_path: candidate.storage_path,
+        };
+      }
       return { ...campaign };
     });
   },
@@ -991,7 +1136,7 @@ export const mockApi: AfarinApi = {
     assertOwnership(readDb(), campaign);
     return {
       campaign_id: campaignId,
-      status: "candidates_ready" as const,
+      status: "ready" as const,
       stage: null,
       percent: 100,
       message_fa: null,
@@ -1008,8 +1153,8 @@ export const mockApi: AfarinApi = {
       if (!db.session) {
         throw new ApiError("unauthorized", "برای ساخت کمپین اول باید وارد بشی.");
       }
-      if (!campaign.selected_concept_id) {
-        throw new ApiError("validation_error", "اول یکی از ایده‌ها رو انتخاب کن.");
+      if (!campaign.objective || !campaign.visual_style) {
+        throw new ApiError("validation_error", "اول هدف و حس تبلیغ رو انتخاب کن.");
       }
 
       // Idempotency: repeated taps must not start a second job (spec §27).
@@ -1023,8 +1168,7 @@ export const mockApi: AfarinApi = {
       }
       if (
         campaign.status === "ready" ||
-        campaign.status === "partial_failed" ||
-        campaign.status === "candidates_ready"
+        campaign.status === "partial_failed"
       ) {
         return statusResponse(campaign, null, 100, null);
       }
@@ -1326,6 +1470,183 @@ export const mockApi: AfarinApi = {
       asset.metadata_json = spec;
       campaign.updated_at = nowIso();
       return { ...asset };
+    });
+  },
+
+  async createEducationalPost(
+    input: CreateEducationalPostInput,
+  ): Promise<EducationalPost> {
+    await delay(LATENCY.write);
+    const prompt = (input.user_prompt ?? "").trim();
+    if (!prompt) {
+      throw new ApiError("validation_error", "بنویس چه پستی می‌خوای بسازم.");
+    }
+    if (prompt.length > MAX_EDUCATION_PROMPT) {
+      throw new ApiError("validation_error", "توضیحت خیلی بلنده. کوتاه‌ترش کن.");
+    }
+    return mutateDb((db) => {
+      const userId = requireEducationUser(db);
+      const theme = resolveMockTheme(db, userId, input);
+      const post: MockEducationalPost = {
+        id: newId("edu"),
+        user_id: userId,
+        user_prompt: prompt,
+        selected_theme_id: input.theme_id ?? null,
+        selected_builtin_theme_id: input.builtin_theme_id ?? null,
+        language: null,
+        headline: null,
+        status: "queued",
+        error_message: null,
+        image_storage_path: null,
+        agent_json: {},
+        // Holds the selected theme until generation replaces it with the
+        // effective one, mirroring the backend.
+        theme_json: theme ?? {},
+        render_spec_json: {},
+        wall_time_ms: null,
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      };
+      db.educational_posts.push(post);
+      return postOut(post);
+    });
+  },
+
+  async getEducationalPost(postId: string): Promise<EducationalPost> {
+    await delay(LATENCY.read);
+    const db = readDb();
+    return postOut(findEducationalPost(db, postId));
+  },
+
+  async listEducationalPosts(): Promise<EducationalPostSummary[]> {
+    await delay(LATENCY.read);
+    const db = readDb();
+    const userId = db.session?.user.id;
+    if (!userId) return [];
+    return db.educational_posts
+      .filter((post) => post.user_id === userId)
+      .reverse()
+      .map((post) => ({
+        id: post.id,
+        headline: post.headline,
+        status: post.status,
+        language: post.language,
+        image_storage_path: post.image_storage_path,
+        created_at: post.created_at,
+      }));
+  },
+
+  async getEducationalPostStatus(
+    postId: string,
+  ): Promise<EducationalPostStatusResponse> {
+    await delay(LATENCY.read);
+    return mutateDb((db) => {
+      const post = findEducationalPost(db, postId);
+      if (post.status === "ready" || post.status === "failed") {
+        return educationStatus(post);
+      }
+
+      const elapsed = Date.now() - new Date(post.created_at).getTime();
+      const progress = computeEducationProgress(elapsed);
+      if (!progress.done) {
+        post.status = "generating";
+        post.updated_at = nowIso();
+        return {
+          post_id: post.id,
+          status: post.status,
+          stage: progress.stage,
+          percent: progress.percent,
+          message_fa: progress.message_fa,
+        };
+      }
+
+      finishEducationalPost(post, elapsed);
+      return educationStatus(post);
+    });
+  },
+
+  async deleteEducationalPost(postId: string): Promise<void> {
+    await delay(LATENCY.write);
+    mutateDb((db) => {
+      const post = findEducationalPost(db, postId);
+      db.educational_posts = db.educational_posts.filter(
+        (item) => item.id !== post.id,
+      );
+      return null;
+    });
+  },
+
+  async listEducationalThemes(): Promise<EducationalThemeList> {
+    await delay(LATENCY.read);
+    const db = readDb();
+    const userId = db.session?.user.id;
+    return {
+      builtin: BUILTIN_EDUCATION_THEMES.map((theme) => ({ ...theme })),
+      saved: db.educational_themes
+        .filter((row) => row.user_id === userId)
+        .map(themeOut),
+    };
+  },
+
+  async saveEducationalTheme(
+    input: SaveEducationalThemeInput,
+  ): Promise<EducationalTheme> {
+    await delay(LATENCY.write);
+    return mutateDb((db) => {
+      const userId = requireEducationUser(db);
+      const post = findEducationalPost(db, input.post_id);
+      const source = post.theme_json as EducationalThemeSpec;
+      if (!source.illustration_style) {
+        throw new ApiError(
+          "validation_error",
+          "برای این پست تمی برای ذخیره وجود نداره.",
+        );
+      }
+      const name =
+        (input.name ?? "").trim() ||
+        source.name ||
+        post.headline ||
+        "تم آموزشی";
+      const theme: MockEducationalTheme = {
+        id: newId("edth"),
+        user_id: userId,
+        name,
+        source: "user",
+        theme_json: sanitizeEducationalTheme(source, name),
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      };
+      db.educational_themes.push(theme);
+      return themeOut(theme);
+    });
+  },
+
+  async renameEducationalTheme(
+    themeId: string,
+    name: string,
+  ): Promise<EducationalTheme> {
+    await delay(LATENCY.write);
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new ApiError("validation_error", "برای تم یک اسم بنویس.");
+    }
+    return mutateDb((db) => {
+      const theme = findEducationalTheme(db, themeId);
+      theme.name = trimmed;
+      theme.theme_json = { ...theme.theme_json, name: trimmed };
+      theme.updated_at = nowIso();
+      return themeOut(theme);
+    });
+  },
+
+  async deleteEducationalTheme(themeId: string): Promise<void> {
+    await delay(LATENCY.write);
+    mutateDb((db) => {
+      const theme = findEducationalTheme(db, themeId);
+      db.educational_themes = db.educational_themes.filter(
+        (item) => item.id !== theme.id,
+      );
+      return null;
     });
   },
 

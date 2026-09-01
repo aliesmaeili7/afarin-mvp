@@ -24,11 +24,11 @@ import { AuthForm } from "./AuthForm";
 import { useSessionStore } from "./sessionStore";
 
 /**
- * Spec §11 — the account is only asked for once the user has seen their
- * directions and picked one, and signing up continues straight into generation
- * instead of dropping the user on an empty dashboard.
+ * Spec §11 — the account is only asked for once the brief is complete.
+ * Signing up continues straight into generation instead of dropping the user
+ * on an empty dashboard.
  *
- * Returning users never see this screen: DirectionsStep starts generation
+ * Returning users never see this screen: VisualStep starts generation
  * directly when a session already exists.
  */
 export function SignupGate() {
@@ -48,24 +48,16 @@ export function SignupGate() {
     if (!sessionLoaded) void loadSession();
   }, [sessionLoaded, loadSession]);
 
+  const briefReady = Boolean(
+    detail?.campaign.objective && detail?.campaign.visual_style,
+  );
+
   useEffect(() => {
     if (loading || !detail) return;
-    if (!detail.campaign.selected_concept_id) {
-      router.replace("/create/directions");
-      return;
+    if (!briefReady) {
+      router.replace("/create/brief");
     }
-    if (!detail.campaign.visual_creation_mode) {
-      router.replace("/create/directions");
-      return;
-    }
-    if (
-      detail.campaign.visual_creation_mode === "creative" &&
-      !(detail.campaign.visual_recipe_json as { style_id?: string } | undefined)
-        ?.style_id
-    ) {
-      router.replace("/create/directions");
-    }
-  }, [loading, detail, router]);
+  }, [loading, detail, briefReady, router]);
 
   const startGeneration = useCallback(
     async (campaignId: string) => {
@@ -77,24 +69,25 @@ export function SignupGate() {
   );
 
   useEffect(() => {
-    if (!sessionLoaded || loading || !detail || !session) return;
-    if (!detail.campaign.selected_concept_id || started.current) return;
-    if (!detail.campaign.visual_creation_mode) return;
-    if (
-      detail.campaign.visual_creation_mode === "creative" &&
-      !(detail.campaign.visual_recipe_json as { style_id?: string } | undefined)
-        ?.style_id
-    ) {
-      return;
-    }
+    if (!sessionLoaded || loading || !detail || !session || !briefReady) return;
+    if (started.current) return;
     started.current = true;
     void startGeneration(detail.campaign.id).catch((caught: unknown) => {
       started.current = false;
       toast(displayError(caught), "error");
     });
-  }, [sessionLoaded, loading, detail, session, startGeneration, toast, displayError]);
+  }, [
+    sessionLoaded,
+    loading,
+    detail,
+    session,
+    briefReady,
+    startGeneration,
+    toast,
+    displayError,
+  ]);
 
-  const selectedConcept = detail?.concepts.find((concept) => concept.selected);
+  const productName = detail?.product?.name?.trim() || t("result.packageGeneric");
   const primary =
     detail?.product_images.find((image) => image.is_primary) ??
     detail?.product_images[0] ??
@@ -108,7 +101,7 @@ export function SignupGate() {
       <header className="border-b border-border bg-surface">
         <Container size="sm" className="pt-safe">
           <div className="flex h-14 items-center justify-between gap-2">
-            <Link href="/create/directions" aria-label={t("common.previousStep")}>
+            <Link href="/create/visual" aria-label={t("common.previousStep")}>
               <Button variant="ghost" size="sm" className="size-11 p-0 sm:size-9">
                 <ArrowBackIcon width={18} height={18} />
               </Button>
@@ -138,18 +131,15 @@ export function SignupGate() {
 
         {loading ? (
           <Skeleton className="h-64 w-full" />
-        ) : selectedConcept ? (
+        ) : (
           <Card className="flex items-center gap-4 p-4">
             <div className="w-24 shrink-0 overflow-hidden rounded-2xl">
               <AdCanvas
                 spec={
                   {
                     template_id: "feed_classic",
-                    background_id:
-                      typeof selectedConcept.raw_json?.background_id === "string"
-                        ? selectedConcept.raw_json.background_id
-                        : "modern_ice",
-                    headline_fa: selectedConcept.headline_fa,
+                    background_id: "modern_ice",
+                    headline_fa: productName,
                     subheadline_fa: null,
                     cta_fa: null,
                     price_text: null,
@@ -163,13 +153,11 @@ export function SignupGate() {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-semibold text-brand-600">{t("auth.selectedIdea")}</p>
-              <h2 className="mt-1 text-base font-bold text-foreground">
-                {selectedConcept.title_fa}
-              </h2>
+              <h2 className="mt-1 text-base font-bold text-foreground">{productName}</h2>
               <p className="mt-1 text-sm leading-7 text-muted">{t("auth.signupPreview")}</p>
             </div>
           </Card>
-        ) : null}
+        )}
 
         {waitingForSession ? (
           <Skeleton className="h-14 w-full" />

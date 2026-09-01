@@ -2,20 +2,22 @@ import type {
   Brand,
   Campaign,
   CampaignAsset,
-  CampaignConcept,
   CampaignCopy,
   CampaignDetail,
   CampaignObjective,
   CampaignStatusResponse,
   CampaignSummary,
   CropRect,
+  EducationalPost,
+  EducationalPostStatusResponse,
+  EducationalPostSummary,
+  EducationalTheme,
+  EducationalThemeList,
   Product,
   ProductImage,
   Session,
   TextLayer,
   VisualCatalog,
-  VisualCreationMode,
-  VisualRecipe,
   VisualStyle,
 } from "@/types/domain";
 
@@ -57,14 +59,8 @@ export interface AfarinApi {
     crop: CropRect,
   ): Promise<ProductImage>;
 
-  // POST /api/campaigns/{id}/concepts/generate
-  generateConcepts(campaignId: string): Promise<CampaignConcept[]>;
-  // POST /api/campaigns/{id}/concepts/{concept_id}/select
-  selectConcept(campaignId: string, conceptId: string): Promise<Campaign>;
-
   getVisualCatalog(): Promise<VisualCatalog>;
-  saveVisualRecipe(campaignId: string, recipe: VisualRecipe): Promise<Campaign>;
-  selectVisualCandidate(
+  focusVisualCandidate(
     campaignId: string,
     candidateId: string,
   ): Promise<Campaign>;
@@ -101,6 +97,42 @@ export interface AfarinApi {
     assetId: string,
     intent: RewriteIntent,
   ): Promise<CampaignAsset>;
+
+  /**
+   * Educational content.
+   *
+   * A post is created only for a signed-in user, so an anonymous visitor holds
+   * their prompt and theme choice in the browser until they sign in.
+   */
+  // POST /api/education/posts
+  createEducationalPost(
+    input: CreateEducationalPostInput,
+  ): Promise<EducationalPost>;
+  // GET /api/education/posts/{id}
+  getEducationalPost(postId: string): Promise<EducationalPost>;
+  // GET /api/education/posts
+  listEducationalPosts(): Promise<EducationalPostSummary[]>;
+  // GET /api/education/posts/{id}/status
+  getEducationalPostStatus(
+    postId: string,
+  ): Promise<EducationalPostStatusResponse>;
+  // DELETE /api/education/posts/{id}
+  deleteEducationalPost(postId: string): Promise<void>;
+
+  /** Built-in themes resolve for anonymous callers; saved ones come back empty. */
+  // GET /api/education/themes
+  listEducationalThemes(): Promise<EducationalThemeList>;
+  // POST /api/education/themes
+  saveEducationalTheme(
+    input: SaveEducationalThemeInput,
+  ): Promise<EducationalTheme>;
+  // PATCH /api/education/themes/{id}
+  renameEducationalTheme(
+    themeId: string,
+    name: string,
+  ): Promise<EducationalTheme>;
+  // DELETE /api/education/themes/{id}
+  deleteEducationalTheme(themeId: string): Promise<void>;
 
   // GET /api/brands
   listBrands(): Promise<Brand[]>;
@@ -157,7 +189,9 @@ export interface UpdateCampaignInput {
   objective?: CampaignObjective | null;
   audience?: string | null;
   visual_style?: VisualStyle | null;
-  visual_creation_mode?: VisualCreationMode | null;
+  requested_image_count?: 1 | 3;
+  visual_instruction?: string | null;
+  selected_template_id?: string | null;
   brand_id?: string | null;
 }
 
@@ -176,6 +210,24 @@ export interface AssetTextPatch {
   price_text?: string | null;
   /** Null restores the generated flex layout. */
   text_layers?: TextLayer[] | null;
+}
+
+/**
+ * The whole educational input: one natural-language prompt and, optionally, a
+ * theme. Everything else — topic, grade, tone, title, style — is inferred.
+ */
+export interface CreateEducationalPostInput {
+  user_prompt: string;
+  /** A saved theme row id. */
+  theme_id?: string | null;
+  /** A built-in theme id. */
+  builtin_theme_id?: string | null;
+}
+
+export interface SaveEducationalThemeInput {
+  post_id: string;
+  /** Defaults to the agent's own suggestion, so no naming form is needed. */
+  name?: string | null;
 }
 
 export type RewriteIntent =

@@ -17,22 +17,12 @@ export const GENERATION_STAGES: readonly StageDefinition[] = [
   {
     stage: "planning",
     duration_ms: 2600,
-    message_fa: "در حال آماده کردن ایده تبلیغ…",
+    message_fa: "در حال طراحی تبلیغ…",
   },
   {
     stage: "visual",
-    duration_ms: 4800,
-    message_fa: "در حال ساخت تصویر محصول…",
-  },
-  {
-    stage: "captions",
-    duration_ms: 2800,
-    message_fa: "در حال نوشتن کپشن‌ها…",
-  },
-  {
-    stage: "story",
-    duration_ms: 2000,
-    message_fa: "در حال آماده کردن استوری…",
+    duration_ms: 8000,
+    message_fa: "در حال ساخت تصویر…",
   },
   {
     stage: "finalizing",
@@ -74,7 +64,6 @@ export function computeGenerationProgress(
   for (let index = 0; index < GENERATION_STAGES.length; index += 1) {
     const definition = GENERATION_STAGES[index];
     if (elapsed < consumed + definition.duration_ms) {
-      // Hold at 99 so the bar never claims completion before the data exists.
       const percent = Math.min(
         99,
         Math.round((elapsed / TOTAL_GENERATION_MS) * 100),

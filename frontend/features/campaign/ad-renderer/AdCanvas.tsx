@@ -24,6 +24,14 @@ export interface AdCanvasProps {
   className?: string;
   innerRef?: Ref<HTMLDivElement>;
   mode?: AdCanvasMode;
+  /** Text direction of the artwork. English educational posts pass "ltr". */
+  dir?: "rtl" | "ltr";
+  /**
+   * Bottom darkening over the background. On by default because ad type is
+   * white over a photo; educational posts turn it off so the illustration keeps
+   * its own colours.
+   */
+  scrim?: boolean;
 }
 
 /**
@@ -44,6 +52,8 @@ export function AdCanvas({
   className,
   innerRef,
   mode = "view",
+  dir = "rtl",
+  scrim = true,
 }: AdCanvasProps) {
   const template = getTemplate(spec.template_id);
   const background = getBackground(spec.background_id);
@@ -62,7 +72,7 @@ export function AdCanvas({
     return (
       <div
         ref={innerRef}
-        dir="rtl"
+        dir={dir}
         data-ad-canvas
         data-ad-canvas-mode={mode}
         style={{ ...containerStyle, colorScheme: "only light" }}
@@ -123,13 +133,13 @@ export function AdCanvas({
     return (
       <div
         ref={innerRef}
-        dir="rtl"
+        dir={dir}
         data-ad-canvas
         data-ad-canvas-mode={mode}
         style={{ ...containerStyle, colorScheme: "only light" }}
         className={cn("relative w-full overflow-hidden", className)}
       >
-        <BackgroundLayer background={background} sceneUrl={sceneUrl} />
+        <BackgroundLayer background={background} sceneUrl={sceneUrl} scrim={scrim} />
         {showProduct ? (
           <div
             className="absolute inset-0 flex flex-col"
@@ -208,13 +218,13 @@ export function AdCanvas({
   return (
     <div
       ref={innerRef}
-      dir="rtl"
+      dir={dir}
       data-ad-canvas
       data-ad-canvas-mode={mode}
       style={{ ...containerStyle, colorScheme: "only light" }}
       className={cn("relative w-full overflow-hidden", className)}
     >
-      <BackgroundLayer background={background} sceneUrl={sceneUrl} />
+      <BackgroundLayer background={background} sceneUrl={sceneUrl} scrim={scrim} />
 
       <div
         className="absolute inset-0 flex flex-col"

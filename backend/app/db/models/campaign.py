@@ -65,6 +65,10 @@ class Campaign(Base):
             "user_id is not null or anonymous_session_id is not null",
             name="ck_campaigns_has_owner",
         ),
+        CheckConstraint(
+            "requested_image_count in (1, 3)",
+            name="ck_campaigns_requested_image_count",
+        ),
         Index("ix_campaigns_user_created", "user_id", text("created_at desc")),
     )
 
@@ -92,6 +96,11 @@ class Campaign(Base):
     audience: Mapped[str | None] = text_column()
     visual_style: Mapped[str | None] = text_column()
     visual_creation_mode: Mapped[str | None] = text_column()
+    requested_image_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
+    visual_instruction: Mapped[str | None] = text_column()
+    selected_template_id: Mapped[str | None] = text_column()
     visual_recipe_json: Mapped[dict] = json_column("visual_recipe_json")
     planner_result_json: Mapped[dict] = json_column("planner_result_json")
     current_visual_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -203,12 +212,21 @@ class GenerationJob(Base):
 
     Every LLM call is recorded here so we can inspect provider, model, tokens
     and cost without building credits yet (spec §31 rule 10).
+
+    One row belongs to exactly one parent: an advertising campaign or an
+    educational post, never both and never neither. Keeping both paths in one
+    table is what lets us compare advertising and educational latency and cost
+    with a single query.
     """
 
     __tablename__ = "generation_jobs"
     __table_args__ = (
         enum_check("generation_jobs", "status", JOB_STATUSES),
         enum_check("generation_jobs", "job_type", JOB_TYPES),
+        CheckConstraint(
+            "(campaign_id is not null) <> (educational_post_id is not null)",
+            name="ck_generation_jobs_one_parent",
+        ),
         # Repeated taps on «ساخت کمپین» must not launch several jobs (spec §27).
         Index(
             "uq_generation_jobs_active",
@@ -220,13 +238,30 @@ class GenerationJob(Base):
                 "AND job_type in ('campaign_generation', 'image_generation')"
             ),
         ),
+        # Same guard for «ساخت پست», so a double tap cannot buy two images.
+        Index(
+            "uq_generation_jobs_active_education",
+            "educational_post_id",
+            "job_type",
+            unique=True,
+            postgresql_where=text(
+                "status in ('queued', 'processing') "
+                "AND job_type in ('educational_agent', 'educational_image')"
+            ),
+        ),
     )
 
     id: Mapped[uuid.UUID] = pk()
-    campaign_id: Mapped[uuid.UUID] = mapped_column(
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("campaigns.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+        index=True,
+    )
+    educational_post_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("educational_posts.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     user_id: Mapped[uuid.UUID | None] = user_fk()
@@ -281,6 +316,7 @@ class CampaignVisualAttempt(Base):
     recipe_json: Mapped[dict] = json_column("recipe_json")
     planner_json: Mapped[dict] = json_column("planner_json")
     prompt_architect_json: Mapped[dict] = json_column("prompt_architect_json")
+    creative_agent_json: Mapped[dict] = json_column("creative_agent_json")
     status: Mapped[str] = mapped_column(String, nullable=False)
     auto_repair_used: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")

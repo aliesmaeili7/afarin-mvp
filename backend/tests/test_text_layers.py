@@ -49,13 +49,6 @@ async def _ready(client: AsyncClient, headers: dict[str, str]) -> str:
         headers=headers,
         json={"objective": "promotion", "visual_style": "friendly"},
     )
-    concepts = await client.post(
-        f"/api/campaigns/{campaign_id}/concepts/generate", headers=headers
-    )
-    await client.post(
-        f"/api/campaigns/{campaign_id}/concepts/{concepts.json()[1]['id']}/select",
-        headers=headers,
-    )
     await client.post(f"/api/campaigns/{campaign_id}/generate", headers=headers)
     await client.get(f"/api/campaigns/{campaign_id}/status", headers=headers)
     return campaign_id

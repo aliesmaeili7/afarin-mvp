@@ -1,0 +1,7 @@
+{
+  "id": "fa_math_decimals",
+  "label": "ریاضی ابتدایی - اعداد اعشاری",
+  "note": "Persian elementary mathematics. Exact values belong in the image prompt.",
+  "user_prompt": "برای کلاس ششم یک پست جذاب درباره مرور اعداد اعشاری بساز. می‌خواهم مثل یک بازی ماجراجویی باشد و شخصیت اصلی ممیز کوچولو باشد. اعدادی مثل ۰.۵ و 1.25 و 3.14 را نشان بده.",
+  "expect_language": "fa"
+}

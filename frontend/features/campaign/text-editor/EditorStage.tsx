@@ -1,6 +1,6 @@
 "use client";
 
-import type { AssetRenderSpec, CampaignAsset, TextLayer } from "@/types/domain";
+import type { AssetRenderSpec, TextLayer } from "@/types/domain";
 import { AdCanvas } from "@/features/campaign/ad-renderer/AdCanvas";
 import { EDITOR_CHROME_ATTR } from "@/features/campaign/ad-renderer/textLayers";
 import { cn } from "@/components/ui/cn";
@@ -8,21 +8,30 @@ import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import { useLayerGestures } from "./useLayerGestures";
 
 export function EditorStage({
-  asset,
   spec,
+  width,
+  height,
   layers,
   selectedId,
   onSelect,
   onLiveChange,
   onCommit,
+  showSafeArea = false,
+  dir = "rtl",
+  scrim = true,
 }: {
-  asset: CampaignAsset;
   spec: AssetRenderSpec;
+  width: number;
+  height: number;
   layers: TextLayer[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onLiveChange: (layers: TextLayer[]) => void;
   onCommit: (layers: TextLayer[]) => void;
+  /** Story crop guides. Off for square formats, which have no crop. */
+  showSafeArea?: boolean;
+  dir?: "rtl" | "ltr";
+  scrim?: boolean;
 }) {
   const { t } = useI18n();
   const gestures = useLayerGestures({
@@ -32,7 +41,6 @@ export function EditorStage({
     onLiveChange,
     onCommit,
   });
-  const story = asset.asset_type === "story_final";
 
   return (
     <div
@@ -49,13 +57,15 @@ export function EditorStage({
     >
       <AdCanvas
         spec={spec}
-        width={asset.width}
-        height={asset.height}
+        width={width}
+        height={height}
         mode="view"
+        dir={dir}
+        scrim={scrim}
       />
 
       <div className="absolute inset-0" {...{ [EDITOR_CHROME_ATTR]: "" }}>
-        {story ? <SafeAreaGuides /> : null}
+        {showSafeArea ? <SafeAreaGuides /> : null}
         {layers.map((layer) => {
           const selected = layer.id === selectedId;
           return (

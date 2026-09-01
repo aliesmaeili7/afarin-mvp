@@ -76,10 +76,47 @@ async def test_client_sends_schema_and_maps_usage() -> None:
     assert recorded["url"].endswith("/chat/completions")
     assert recorded["headers"]["authorization"] == "Bearer sk-test"
     assert recorded["body"]["response_format"]["json_schema"]["strict"] is True
+    assert recorded["body"]["max_tokens"] == 16384
     assert recorded["body"]["usage"] == {"include": True}
     assert result.usage.prompt_tokens == 9
     assert result.usage.completion_tokens == 3
     assert result.usage.cost_usd == Decimal("0.0025")
+    assert parse_json_object(result.content) == {"ok": True}
+
+
+def test_parse_json_object_tolerates_wrappers_and_trailing_commas() -> None:
+    assert parse_json_object('```json\n{"ok": true}\n```') == {"ok": True}
+    assert parse_json_object('prefix {"ok": true, } trailing') == {"ok": True}
+    wrapped = json.dumps(json.dumps({"ok": True}))
+    assert parse_json_object(wrapped) == {"ok": True}
+
+
+async def test_parsed_message_field_is_used_when_content_empty() -> None:
+    recorded: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "model": "openai/gpt-5-mini",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": "", "parsed": {"ok": True}},
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "cost": 0},
+            },
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = OpenRouterClient(_settings(), http=http)
+    result = await client.complete_json(
+        messages=[{"role": "user", "content": "hi"}],
+        schema_name="probe",
+        schema={"type": "object"},
+    )
     assert parse_json_object(result.content) == {"ok": True}
 
 
@@ -175,18 +212,34 @@ def test_strict_schema_closes_objects() -> None:
 
 
 def test_strict_schema_requires_defaulted_fields() -> None:
-    from app.providers.vision.schemas import LlmPlannerResult
+    """
+    OpenRouter strict mode rejects `default` and demands every property in
+    `required`, while Pydantic omits defaulted fields from `required`. The
+    educational result carries several defaulted fields, so it is the useful
+    model to hold that behaviour down.
+    """
+    from app.providers.education.schemas import LlmEducationalPostResult
 
-    schema = strict_schema(LlmPlannerResult)
+    schema = strict_schema(LlmEducationalPostResult)
     dumped = json.dumps(schema)
     assert "default" not in dumped
-    recipe = schema["properties"]["directions"]["items"]
-    assert "warning_fa" in recipe["required"]
-    assert "identity_constraints" in recipe["required"]
-    assert "style_id" in recipe["required"]
-    assert "headline_fa" in recipe["required"]
-    quality = schema["properties"]["input_quality"]
-    assert "reasons" in quality["required"]
+
+    assert "language" in schema["required"]
+    assert "final_prompt" in schema["required"]
+    assert "theme" in schema["required"]
+    for field in ("theme_style_notes", "safety_notes"):
+        assert field in schema["required"]
+    assert "content" not in schema["properties"]
+    assert "visual_plan" not in schema["properties"]
+
+    theme = schema["properties"]["theme"]
+    assert "secondary_colors" in theme["required"]
+    assert "decorative_motifs" in theme["required"]
+    assert "mood" in theme["required"]
+    assert "lighting" in theme["required"]
+    assert "typography" not in theme.get("properties", {})
+    assert "font_role" not in theme.get("properties", {})
+    assert theme["additionalProperties"] is False
 
 
 def test_pydantic_rejects_two_concepts() -> None:

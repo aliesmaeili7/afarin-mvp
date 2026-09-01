@@ -1,574 +1,525 @@
 {
-  "styles": [
+  "templates": [
     {
       "id": "photoreal_commercial",
       "label_fa": "عکاسی تجاری واقعی",
       "description_fa": "نور استودیویی، بافت واقعی، حس فروشگاه آنلاین.",
       "preview_path": "/visual-previews/styles/photoreal_commercial.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "photoreal commercial product photography, studio lighting, sharp detail, realistic materials",
-      "visual_grammar": "Clean believable photography, accurate materials, controlled lighting, intentional commercial composition.",
-      "composition_tendencies": "Product-dominant hero with an intentional environment, not a default dead-center studio still.",
-      "lighting_tendencies": "Controlled key and fill, soft shadows, commercial clarity.",
-      "material_rendering": "True surface texture, glass, metal, fabric, and packaging print.",
-      "color_behavior": "Faithful product color with a refined commercial palette.",
-      "best_for": ["packaged products", "cosmetics", "food", "objects", "ecommerce hero ads"],
-      "weak_for": ["making every result a centered blank-studio still"],
-      "person_affinity": "medium",
-      "product_identity_risk": "low",
-      "preferred_templates": ["hero_product", "product_pedestal", "flat_lay", "product_with_props", "model_using"],
-      "discouraged_templates": ["illustrated_scene"],
-      "prompt_guidance": "Shoot as professional real-world product advertising. Keep materials and color accurate. Give the product a designed environment and camera, not a generic seamless backdrop unless the brief truly needs it."
+      "creative_guidance": "Clean believable photography, accurate materials, controlled lighting, intentional commercial composition. Shoot as professional real-world product advertising. Keep materials and color accurate. Give the product a designed environment and camera, not a generic seamless backdrop unless the brief truly needs it.",
+      "best_for": [
+        "packaged products",
+        "cosmetics",
+        "food",
+        "objects",
+        "ecommerce hero ads"
+      ],
+      "weak_for": [
+        "making every result a centered blank-studio still"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "low",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "photoreal commercial product photography, studio lighting, sharp detail, realistic materials"
     },
     {
       "id": "fashion_editorial",
       "label_fa": "ادیتوریال مد",
       "description_fa": "ژست و ترکیب‌بندی مجله‌ای، نور سینمایی.",
       "preview_path": "/visual-previews/styles/fashion_editorial.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "high-fashion editorial photography, magazine lighting, stylish composition, cinematic grade",
-      "visual_grammar": "Intentional posing, asymmetry, crop, styling, magazine-quality lighting, strong visual attitude.",
-      "composition_tendencies": "Human/lifestyle first. Avoid catalog ecommerce centering.",
-      "lighting_tendencies": "Editorial key, rim, and contrast. Magazine, not shop lighting.",
-      "material_rendering": "Fabric drape, jewellery sparkle, skin, and accessory detail.",
-      "color_behavior": "Art-directed grade that still preserves product color identity.",
-      "best_for": ["apparel", "jewellery", "accessories", "beauty"],
-      "weak_for": ["plain object-on-white ecommerce"],
-      "person_affinity": "high",
-      "product_identity_risk": "low",
-      "preferred_templates": ["model_using", "magazine_cover", "character_poster", "cinematic_environment"],
-      "discouraged_templates": ["hero_product", "product_pedestal", "flat_lay", "floating_product"],
-      "prompt_guidance": "This must look like fashion/lifestyle art direction, not generic ecommerce photography. Prefer a person, pose, crop, and attitude. Do not degrade into a centered product packshot unless there is a specific conceptual editorial reason."
+      "creative_guidance": "Intentional posing, asymmetry, crop, styling, magazine-quality lighting, strong visual attitude. This must look like fashion/lifestyle art direction, not generic ecommerce photography. Prefer a person, pose, crop, and attitude. Do not degrade into a centered product packshot unless there is a specific conceptual editorial reason.",
+      "best_for": [
+        "apparel",
+        "jewellery",
+        "accessories",
+        "beauty"
+      ],
+      "weak_for": [
+        "plain object-on-white ecommerce"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "low",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "high-fashion editorial photography, magazine lighting, stylish composition, cinematic grade"
     },
     {
       "id": "anime",
       "label_fa": "انیمه",
       "description_fa": "خط تمیز، رنگ‌های زنده، حس انیمیشن مدرن.",
       "preview_path": "/visual-previews/styles/anime.jpg",
-      "default_text_safe_area": "top",
-      "preview_prompt": "modern anime still, clean linework, vivid cel shading, expressive lighting, not a screenshot",
-      "visual_grammar": "Clean line work, cel shading, expressive environments or characters, intentionally illustrated.",
-      "composition_tendencies": "Illustrated scene or character with the product integrated, never a live-action screenshot.",
-      "lighting_tendencies": "Graphic cel light, colored rims, clear shadow shapes.",
-      "material_rendering": "Stylized but the real product silhouette, colors, and graphics stay identifiable.",
-      "color_behavior": "Vivid controlled palettes, not muddy photoreal.",
-      "best_for": ["youth campaigns", "apparel", "accessories", "playful products"],
-      "weak_for": ["text-heavy packaging that must stay photographic"],
-      "person_affinity": "high",
-      "product_identity_risk": "medium",
-      "preferred_templates": ["illustrated_scene", "character_poster", "model_using", "cinematic_environment"],
-      "discouraged_templates": ["product_pedestal", "flat_lay"],
-      "prompt_guidance": "Make a contemporary anime-inspired advertising illustration. Keep linework and cel shading obvious. Preserve packaging/logos as faithfully as illustration allows. No screenshot UI, no fake speech or lettering."
+      "creative_guidance": "Clean line work, cel shading, expressive environments or characters, intentionally illustrated. Make a contemporary anime-inspired advertising illustration. Keep linework and cel shading obvious. Preserve packaging/logos as faithfully as illustration allows. No screenshot UI, no fake speech or lettering.",
+      "best_for": [
+        "youth campaigns",
+        "apparel",
+        "accessories",
+        "playful products"
+      ],
+      "weak_for": [
+        "text-heavy packaging that must stay photographic"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the top.",
+      "preview_prompt": "modern anime still, clean linework, vivid cel shading, expressive lighting, not a screenshot"
     },
     {
       "id": "manga_illustrated",
       "label_fa": "مانگا و تصویرسازی",
       "description_fa": "جوهر، هاشور و حس صفحه کمیک.",
       "preview_path": "/visual-previews/styles/manga_illustrated.jpg",
-      "default_text_safe_area": "top",
-      "preview_prompt": "illustrated manga-inspired artwork, ink linework, screentone texture, graphic poster composition, no speech bubbles, no lettering",
-      "visual_grammar": "Ink, screentone, graphic framing, dynamic black/white or limited-color structure.",
-      "composition_tendencies": "Poster-like graphic frames, speed, contrast, not a painted photoreal still.",
-      "lighting_tendencies": "High-contrast ink lighting, screentone atmosphere.",
-      "material_rendering": "Graphic reduction of the product while keeping silhouette and key graphics.",
-      "color_behavior": "Black/white or a tight limited palette.",
-      "best_for": ["youth", "apparel", "accessories"],
-      "weak_for": ["fine photographic packaging detail"],
-      "person_affinity": "high",
-      "product_identity_risk": "medium",
-      "preferred_templates": ["illustrated_scene", "character_poster", "magazine_cover"],
-      "discouraged_templates": ["flat_lay", "product_pedestal"],
-      "prompt_guidance": "Graphic manga-inspired commercial illustration. Use ink and screentone. No speech bubbles, no fake lettering, no invented manga text. Product identity must survive the graphic reduction."
+      "creative_guidance": "Ink, screentone, graphic framing, dynamic black/white or limited-color structure. Graphic manga-inspired commercial illustration. Use ink and screentone. No speech bubbles, no fake lettering, no invented manga text. Product identity must survive the graphic reduction.",
+      "best_for": [
+        "youth",
+        "apparel",
+        "accessories"
+      ],
+      "weak_for": [
+        "fine photographic packaging detail"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the top.",
+      "preview_prompt": "illustrated manga-inspired artwork, ink linework, screentone texture, graphic poster composition, no speech bubbles, no lettering"
     },
     {
       "id": "render_3d",
       "label_fa": "رندر سه‌بعدی",
       "description_fa": "سطح براق، نورپردازی نرم سه‌بعدی.",
       "preview_path": "/visual-previews/styles/render_3d.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "polished 3D product render, soft studio HDRI, physically based materials, octane-like quality without naming a renderer",
-      "visual_grammar": "Physically convincing materials, sculpted forms, studio/CG lighting, controlled geometry.",
-      "composition_tendencies": "Object visualization, plinths, levitation, scale play. Weak for worn clothing on people.",
-      "lighting_tendencies": "HDRI studio, specular control, clean CG falloff.",
-      "material_rendering": "PBR plastics, rubber, metal, glass. Packaging type is high-risk.",
-      "color_behavior": "Product-true color with premium CG polish.",
-      "best_for": ["shoes", "packaged goods", "objects", "tech-like products"],
-      "weak_for": ["apparel on a person", "text-heavy packaging"],
-      "person_affinity": "low",
-      "product_identity_risk": "high",
-      "preferred_templates": ["hero_product", "product_pedestal", "floating_product", "giant_miniature_world", "surreal_scale"],
-      "discouraged_templates": ["model_using", "character_poster"],
-      "prompt_guidance": "Premium stylized 3D product visualization. Sculpted form and studio CG light. Do not name a renderer. Preserve silhouette and color; be careful with packaging type. Avoid forcing a photoreal human wearing the product."
+      "creative_guidance": "Physically convincing materials, sculpted forms, studio/CG lighting, controlled geometry. Premium stylized 3D product visualization. Sculpted form and studio CG light. Do not name a renderer. Preserve silhouette and color; be careful with packaging type. Avoid forcing a photoreal human wearing the product.",
+      "best_for": [
+        "shoes",
+        "packaged goods",
+        "objects",
+        "tech-like products"
+      ],
+      "weak_for": [
+        "apparel on a person",
+        "text-heavy packaging"
+      ],
+      "person_requirement": "none",
+      "identity_risk": "high",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "polished 3D product render, soft studio HDRI, physically based materials, octane-like quality without naming a renderer"
     },
     {
       "id": "clay",
       "label_fa": "خمیری",
       "description_fa": "بافت دست‌ساز و حجم نرم خمیر.",
       "preview_path": "/visual-previews/styles/clay.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "claymation still, handmade clay texture, soft studio light, tactile miniature craft look",
-      "visual_grammar": "Soft sculpted forms, handcrafted imperfections, miniature physical-world feeling.",
-      "composition_tendencies": "Tactile object or miniature world. Weak for realistic people wearing clothes.",
-      "lighting_tendencies": "Soft tabletop light, gentle shadows, craft-set atmosphere.",
-      "material_rendering": "Clay, fingerprint scale, handmade edges. Fine print is high-risk.",
-      "color_behavior": "Slightly simplified product colors in clay pigment.",
-      "best_for": ["simple recognizable silhouettes", "playful campaigns"],
-      "weak_for": ["fine packaging details", "realistic apparel on a model"],
-      "person_affinity": "low",
-      "product_identity_risk": "high",
-      "preferred_templates": ["hero_product", "floating_product", "giant_miniature_world", "illustrated_scene"],
-      "discouraged_templates": ["model_using", "character_poster"],
-      "prompt_guidance": "Handmade tactile clay / miniature craft aesthetic. Keep the product silhouette readable. Do not turn a real person into a clay fashion model unless the template absolutely requires a figure and even then keep the product identifiable."
+      "creative_guidance": "Soft sculpted forms, handcrafted imperfections, miniature physical-world feeling. Handmade tactile clay / miniature craft aesthetic. Keep the product silhouette readable. Do not turn a real person into a clay fashion model unless the template absolutely requires a figure and even then keep the product identifiable.",
+      "best_for": [
+        "simple recognizable silhouettes",
+        "playful campaigns"
+      ],
+      "weak_for": [
+        "fine packaging details",
+        "realistic apparel on a model"
+      ],
+      "person_requirement": "none",
+      "identity_risk": "high",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "claymation still, handmade clay texture, soft studio light, tactile miniature craft look"
     },
     {
       "id": "collage",
       "label_fa": "کلاژ",
       "description_fa": "لایه‌های بریده، کاغذ و بافت چاپی.",
       "preview_path": "/visual-previews/styles/collage.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "paper collage advertisement still, cut-paper layers, print texture, graphic overlapping shapes, no readable text",
-      "visual_grammar": "Cutouts, layered paper, print textures, graphic shapes, bold composition.",
-      "composition_tendencies": "Photographic product cutout inside a transformed paper world.",
-      "lighting_tendencies": "Graphic paper lighting, printed shadows, collage depth.",
-      "material_rendering": "Keep real product pixels when possible; transform only the environment.",
-      "color_behavior": "Bold print palettes around faithful product color.",
-      "best_for": ["apparel", "fashion", "accessories", "editorial campaigns"],
-      "weak_for": ["muddy photoreal studio shots with a slight paper overlay"],
-      "person_affinity": "medium",
-      "product_identity_risk": "low",
-      "preferred_templates": ["hero_product", "magazine_cover", "character_poster", "illustrated_scene"],
-      "discouraged_templates": ["cinematic_environment"],
-      "prompt_guidance": "Graphic cut-paper/editorial collage. Preserve the real product as a photographic cutout while transforming the environment into layered paper and print texture. No readable collage lettering."
+      "creative_guidance": "Cutouts, layered paper, print textures, graphic shapes, bold composition. Graphic cut-paper/editorial collage. Preserve the real product as a photographic cutout while transforming the environment into layered paper and print texture. No readable collage lettering.",
+      "best_for": [
+        "apparel",
+        "fashion",
+        "accessories",
+        "editorial campaigns"
+      ],
+      "weak_for": [
+        "muddy photoreal studio shots with a slight paper overlay"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "low",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "paper collage advertisement still, cut-paper layers, print texture, graphic overlapping shapes, no readable text"
     },
     {
       "id": "surreal",
       "label_fa": "سوررئال",
       "description_fa": "مقیاس غیرعادی و فضای رویایی.",
       "preview_path": "/visual-previews/styles/surreal.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "surreal advertising still, dreamlike scale, unexpected environment, cinematic color, grounded product identity",
-      "visual_grammar": "Dreamlike scale or environment, impossible but intentional relationship between product and scene.",
-      "composition_tendencies": "One readable impossible idea. Do not force surrealism onto every product.",
-      "lighting_tendencies": "Motivated strange light that still describes the product.",
-      "material_rendering": "Product stays physically itself inside an impossible world.",
-      "color_behavior": "Heightened but product-true color.",
-      "best_for": ["clean object photos", "packaged goods", "footwear", "concept campaigns"],
-      "weak_for": ["food", "identity-sensitive packaging unless clearly justified"],
-      "person_affinity": "medium",
-      "product_identity_risk": "medium",
-      "preferred_templates": ["surreal_scale", "giant_miniature_world", "floating_product", "cinematic_environment"],
-      "discouraged_templates": ["flat_lay", "product_pedestal"],
-      "prompt_guidance": "Conceptual advertising with unexpected physical logic. The impossible relationship must be immediately readable. Do not merely grade a normal studio shot. Keep the real SKU recognizable."
+      "creative_guidance": "Dreamlike scale or environment, impossible but intentional relationship between product and scene. Conceptual advertising with unexpected physical logic. The impossible relationship must be immediately readable. Do not merely grade a normal studio shot. Keep the real SKU recognizable.",
+      "best_for": [
+        "clean object photos",
+        "packaged goods",
+        "footwear",
+        "concept campaigns"
+      ],
+      "weak_for": [
+        "food",
+        "identity-sensitive packaging unless clearly justified"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "surreal advertising still, dreamlike scale, unexpected environment, cinematic color, grounded product identity"
     },
     {
       "id": "cinematic",
       "label_fa": "سینمایی",
       "description_fa": "نور فیلم، عمق میدان و حس سکانس.",
       "preview_path": "/visual-previews/styles/cinematic.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "cinematic still, anamorphic atmosphere, volumetric light, shallow depth of field, filmic color",
-      "visual_grammar": "Narrative environment, motivated light, depth, atmosphere, intentional camera, sense of moment.",
-      "composition_tendencies": "A scene with story, not a studio packshot with cinematic LUTs.",
-      "lighting_tendencies": "Motivated practicals, volume, depth, film contrast.",
-      "material_rendering": "Photoreal materials inside a filmic world.",
-      "color_behavior": "Filmic grade that still preserves product identity.",
-      "best_for": ["apparel", "lifestyle", "shoes", "environment-led products"],
-      "weak_for": ["generic centered hero product"],
-      "person_affinity": "high",
-      "product_identity_risk": "low",
-      "preferred_templates": ["cinematic_environment", "model_using", "character_poster"],
-      "discouraged_templates": ["hero_product", "flat_lay", "product_pedestal"],
-      "prompt_guidance": "Cinematic is a scene, not a color grade. Require narrative atmosphere, motivated light, depth, and an intentional camera. The product stays legible. Do not deliver a centered studio hero with teal-and-orange grading."
+      "creative_guidance": "Narrative environment, motivated light, depth, atmosphere, intentional camera, sense of moment. Cinematic is a scene, not a color grade. Require narrative atmosphere, motivated light, depth, and an intentional camera. The product stays legible. Do not deliver a centered studio hero with teal-and-orange grading.",
+      "best_for": [
+        "apparel",
+        "lifestyle",
+        "shoes",
+        "environment-led products"
+      ],
+      "weak_for": [
+        "generic centered hero product"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "low",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "cinematic still, anamorphic atmosphere, volumetric light, shallow depth of field, filmic color"
     },
     {
       "id": "retro",
       "label_fa": "رترو",
       "description_fa": "رنگ و بافت دهه‌های گذشته، بدون کپی اثر مشخص.",
       "preview_path": "/visual-previews/styles/retro.jpg",
-      "default_text_safe_area": "top",
-      "preview_prompt": "retro commercial still, vintage color film, analog grain, period lighting, no logos, no lettering",
-      "visual_grammar": "Specific vintage photographic or print behavior, period palette, grain, lighting, composition.",
-      "composition_tendencies": "Period-commercial framing. Must be visibly retro, not a slight warm filter.",
-      "lighting_tendencies": "Analog era lighting: tungsten, flash, or print-era softness.",
-      "material_rendering": "Film grain and print texture over true product form.",
-      "color_behavior": "Period palette, shifted but product still identifiable.",
-      "best_for": ["objects", "fashion", "props-led stills", "cover-like ads"],
-      "weak_for": ["a modern photo with a vintage LUT only"],
-      "person_affinity": "medium",
-      "product_identity_risk": "medium",
-      "preferred_templates": ["magazine_cover", "hero_product", "model_using", "product_with_props"],
-      "discouraged_templates": ["illustrated_scene"],
-      "prompt_guidance": "Recognizable period-commercial / analog visual language. It must look retro, not merely warm. Do not reference copyrighted brands or named campaigns. No invented lettering."
+      "creative_guidance": "Specific vintage photographic or print behavior, period palette, grain, lighting, composition. Recognizable period-commercial / analog visual language. It must look retro, not merely warm. Do not reference copyrighted brands or named campaigns. No invented lettering.",
+      "best_for": [
+        "objects",
+        "fashion",
+        "props-led stills",
+        "cover-like ads"
+      ],
+      "weak_for": [
+        "a modern photo with a vintage LUT only"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the top.",
+      "preview_prompt": "retro commercial still, vintage color film, analog grain, period lighting, no logos, no lettering"
     },
     {
       "id": "watercolor_illustration",
       "label_fa": "آبرنگ",
       "description_fa": "رنگ دانه، کاغذ مرطوب و حس نقاشی.",
       "preview_path": "/visual-previews/styles/watercolor_illustration.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "watercolor illustration, pigment blooms, paper texture, hand-painted advertising still, no lettering",
-      "visual_grammar": "Paper texture, pigment variation, brush/pigment edges, painterly environment.",
-      "composition_tendencies": "Hand-painted scene around a still-identifiable product.",
-      "lighting_tendencies": "Soft painted light, wet-into-wet atmosphere.",
-      "material_rendering": "Pigment stands in for materials; silhouette and key colors must survive.",
-      "color_behavior": "Soft blooms, paper white, product-true local color.",
-      "best_for": ["beauty", "lifestyle", "food", "apparel", "softer campaigns"],
-      "weak_for": ["tiny packaging legal text"],
-      "person_affinity": "medium",
-      "product_identity_risk": "medium",
-      "preferred_templates": ["illustrated_scene", "product_with_props", "hero_product"],
-      "discouraged_templates": ["floating_product"],
-      "prompt_guidance": "Hand-painted soft advertising illustration. Show paper, pigment, and brush edges. Environment is painted. Product identity stays readable. No lettering."
+      "creative_guidance": "Paper texture, pigment variation, brush/pigment edges, painterly environment. Hand-painted soft advertising illustration. Show paper, pigment, and brush edges. Environment is painted. Product identity stays readable. No lettering.",
+      "best_for": [
+        "beauty",
+        "lifestyle",
+        "food",
+        "apparel",
+        "softer campaigns"
+      ],
+      "weak_for": [
+        "tiny packaging legal text"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "watercolor illustration, pigment blooms, paper texture, hand-painted advertising still, no lettering"
     },
     {
       "id": "neon",
       "label_fa": "نئون",
       "description_fa": "شب شهری، نور نئون و کنتراست بالا.",
       "preview_path": "/visual-previews/styles/neon.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "neon night commercial still, saturated rim light, wet reflections, high contrast, no signage lettering",
-      "visual_grammar": "Colored rim lights, emissive environmental lighting, dark/night environment, reflections, contrast.",
-      "composition_tendencies": "Night commercial energy. Avoid random neon signage text.",
-      "lighting_tendencies": "Saturated rims, wet bounce, dark surround, product still readable.",
-      "material_rendering": "Highlights and reflections on real materials.",
-      "color_behavior": "Emissive accents around faithful product color.",
-      "best_for": ["shoes", "fashion", "packaged objects", "youth/nightlife"],
-      "weak_for": ["daylit food photography", "random neon lettering"],
-      "person_affinity": "medium",
-      "product_identity_risk": "low",
-      "preferred_templates": ["hero_product", "floating_product", "cinematic_environment"],
-      "discouraged_templates": ["flat_lay"],
-      "prompt_guidance": "High-energy night commercial visual. Colored rims and dark environment. No random neon signage or readable signs. Product remains the hero."
+      "creative_guidance": "Colored rim lights, emissive environmental lighting, dark/night environment, reflections, contrast. High-energy night commercial visual. Colored rims and dark environment. No random neon signage or readable signs. Product remains the hero.",
+      "best_for": [
+        "shoes",
+        "fashion",
+        "packaged objects",
+        "youth/nightlife"
+      ],
+      "weak_for": [
+        "daylit food photography",
+        "random neon lettering"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "low",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "neon night commercial still, saturated rim light, wet reflections, high contrast, no signage lettering"
     },
     {
       "id": "persian_miniature_inspired",
       "label_fa": "الهام از نگارگری",
       "description_fa": "الگوی ایرانی، رنگ تخت و ترکیب تزئینی — نه کپی یک اثر.",
       "preview_path": "/visual-previews/styles/persian_miniature_inspired.jpg",
-      "default_text_safe_area": "bottom",
-      "preview_prompt": "contemporary advertising still inspired by Persian miniature patterning, ornamental flat color, garden geometry, no calligraphy, no readable text",
-      "visual_grammar": "Ornamental geometry, flattened perspective, garden/architectural motifs, decorative framing, controlled flat color.",
-      "composition_tendencies": "Compositionally inspired by miniature art, not merely a decorative border around a photo.",
-      "lighting_tendencies": "Even decorative illumination, little photoreal depth fog.",
-      "material_rendering": "Stylized planes; product silhouette and colors stay specific.",
-      "color_behavior": "Controlled flat jewel palette.",
-      "best_for": ["objects", "food when justified", "apparel", "editorial campaigns"],
-      "weak_for": ["fake calligraphy", "copied historical pages"],
-      "person_affinity": "medium",
-      "product_identity_risk": "medium",
-      "preferred_templates": ["illustrated_scene", "hero_product", "product_with_props", "character_poster"],
-      "discouraged_templates": ["cinematic_environment"],
-      "prompt_guidance": "Contemporary commercial composition inspired by Persian miniature visual principles. Flattened ornamental space and garden/architecture motifs. Must feel compositionally inspired, not a photo with a pretty border. No fake calligraphy."
+      "creative_guidance": "Ornamental geometry, flattened perspective, garden/architectural motifs, decorative framing, controlled flat color. Contemporary commercial composition inspired by Persian miniature visual principles. Flattened ornamental space and garden/architecture motifs. Must feel compositionally inspired, not a photo with a pretty border. No fake calligraphy.",
+      "best_for": [
+        "objects",
+        "food when justified",
+        "apparel",
+        "editorial campaigns"
+      ],
+      "weak_for": [
+        "fake calligraphy",
+        "copied historical pages"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the bottom.",
+      "preview_prompt": "contemporary advertising still inspired by Persian miniature patterning, ornamental flat color, garden geometry, no calligraphy, no readable text"
     },
     {
       "id": "vintage_iranian_poster",
       "label_fa": "پوستر قدیمی ایرانی",
       "description_fa": "ترکیب پوستر میان‌قرن، بافت چاپ سنگی — نه بازسازی یک پوستر معروف.",
       "preview_path": "/visual-previews/styles/vintage_iranian_poster.jpg",
-      "default_text_safe_area": "top",
-      "preview_prompt": "vintage Iranian poster-inspired graphic still, mid-century print texture, bold flat shapes, limited palette, no lettering, no logos",
-      "visual_grammar": "Flat graphic shapes, print texture, limited palette, bold poster composition, period commercial illustration.",
-      "composition_tendencies": "A real poster-like composition even without type, not a product photo with texture overlay.",
-      "lighting_tendencies": "Graphic print shading, not cinematic photography.",
-      "material_rendering": "Reduced graphic shapes that still identify the SKU.",
-      "color_behavior": "Limited mid-century print palette.",
-      "best_for": ["objects", "fashion", "cover-like ads", "character posters"],
-      "weak_for": ["copied historical logos, posters, or characters"],
-      "person_affinity": "medium",
-      "product_identity_risk": "medium",
-      "preferred_templates": ["magazine_cover", "hero_product", "character_poster", "illustrated_scene"],
-      "discouraged_templates": ["cinematic_environment", "flat_lay"],
-      "prompt_guidance": "Mid-century Iranian commercial-poster-inspired visual language. Flat shapes, print texture, bold poster composition. It must become a poster, not a normal product image with grain. No copied historical logos, posters, or characters. No lettering."
-    }
-  ],
-  "templates": [
+      "creative_guidance": "Flat graphic shapes, print texture, limited palette, bold poster composition, period commercial illustration. Mid-century Iranian commercial-poster-inspired visual language. Flat shapes, print texture, bold poster composition. It must become a poster, not a normal product image with grain. No copied historical logos, posters, or characters. No lettering.",
+      "best_for": [
+        "objects",
+        "fashion",
+        "cover-like ads",
+        "character posters"
+      ],
+      "weak_for": [
+        "copied historical logos, posters, or characters"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
+      "text_safe_area_guidance": "Leave a clear empty region for overlay type, usually toward the top.",
+      "preview_prompt": "vintage Iranian poster-inspired graphic still, mid-century print texture, bold flat shapes, limited palette, no lettering, no logos"
+    },
     {
       "id": "hero_product",
       "label_fa": "محصول قهرمان",
       "description_fa": "محصول در مرکز، واضح و بزرگ.",
       "preview_path": "/visual-previews/templates/hero_product.jpg",
-      "default_text_safe_area": "bottom",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "hero product centered, large in frame, clean supporting environment",
-      "composition_goal": "One unmistakable product hero occupying roughly 45–70% of useful visual area with an intentional supporting environment.",
-      "camera_behavior": "Choose the camera that best shows defining product geometry. Not obligated to be dead-center on a blank backdrop.",
-      "product_scale": "Dominant, 45–70% of the useful frame.",
-      "product_placement": "Hero placement with designed negative space for type.",
-      "human_requirement": "none",
-      "context_requirement": "useful",
-      "foreground_behavior": "Minimal; nothing competing with the product.",
-      "background_behavior": "Intentional environment or set, not leftover generic white.",
+      "creative_guidance": "One unmistakable product hero occupying roughly 45–70% of useful visual area with an intentional supporting environment. Choose the camera that best shows defining product geometry. Not obligated to be dead-center on a blank backdrop. One unmistakable product hero. It must not mean always centering an object on a generic blank background. Design the environment and camera around the product.",
+      "best_for": [
+        "objects",
+        "packaging",
+        "shoes",
+        "cosmetics"
+      ],
+      "weak_for": [
+        "fashion editorial attitude"
+      ],
+      "person_requirement": "none",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Clear empty band for overlay type, usually bottom.",
-      "best_for": ["objects", "packaging", "shoes", "cosmetics"],
-      "weak_for": ["fashion editorial attitude"],
-      "preferred_styles": ["photoreal_commercial", "render_3d", "collage", "retro"],
-      "discouraged_styles": ["fashion_editorial", "cinematic"],
-      "prompt_guidance": "One unmistakable product hero. It must not mean always centering an object on a generic blank background. Design the environment and camera around the product."
+      "preview_prompt": "hero product centered, large in frame, clean supporting environment"
     },
     {
       "id": "model_using",
       "label_fa": "در حال استفاده",
       "description_fa": "یک نفر محصول را پوشیده یا استفاده می‌کند.",
       "preview_path": "/visual-previews/templates/model_using.jpg",
-      "default_text_safe_area": "bottom",
-      "needs_person": true,
-      "allows_duplicate_products": false,
-      "preview_prompt": "one person using or wearing the product naturally, product clearly visible, editorial body language",
-      "composition_goal": "Show a person naturally wearing or using the product with a plausible person-product relationship.",
-      "camera_behavior": "Body and product both readable. Apparel: fit, silhouette, front graphic visible.",
-      "product_scale": "Product remains visually important, not lost on the body.",
-      "product_placement": "Worn or used in a physically plausible way.",
-      "human_requirement": "required",
-      "context_requirement": "useful",
-      "foreground_behavior": "Hands/body may frame the product but must not hide it.",
-      "background_behavior": "Lifestyle or editorial setting that supports the pose.",
+      "creative_guidance": "Show a person naturally wearing or using the product with a plausible person-product relationship. Body and product both readable. Apparel: fit, silhouette, front graphic visible. A person must naturally wear or use this exact product. Apparel fit and front graphic stay visible. Beauty use must make sense. Accessories must not disappear behind the model. No extra SKUs.",
+      "best_for": [
+        "apparel",
+        "beauty",
+        "accessories",
+        "shoes"
+      ],
+      "weak_for": [
+        "tiny objects with no plausible use pose"
+      ],
+      "person_requirement": "required",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Keep a type band away from the face and product graphic.",
-      "best_for": ["apparel", "beauty", "accessories", "shoes"],
-      "weak_for": ["tiny objects with no plausible use pose"],
-      "preferred_styles": ["fashion_editorial", "cinematic", "photoreal_commercial", "anime"],
-      "discouraged_styles": ["render_3d", "clay"],
-      "prompt_guidance": "A person must naturally wear or use this exact product. Apparel fit and front graphic stay visible. Beauty use must make sense. Accessories must not disappear behind the model. No extra SKUs."
+      "preview_prompt": "one person using or wearing the product naturally, product clearly visible, editorial body language"
     },
     {
       "id": "product_pedestal",
       "label_fa": "روی پایه",
       "description_fa": "محصول روی استند یا سطح نمایش.",
       "preview_path": "/visual-previews/templates/product_pedestal.jpg",
-      "default_text_safe_area": "top",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "product displayed on a pedestal or plinth, museum-like presentation, dramatic but simple set",
-      "composition_goal": "Elevated premium object presentation on a designed plinth or pedestal.",
-      "camera_behavior": "Slightly low or three-quarter to honor the plinth geometry.",
-      "product_scale": "Hero object, pedestal subordinate.",
-      "product_placement": "On a distinct plinth/stand with intentional set design.",
-      "human_requirement": "none",
-      "context_requirement": "required",
-      "foreground_behavior": "Plinth edge and maybe a simple foreground accent.",
-      "background_behavior": "Designed set, not empty infinity unless the set is the void.",
+      "creative_guidance": "Elevated premium object presentation on a designed plinth or pedestal. Slightly low or three-quarter to honor the plinth geometry. The product sits on a designed plinth/pedestal. Geometry and set design matter. This is not a floating object and not a blank table.",
+      "best_for": [
+        "cosmetics",
+        "packaged products",
+        "accessories",
+        "shoes"
+      ],
+      "weak_for": [
+        "worn apparel"
+      ],
+      "person_requirement": "none",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Often top or side, away from the plinth.",
-      "best_for": ["cosmetics", "packaged products", "accessories", "shoes"],
-      "weak_for": ["worn apparel"],
-      "preferred_styles": ["photoreal_commercial", "render_3d", "neon"],
-      "discouraged_styles": ["fashion_editorial"],
-      "prompt_guidance": "The product sits on a designed plinth/pedestal. Geometry and set design matter. This is not a floating object and not a blank table."
+      "preview_prompt": "product displayed on a pedestal or plinth, museum-like presentation, dramatic but simple set"
     },
     {
       "id": "magazine_cover",
       "label_fa": "جلد مجله",
       "description_fa": "ترکیب جلد، با فضای خالی برای تیتر آفرین.",
       "preview_path": "/visual-previews/templates/magazine_cover.jpg",
-      "default_text_safe_area": "top",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "magazine-cover composition, strong vertical layout, generous empty area for overlay type, no masthead, no cover lines",
-      "composition_goal": "Vertical editorial-cover composition designed for later typography.",
-      "camera_behavior": "Cover camera: subject hierarchy, not a catalog packshot.",
-      "product_scale": "Strong but leaves deliberate type zones.",
-      "product_placement": "Cover subject placement with clear hierarchy.",
-      "human_requirement": "optional",
-      "context_requirement": "useful",
-      "foreground_behavior": "Cover-like framing.",
-      "background_behavior": "Graphic or photographic cover world. No generated masthead.",
+      "creative_guidance": "Vertical editorial-cover composition designed for later typography. Cover camera: subject hierarchy, not a catalog packshot. It must visually feel like a magazine cover even without text. Strong subject, hierarchy, and type zones. No generated masthead or cover lines.",
+      "best_for": [
+        "fashion",
+        "beauty",
+        "lifestyle objects"
+      ],
+      "weak_for": [
+        "busy clutter with no type zone"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Generous empty type zones, usually top, as if a cover without letters.",
-      "best_for": ["fashion", "beauty", "lifestyle objects"],
-      "weak_for": ["busy clutter with no type zone"],
-      "preferred_styles": ["fashion_editorial", "retro", "vintage_iranian_poster", "collage"],
-      "discouraged_styles": [],
-      "prompt_guidance": "It must visually feel like a magazine cover even without text. Strong subject, hierarchy, and type zones. No generated masthead or cover lines."
+      "preview_prompt": "magazine-cover composition, strong vertical layout, generous empty area for overlay type, no masthead, no cover lines"
     },
     {
       "id": "giant_miniature_world",
       "label_fa": "غول در شهر کوچک",
       "description_fa": "محصول غول‌پیکر در یک دنیای مینیاتوری.",
       "preview_path": "/visual-previews/templates/giant_miniature_world.jpg",
-      "default_text_safe_area": "bottom",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "giant product standing in a miniature city or landscape, playful forced perspective, one product only",
-      "composition_goal": "The product is monumental relative to a clearly miniature world with visible scale cues.",
-      "camera_behavior": "Forced perspective that reads giant-vs-tiny immediately.",
-      "product_scale": "Monumental versus miniature environment.",
-      "product_placement": "Standing in or looming over the miniature world.",
-      "human_requirement": "none",
-      "context_requirement": "required",
-      "foreground_behavior": "Miniature cues in the foreground: tiny streets, figures, vehicles, or landscape.",
-      "background_behavior": "A real miniature world, not a generic backdrop with a large object.",
+      "creative_guidance": "The product is monumental relative to a clearly miniature world with visible scale cues. Forced perspective that reads giant-vs-tiny immediately. Not simply a large product. The environment must contain unmistakable miniature scale cues. One product only.",
+      "best_for": [
+        "shoes",
+        "packaged goods",
+        "simple objects"
+      ],
+      "weak_for": [
+        "enlarging an object against empty space with no cues"
+      ],
+      "person_requirement": "none",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Leave a type band that does not hide scale cues.",
-      "best_for": ["shoes", "packaged goods", "simple objects"],
-      "weak_for": ["enlarging an object against empty space with no cues"],
-      "preferred_styles": ["surreal", "render_3d", "clay", "cinematic"],
-      "discouraged_styles": ["photoreal_commercial"],
-      "prompt_guidance": "Not simply a large product. The environment must contain unmistakable miniature scale cues. One product only."
+      "preview_prompt": "giant product standing in a miniature city or landscape, playful forced perspective, one product only"
     },
     {
       "id": "cinematic_environment",
       "label_fa": "فضای سینمایی",
       "description_fa": "محصول داخل یک محیط فیلمی.",
       "preview_path": "/visual-previews/templates/cinematic_environment.jpg",
-      "default_text_safe_area": "bottom",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "product placed in a cinematic environment, wide establishing atmosphere, product still readable",
-      "composition_goal": "Place the product in a narrative, film-like environment that matters to the story.",
-      "camera_behavior": "Intentional cinematic camera, depth, not a studio lock-off with a LUT.",
-      "product_scale": "Legible hero inside a larger scene.",
-      "product_placement": "Integrated into the environment, still findable.",
-      "human_requirement": "optional",
-      "context_requirement": "required",
-      "foreground_behavior": "Depth layers that do not hide the product.",
-      "background_behavior": "A real scene with atmosphere. Not a cyclorama.",
+      "creative_guidance": "Place the product in a narrative, film-like environment that matters to the story. Intentional cinematic camera, depth, not a studio lock-off with a LUT. Environment is part of the story. This is not a studio product shot with cinematic color grading. Product remains legible.",
+      "best_for": [
+        "lifestyle",
+        "shoes",
+        "apparel",
+        "objects that benefit from place"
+      ],
+      "weak_for": [
+        "studio product shot with cinematic color grading"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Use sky, wall, or ground negative space for type.",
-      "best_for": ["lifestyle", "shoes", "apparel", "objects that benefit from place"],
-      "weak_for": ["studio product shot with cinematic color grading"],
-      "preferred_styles": ["cinematic", "fashion_editorial", "neon", "surreal"],
-      "discouraged_styles": ["clay"],
-      "prompt_guidance": "Environment is part of the story. This is not a studio product shot with cinematic color grading. Product remains legible."
+      "preview_prompt": "product placed in a cinematic environment, wide establishing atmosphere, product still readable"
     },
     {
       "id": "floating_product",
       "label_fa": "محصول معلق",
       "description_fa": "شناور در فضا، نور از اطراف.",
       "preview_path": "/visual-previews/templates/floating_product.jpg",
-      "default_text_safe_area": "bottom",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "product floating in mid-air, elegant levitation, controlled motion blur optional, empty background space for type",
-      "composition_goal": "Intentional levitating product with clear separation from ground and beautiful spatial logic.",
-      "camera_behavior": "Stable elegant view, not random tumbling.",
-      "product_scale": "Hero scale in air.",
-      "product_placement": "Clearly off the ground, supported by designed spatial cues.",
-      "human_requirement": "none",
-      "context_requirement": "useful",
-      "foreground_behavior": "Optional particles or light, not clutter.",
-      "background_behavior": "Controlled void or designed atmosphere.",
+      "creative_guidance": "Intentional levitating product with clear separation from ground and beautiful spatial logic. Stable elegant view, not random tumbling. Levitation must feel designed. Clear separation from ground, believable spatial logic, controlled supporting elements. Avoid random object rotation.",
+      "best_for": [
+        "shoes",
+        "cosmetics",
+        "objects",
+        "3D-friendly products"
+      ],
+      "weak_for": [
+        "meaningless rotation or physics-breaking clutter"
+      ],
+      "person_requirement": "none",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Empty space around the float for type.",
-      "best_for": ["shoes", "cosmetics", "objects", "3D-friendly products"],
-      "weak_for": ["meaningless rotation or physics-breaking clutter"],
-      "preferred_styles": ["render_3d", "neon", "photoreal_commercial", "clay"],
-      "discouraged_styles": ["fashion_editorial"],
-      "prompt_guidance": "Levitation must feel designed. Clear separation from ground, believable spatial logic, controlled supporting elements. Avoid random object rotation."
+      "preview_prompt": "product floating in mid-air, elegant levitation, controlled motion blur optional, empty background space for type"
     },
     {
       "id": "flat_lay",
       "label_fa": "فلت‌لی",
       "description_fa": "نمای از بالا، چیدمان مرتب.",
       "preview_path": "/visual-previews/templates/flat_lay.jpg",
-      "default_text_safe_area": "bottom",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "overhead flat lay, arranged related props, product as the clear hero, top-down camera",
-      "composition_goal": "True top-down composition with intentional arrangement around the product.",
-      "camera_behavior": "Near-overhead. Do not produce angled hero photography.",
-      "product_scale": "Clear hero among subordinate props.",
-      "product_placement": "On a surface, arranged, top-down.",
-      "human_requirement": "none",
-      "context_requirement": "useful",
-      "foreground_behavior": "Props on the same plane, relevant and subordinate.",
-      "background_behavior": "Surface texture that supports the category.",
+      "creative_guidance": "True top-down composition with intentional arrangement around the product. Near-overhead. Do not produce angled hero photography. Genuine overhead composition. Props relevant and subordinate. Do not fake a flat lay with an angled camera.",
+      "best_for": [
+        "cosmetics",
+        "food",
+        "accessories",
+        "small objects"
+      ],
+      "weak_for": [
+        "apparel that needs a body",
+        "three-quarter hero shots"
+      ],
+      "person_requirement": "none",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "A clean band on the surface for type.",
-      "best_for": ["cosmetics", "food", "accessories", "small objects"],
-      "weak_for": ["apparel that needs a body", "three-quarter hero shots"],
-      "preferred_styles": ["photoreal_commercial", "watercolor_illustration"],
-      "discouraged_styles": ["cinematic", "neon", "fashion_editorial"],
-      "prompt_guidance": "Genuine overhead composition. Props relevant and subordinate. Do not fake a flat lay with an angled camera."
+      "preview_prompt": "overhead flat lay, arranged related props, product as the clear hero, top-down camera"
     },
     {
       "id": "character_poster",
       "label_fa": "پوستر شخصیت",
       "description_fa": "شخصیت یا مدل به‌عنوان پوستر کمپین.",
       "preview_path": "/visual-previews/templates/character_poster.jpg",
-      "default_text_safe_area": "top",
-      "needs_person": true,
-      "allows_duplicate_products": false,
-      "preview_prompt": "character poster composition, one figure, product integrated into the pose, empty type band, no poster text",
-      "composition_goal": "One person/character integrated into a strong poster composition with the product.",
-      "camera_behavior": "Poster camera, figure as campaign character, product meaningfully incorporated.",
-      "product_scale": "Product must be meaningfully visible in the poster.",
-      "product_placement": "Held, worn, or designed into the figure.",
-      "human_requirement": "required",
-      "context_requirement": "useful",
-      "foreground_behavior": "Poster graphic foreground ok, no lettering.",
-      "background_behavior": "Poster world with a clear later-type region.",
+      "creative_guidance": "One person/character integrated into a strong poster composition with the product. Poster camera, figure as campaign character, product meaningfully incorporated. Requires a human figure. Product must be meaningfully incorporated. Poster composition with a type region. No generated poster lettering.",
+      "best_for": [
+        "apparel",
+        "youth",
+        "beauty",
+        "accessories"
+      ],
+      "weak_for": [
+        "object-only products with no human role"
+      ],
+      "person_requirement": "required",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Keep a clear later-type region. No generated poster lettering.",
-      "best_for": ["apparel", "youth", "beauty", "accessories"],
-      "weak_for": ["object-only products with no human role"],
-      "preferred_styles": ["fashion_editorial", "anime", "manga_illustrated", "vintage_iranian_poster", "collage"],
-      "discouraged_styles": ["render_3d", "clay"],
-      "prompt_guidance": "Requires a human figure. Product must be meaningfully incorporated. Poster composition with a type region. No generated poster lettering."
+      "preview_prompt": "character poster composition, one figure, product integrated into the pose, empty type band, no poster text"
     },
     {
       "id": "illustrated_scene",
       "label_fa": "صحنه تصویرسازی",
       "description_fa": "محصول داخل یک صحنه کشیده‌شده.",
       "preview_path": "/visual-previews/templates/illustrated_scene.jpg",
-      "default_text_safe_area": "bottom",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "illustrated scene around the product, supporting environment drawn in the chosen style, product remains the subject",
-      "composition_goal": "Product integrated into an intentionally illustrated world that is a real scene, not a decorative border.",
-      "camera_behavior": "Scene camera matching the illustration style.",
-      "product_scale": "Subject of the scene, still dominant.",
-      "product_placement": "Inside the illustrated world; photo product cutout allowed if the style supports it.",
-      "human_requirement": "optional",
-      "context_requirement": "required",
-      "foreground_behavior": "Illustrated foreground that belongs to the scene.",
-      "background_behavior": "A drawn environment, not a frame or sticker border.",
+      "creative_guidance": "Product integrated into an intentionally illustrated world that is a real scene, not a decorative border. Scene camera matching the illustration style. The environment is a real illustrated scene. Can combine a preserved/photo product with illustrated surroundings. Not a decorative border around a packshot.",
+      "best_for": [
+        "youth",
+        "lifestyle",
+        "food illustration",
+        "playful objects"
+      ],
+      "weak_for": [
+        "photoreal commercial that should stay photographic"
+      ],
+      "person_requirement": "optional",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Painted or drawn empty region for type.",
-      "best_for": ["youth", "lifestyle", "food illustration", "playful objects"],
-      "weak_for": ["photoreal commercial that should stay photographic"],
-      "preferred_styles": ["anime", "manga_illustrated", "watercolor_illustration", "persian_miniature_inspired", "collage"],
-      "discouraged_styles": ["photoreal_commercial", "cinematic"],
-      "prompt_guidance": "The environment is a real illustrated scene. Can combine a preserved/photo product with illustrated surroundings. Not a decorative border around a packshot."
+      "preview_prompt": "illustrated scene around the product, supporting environment drawn in the chosen style, product remains the subject"
     },
     {
       "id": "product_with_props",
       "label_fa": "با المان‌های مرتبط",
       "description_fa": "محصول میان وسایل مرتبط با کاربردش.",
       "preview_path": "/visual-previews/templates/product_with_props.jpg",
-      "default_text_safe_area": "bottom",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "product surrounded by relevant lifestyle props, balanced still-life, no extra product variants",
-      "composition_goal": "Commercial still-life where carefully chosen relevant props support the product story.",
-      "camera_behavior": "Still-life camera that keeps the product dominant.",
-      "product_scale": "Dominant among subordinate props.",
-      "product_placement": "Hero among props that communicate category, use, or mood.",
-      "human_requirement": "none",
-      "context_requirement": "required",
-      "foreground_behavior": "A few relevant props, no random clutter.",
-      "background_behavior": "Set that matches the category.",
+      "creative_guidance": "Commercial still-life where carefully chosen relevant props support the product story. Still-life camera that keeps the product dominant. Props must communicate category, use, or mood. Avoid random clutter. Product remains dominant. No extra product variants.",
+      "best_for": [
+        "cosmetics",
+        "food",
+        "lifestyle objects"
+      ],
+      "weak_for": [
+        "random decorative clutter"
+      ],
+      "person_requirement": "none",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Leave a clean area not filled with props.",
-      "best_for": ["cosmetics", "food", "lifestyle objects"],
-      "weak_for": ["random decorative clutter"],
-      "preferred_styles": ["photoreal_commercial", "watercolor_illustration", "retro", "persian_miniature_inspired"],
-      "discouraged_styles": [],
-      "prompt_guidance": "Props must communicate category, use, or mood. Avoid random clutter. Product remains dominant. No extra product variants."
+      "preview_prompt": "product surrounded by relevant lifestyle props, balanced still-life, no extra product variants"
     },
     {
       "id": "surreal_scale",
       "label_fa": "مقیاس غیرعادی",
       "description_fa": "محصول خیلی بزرگ یا خیلی کوچک در فضا.",
       "preview_path": "/visual-previews/templates/surreal_scale.jpg",
-      "default_text_safe_area": "bottom",
-      "needs_person": false,
-      "allows_duplicate_products": false,
-      "preview_prompt": "surreal scale shift, product impossibly large or tiny in a real environment, one product only",
-      "composition_goal": "One deliberate impossible scale relationship that is immediately readable.",
-      "camera_behavior": "Camera that makes the scale joke or wonder obvious.",
-      "product_scale": "Impossibly large or tiny versus a real environment.",
-      "product_placement": "In an environment that proves the scale.",
-      "human_requirement": "none",
-      "context_requirement": "required",
-      "foreground_behavior": "Scale witnesses: people, buildings, furniture, landscape.",
-      "background_behavior": "A real-world context that makes the impossibility readable.",
+      "creative_guidance": "One deliberate impossible scale relationship that is immediately readable. Camera that makes the scale joke or wonder obvious. One deliberate impossible scale relationship. Immediately readable. Product identity remains recognizable. Do not merely change product size without environmental context.",
+      "best_for": [
+        "objects",
+        "shoes",
+        "packaged goods"
+      ],
+      "weak_for": [
+        "merely resizing the product with no environmental context"
+      ],
+      "person_requirement": "none",
+      "identity_risk": "medium",
       "text_safe_area_guidance": "Type away from the scale comparison.",
-      "best_for": ["objects", "shoes", "packaged goods"],
-      "weak_for": ["merely resizing the product with no environmental context"],
-      "preferred_styles": ["surreal", "render_3d", "cinematic"],
-      "discouraged_styles": ["photoreal_commercial"],
-      "prompt_guidance": "One deliberate impossible scale relationship. Immediately readable. Product identity remains recognizable. Do not merely change product size without environmental context."
+      "preview_prompt": "surreal scale shift, product impossibly large or tiny in a real environment, one product only"
     }
   ]
 }

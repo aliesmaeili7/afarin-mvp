@@ -31,6 +31,7 @@ export function EditorToolbar({
   onCommit,
   onDelete,
   onRewrite,
+  canRewrite = true,
 }: {
   tab: TabId;
   onTab: (tab: TabId) => void;
@@ -42,6 +43,8 @@ export function EditorToolbar({
   onCommit: () => void;
   onDelete: () => void;
   onRewrite: (intent: RewriteIntent) => void;
+  /** Off for content types with no AI copy rewrite, such as educational posts. */
+  canRewrite?: boolean;
 }) {
   const { t } = useI18n();
   return (
@@ -78,11 +81,13 @@ export function EditorToolbar({
                   onBlur={onCommit}
                   className="w-full rounded-2xl border border-ink-200 px-3 py-2 text-sm leading-7"
                 />
-                <RewriteChips
-                  chips={ASSET_REWRITE_CHIPS}
-                  onSelect={onRewrite}
-                  disabled={rewriting}
-                />
+                {canRewrite ? (
+                  <RewriteChips
+                    chips={ASSET_REWRITE_CHIPS}
+                    onSelect={onRewrite}
+                    disabled={rewriting}
+                  />
+                ) : null}
                 {canDelete ? (
                   <Button variant="outline" onClick={onDelete}>
                     {t("editor.deleteLayer")}

@@ -1,0 +1,23 @@
+{
+  "id": "fa_theme_reuse_fractions",
+  "label": "استفاده از تم ذخیره‌شده - کسرها",
+  "note": "Theme reuse. The saved look must carry over while the scene changes.",
+  "user_prompt": "یک پست درباره کسرهای مساوی برای کلاس ششم درست کن.",
+  "expect_language": "fa",
+  "theme": {
+    "name": "ریاضی ششم - بنفش سه‌بعدی",
+    "palette": {
+      "primary": ["#7c3aed", "#22d3ee"],
+      "secondary": ["#fde047"],
+      "background": "#f6f1ff",
+      "text": "#1e1b4b"
+    },
+    "illustration_style": "soft 3D clay render with matte surfaces",
+    "shape_language": "rounded blobs and pills, no sharp corners",
+    "decorative_motifs": ["stars", "dotted path", "treasure boxes"],
+    "background_treatment": "soft gradient wash with rounded organic shapes",
+    "creative_guidance": "warm playful classroom energy with a tactile handmade feel",
+    "mood": "playful, tactile",
+    "lighting": "soft studio light"
+  }
+}

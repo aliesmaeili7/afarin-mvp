@@ -33,6 +33,38 @@ class LlmUsage:
         self.model = model
 
 
+def merge_llm_usage(
+    first: LlmUsage | None, second: LlmUsage | None
+) -> LlmUsage | None:
+    """
+    Totals two calls, so a retry's cost is added to the first attempt's rather
+    than replacing it. Lives here beside LlmUsage because both the advertising
+    and educational agents need it.
+    """
+    if first is None:
+        return second
+    if second is None:
+        return first
+    cost = None
+    if first.cost_usd is not None or second.cost_usd is not None:
+        cost = (first.cost_usd or Decimal("0")) + (second.cost_usd or Decimal("0"))
+    return LlmUsage(
+        prompt_tokens=_add_int(first.prompt_tokens, second.prompt_tokens),
+        completion_tokens=_add_int(
+            first.completion_tokens, second.completion_tokens
+        ),
+        latency_ms=_add_int(first.latency_ms, second.latency_ms),
+        cost_usd=cost,
+        model=second.model or first.model,
+    )
+
+
+def _add_int(left: int | None, right: int | None) -> int | None:
+    if left is None and right is None:
+        return None
+    return (left or 0) + (right or 0)
+
+
 class ContentProvider(Protocol):
     """
     Everything that writes Persian campaign text.

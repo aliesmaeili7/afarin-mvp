@@ -61,7 +61,7 @@ describe("furthestAllowedStep", () => {
     expect(furthestAllowedStep(detail())).toBe(2);
   });
 
-  it("opens directions only after objective and mood", () => {
+  it("opens the visual step only after objective and mood", () => {
     expect(
       furthestAllowedStep(
         detail({ objective: "sell_product", visual_style: "luxury" }),

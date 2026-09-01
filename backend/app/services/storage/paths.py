@@ -52,7 +52,7 @@ def parse(path: str) -> StorageRef | None:
 class OwnerScope:
     """Which record's ownership governs an object, derived from its key."""
 
-    kind: str  # "campaign" | "brand"
+    kind: str  # "campaign" | "brand" | "education"
     id: uuid.UUID
 
 
@@ -67,6 +67,8 @@ def owner_scope(ref: StorageRef) -> OwnerScope | None:
             return OwnerScope("campaign", uuid.UUID(parts[1]))
         if len(parts) >= 2 and parts[0] == "brands":
             return OwnerScope("brand", uuid.UUID(parts[1]))
+        if len(parts) >= 2 and parts[0] == "education":
+            return OwnerScope("education", uuid.UUID(parts[1]))
     except ValueError:
         return None
     return None
@@ -108,3 +110,7 @@ def product_clean_reference_key(campaign_id: uuid.UUID, image_id: uuid.UUID) -> 
 
 def brand_asset_key(brand_id: uuid.UUID, asset_id: uuid.UUID, ext: str) -> str:
     return f"brands/{brand_id}/{asset_id}.{ext}"
+
+
+def education_image_key(post_id: uuid.UUID, token: str) -> str:
+    return f"education/{post_id}/post-{token}.jpg"

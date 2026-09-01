@@ -1,0 +1,7 @@
+{
+  "id": "en_photosynthesis",
+  "label": "English educational post",
+  "note": "English request. Copy and final_prompt must both come back in English.",
+  "user_prompt": "Create an engaging Instagram post explaining photosynthesis for grade 5 students, in a bright and curious tone.",
+  "expect_language": "en"
+}

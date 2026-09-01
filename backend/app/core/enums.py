@@ -68,7 +68,10 @@ JOB_TYPES = (
     "image_generation",
     "visual_planner",
     "prompt_architect",
+    "creative_agent",
     "visual_quality_check",
+    "educational_agent",
+    "educational_image",
 )
 
 VISUAL_CREATION_MODES = ("accurate", "creative")
@@ -84,7 +87,7 @@ VISUAL_ATTEMPT_STATUSES = (
 
 VISUAL_CANDIDATE_KINDS = ("primary", "repair")
 
-IMAGE_OUTPUT_ROLES = ("candidate", "repair", "story_adaptation", "empty_scene")
+IMAGE_OUTPUT_ROLES = ("candidate", "repair")
 
 VISUAL_FINAL_TYPES = (
     "feed_final",
@@ -108,7 +111,20 @@ REWRITE_INTENTS = (
 COPY_REWRITE_INTENTS = ("informal", "shorter", "stronger_cta", "more_luxury")
 ASSET_REWRITE_INTENTS = ("new_headline", "stronger_cta")
 
-GENERATION_STAGES = ("planning", "visual", "captions", "story", "finalizing")
+GENERATION_STAGES = ("planning", "visual", "finalizing")
+
+
+# --- Educational content ---------------------------------------------------
+#
+# The educational path is authenticated-only and has its own small vocabulary.
+# These are separate from the advertising sets on purpose: an educational post
+# has no objective, no visual style and no product.
+
+EDUCATIONAL_POST_STATUSES = ("queued", "generating", "ready", "failed")
+
+EDUCATION_THEME_SOURCES = ("builtin", "user")
+
+EDUCATION_LANGUAGES = ("fa", "en")
 
 
 def sql_in(values: tuple[str, ...]) -> str:

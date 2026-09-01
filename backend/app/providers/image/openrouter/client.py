@@ -34,7 +34,8 @@ class OpenRouterImageClient:
     ) -> None:
         self._settings = settings
         self._http = http
-        self._capabilities: dict[str, Any] | None = None
+        #: Full /images/models catalog, keyed by model id. None = not fetched.
+        self._catalog: dict[str, dict[str, Any]] | None = None
 
     async def generate(self, request: ImageRequest) -> ImageResult:
         if not self._settings.openrouter_api_key:
@@ -124,11 +125,12 @@ class OpenRouterImageClient:
                     continue
                 raise last_error
 
+            model = str(payload.get("model") or self._settings.image_model)
             return ImageResult(
                 content=content,
                 contents=(content, *extra) if extra else (),
                 media_type=media_type,
-                usage=_usage_from(body, latency_ms, self._settings.image_model),
+                usage=_usage_from(body, latency_ms, model),
             )
 
         raise last_error or generation_failed()
@@ -142,18 +144,20 @@ class OpenRouterImageClient:
         }
 
     async def _payload(self, request: ImageRequest) -> dict[str, Any]:
+        model = _request_model(self._settings, request)
         payload: dict[str, Any] = {
-            "model": self._settings.image_model,
+            "model": model,
             "prompt": request.prompt,
         }
-        params = await self._supported_parameters()
+        params = await self._supported_parameters(model)
         resolution = (request.resolution or self._settings.image_resolution).strip()
 
         if params is None:
-            # Discovery failed: send the fields Seedream 4.5 actually accepts.
-            # Do not send 1K (too few pixels for 4:5 / 9:16) or output_format.
+            # Discovery failed. Seedream needs 2K; GPT Image 2 has no resolution
+            # field and 400s if we send Seedream's. Keep that split here, not
+            # in campaign or education services.
             payload["aspect_ratio"] = request.aspect_ratio
-            if resolution and resolution != "1K":
+            if _uses_seedream_resolution(model) and resolution and resolution != "1K":
                 payload["resolution"] = resolution
             if request.references:
                 payload["input_references"] = [
@@ -164,8 +168,8 @@ class OpenRouterImageClient:
         if _enum_allows(params, "aspect_ratio", request.aspect_ratio) or not params:
             payload["aspect_ratio"] = request.aspect_ratio
 
-        if resolution and resolution != "1K" and (
-            not params or _enum_allows(params, "resolution", resolution)
+        if resolution and resolution != "1K" and _enum_allows(
+            params, "resolution", resolution
         ):
             payload["resolution"] = resolution
 
@@ -183,9 +187,15 @@ class OpenRouterImageClient:
             payload["n"] = request.n
         return payload
 
-    async def _supported_parameters(self) -> dict[str, Any] | None:
-        if self._capabilities is not None:
-            return self._capabilities
+    async def _supported_parameters(self, model: str) -> dict[str, Any] | None:
+        catalog = await self._model_catalog()
+        if catalog is None:
+            return None
+        return catalog.get(model, {})
+
+    async def _model_catalog(self) -> dict[str, dict[str, Any]] | None:
+        if self._catalog is not None:
+            return self._catalog
         try:
             response = await self._client().get(
                 f"{self._settings.llm_base_url.rstrip('/')}/images/models",
@@ -208,21 +218,17 @@ class OpenRouterImageClient:
         models = body.get("data") if isinstance(body, dict) else None
         if not isinstance(models, list):
             return None
-        wanted = self._settings.image_model
-        match = next(
-            (
-                item
-                for item in models
-                if isinstance(item, dict) and item.get("id") == wanted
-            ),
-            None,
-        )
-        params = (match or {}).get("supported_parameters")
-        if not isinstance(params, dict):
-            self._capabilities = {}
-            return self._capabilities
-        self._capabilities = params
-        return params
+        catalog: dict[str, dict[str, Any]] = {}
+        for item in models:
+            if not isinstance(item, dict):
+                continue
+            model_id = item.get("id")
+            if not isinstance(model_id, str):
+                continue
+            params = item.get("supported_parameters")
+            catalog[model_id] = params if isinstance(params, dict) else {}
+        self._catalog = catalog
+        return catalog
 
     async def _images_from(self, body: Any) -> tuple[bytes, tuple[bytes, ...], str]:
         if not isinstance(body, dict):
@@ -270,6 +276,14 @@ class OpenRouterImageClient:
         if self._http is None:
             self._http = httpx.AsyncClient()
         return self._http
+
+
+def _request_model(settings: Settings, request: ImageRequest) -> str:
+    return (request.model or "").strip() or settings.image_model
+
+
+def _uses_seedream_resolution(model: str) -> bool:
+    return "seedream" in model.lower()
 
 
 def _enum_allows(params: dict[str, Any], name: str, value: str) -> bool:

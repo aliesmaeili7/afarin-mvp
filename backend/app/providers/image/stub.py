@@ -37,7 +37,7 @@ class StubImageProvider(ImageProvider):
             usage=ImageUsage(
                 latency_ms=1,
                 cost_usd=Decimal("0"),
-                model=self.model,
+                model=request.model or self.model,
             ),
         )
 
@@ -45,4 +45,6 @@ class StubImageProvider(ImageProvider):
 def _jpeg_for(aspect: str, tone: int) -> bytes:
     if aspect == "9:16":
         return _jpeg(9, 16, (36, 28 + tone % 80, 56))
+    if aspect == "1:1":
+        return _jpeg(10, 10, (64, 52 + tone % 80, 96))
     return _jpeg(8, 10, (48, 40 + tone % 80, 72))

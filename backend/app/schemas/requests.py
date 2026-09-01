@@ -17,6 +17,9 @@ class UpdateCampaignIn(BaseModel):
     audience: str | None = None
     visual_style: str | None = None
     visual_creation_mode: str | None = None
+    requested_image_count: int | None = None
+    visual_instruction: str | None = None
+    selected_template_id: str | None = None
     brand_id: uuid.UUID | None = None
 
 

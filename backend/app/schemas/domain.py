@@ -83,6 +83,9 @@ class CampaignOut(Model):
     audience: str | None
     visual_style: str | None
     visual_creation_mode: str | None = None
+    requested_image_count: int = 1
+    visual_instruction: str | None = None
+    selected_template_id: str | None = None
     visual_recipe_json: dict[str, Any] = Field(default_factory=dict)
     planner_result_json: dict[str, Any] = Field(default_factory=dict)
     current_visual_attempt_id: OptionalId = None
@@ -136,6 +139,7 @@ class VisualCandidateOut(Model):
     storage_path: str
     hard_failed: bool
     hidden: bool
+    quality_json: dict[str, Any] = Field(default_factory=dict)
     created_at: Timestamp
 
 
@@ -147,6 +151,7 @@ class VisualAttemptOut(Model):
     auto_repair_used: bool
     selected_candidate_id: OptionalId
     recipe_json: dict[str, Any]
+    creative_agent_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class CampaignDetailOut(Model):

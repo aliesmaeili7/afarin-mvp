@@ -51,3 +51,16 @@ TEXT_LAYERS_INVALID = "این ویرایش متن معتبر نیست."
 GENERIC = "یه مشکلی پیش اومد. لطفاً دوباره امتحان کن."
 
 ALREADY_CLAIMED = "این کمپین قبلاً به یک حساب دیگه منتقل شده."
+
+# --- Educational content ---
+EDUCATION_PROMPT_REQUIRED = "بنویس چه پستی می‌خوای بسازم."
+EDUCATION_PROMPT_TOO_LONG = "توضیحت خیلی بلنده. کوتاه‌ترش کن."
+EDUCATION_SIGN_IN_REQUIRED = "برای ساخت پست آموزشی اول باید وارد بشی."
+EDUCATION_POST_NOT_FOUND = "این پست آموزشی پیدا نشد."
+EDUCATION_POST_FORBIDDEN = "دسترسی به این پست برای شما مجاز نیست."
+EDUCATION_THEME_NOT_FOUND = "این تم پیدا نشد."
+EDUCATION_THEME_FORBIDDEN = "دسترسی به این تم برای شما مجاز نیست."
+EDUCATION_THEME_NAME_REQUIRED = "برای تم یک اسم بنویس."
+EDUCATION_THEME_NOT_SAVEABLE = "برای این پست تمی برای ذخیره وجود نداره."
+EDUCATION_POST_NOT_READY = "این پست هنوز آماده نیست."
+EDUCATION_BUSY = "الان داره ساخته می‌شه. کمی صبر کن."

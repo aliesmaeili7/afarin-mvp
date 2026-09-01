@@ -10,8 +10,8 @@ from sqlalchemy import func, select
 from app.core.enums import VISUAL_FINAL_TYPES
 from app.db.models import CampaignAsset, GenerationJob
 from app.db.session import get_sessionmaker
-from app.services.campaigns.stages import STAGES, compute_progress
-from tests.conftest import auth_header, attach_sample_image
+from app.services.campaigns.stages import STAGES, compute_progress, progress_for_stage
+from tests.conftest import attach_sample_image, auth_header
 
 
 async def _ready_to_generate(client: AsyncClient, headers: dict[str, str]) -> str:
@@ -28,13 +28,6 @@ async def _ready_to_generate(client: AsyncClient, headers: dict[str, str]) -> st
         f"/api/campaigns/{campaign_id}",
         headers=headers,
         json={"objective": "promotion", "visual_style": "friendly"},
-    )
-    concepts = await client.post(
-        f"/api/campaigns/{campaign_id}/concepts/generate", headers=headers
-    )
-    await client.post(
-        f"/api/campaigns/{campaign_id}/concepts/{concepts.json()[1]['id']}/select",
-        headers=headers,
     )
     return campaign_id
 
@@ -60,7 +53,7 @@ async def test_repeated_taps_launch_one_job(client: AsyncClient, storage) -> Non
     assert count == 1
 
 
-async def test_generation_needs_a_chosen_concept(client: AsyncClient, storage) -> None:
+async def test_generation_needs_a_brief(client: AsyncClient, storage) -> None:
     headers = auth_header(uuid.uuid4())
     await client.post("/api/session/adopt", headers=headers)
 
@@ -72,7 +65,6 @@ async def test_generation_needs_a_chosen_concept(client: AsyncClient, storage) -
         f"/api/campaigns/{campaign_id}/generate", headers=headers
     )
     assert response.status_code == 422
-    assert response.json()["message_fa"] == "اول یکی از ایده‌ها رو انتخاب کن."
 
 
 async def test_polling_after_completion_does_not_duplicate_assets(
@@ -100,24 +92,7 @@ async def test_polling_after_completion_does_not_duplicate_assets(
     counts = Counter(types)
     assert counts["feed_final"] == 1
     assert counts["story_final"] == 1
-    assert counts["generated_background"] == 2
     assert sum(counts[kind] for kind in VISUAL_FINAL_TYPES) == 5
-
-
-async def test_regenerating_concepts_changes_the_copy(
-    client: AsyncClient, storage
-) -> None:
-    headers = auth_header(uuid.uuid4())
-    await client.post("/api/session/adopt", headers=headers)
-    campaign_id = await _ready_to_generate(client, headers)
-
-    again = await client.post(
-        f"/api/campaigns/{campaign_id}/concepts/generate", headers=headers
-    )
-    assert again.status_code == 200
-    # A new round rotates archetypes, so the seller sees genuinely new ideas.
-    detail = await client.get(f"/api/campaigns/{campaign_id}", headers=headers)
-    assert detail.json()["campaign"]["selected_concept_id"] is None
 
 
 def test_progress_walks_every_stage_in_order() -> None:
@@ -128,7 +103,18 @@ def test_progress_walks_every_stage_in_order() -> None:
         if not seen or seen[-1] != progress.stage:
             seen.append(progress.stage)
 
+    assert seen == ["planning", "visual", "finalizing"]
     assert seen == [stage.stage for stage in STAGES]
+
+
+def test_live_stage_percents_match_the_checklist() -> None:
+    planning = progress_for_stage("planning")
+    visual = progress_for_stage("visual")
+    finalizing = progress_for_stage("finalizing")
+    assert planning is not None and planning.percent == 20
+    assert visual is not None and visual.percent == 55
+    assert finalizing is not None and finalizing.percent == 90
+    assert progress_for_stage("captions") is None
 
 
 def test_progress_never_claims_completion_early() -> None:
