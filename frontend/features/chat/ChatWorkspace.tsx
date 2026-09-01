@@ -168,8 +168,15 @@ export function ChatWorkspace({ conversationId }: { conversationId: string | nul
 
   async function handleRetry(artifactId: string) {
     pinToBottom();
+    const artifact = session.conversation?.artifacts.find(
+      (item) => item.id === artifactId,
+    );
+    const message = session.conversation?.messages.find(
+      (item) => item.id === artifact?.message_id,
+    );
+    const language = message?.language === "en" ? "en" : "fa";
     try {
-      await session.retry(artifactId, locale);
+      await session.retry(artifactId, language);
     } catch (error) {
       notice(error);
     }

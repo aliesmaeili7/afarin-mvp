@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.providers.image import get_image_provider
 from app.providers.image.base import ImageRequest
+from app.services.orchestrator.activity import set_activity_phase
 from app.services.orchestrator.skills.base import (
     ProducedImage,
     SkillContext,
@@ -29,6 +30,7 @@ class GeneralImageSkill:
         prompt = (context.generation_instruction or context.user_text).strip()
         if not prompt:
             prompt = "a simple illustration"
+        await set_activity_phase(context.assistant_message.id, "generating_image")
         result = await get_image_provider().generate(
             ImageRequest(
                 prompt=prompt,

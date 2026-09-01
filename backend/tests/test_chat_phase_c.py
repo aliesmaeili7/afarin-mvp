@@ -332,3 +332,305 @@ async def test_delete_conversation_keeps_campaign_storage(
     assert deleted.status_code == 204
     assert [key for key in storage.objects if "/chat/" in key] == []
     assert [key for key in storage.objects if "/campaigns/" in key]
+
+
+def _assistant(body: dict) -> dict:
+    return next(item for item in body["messages"] if item["role"] == "assistant")
+
+
+async def test_explicit_education_hits_generating_image_at_provider(
+    client: AsyncClient,
+) -> None:
+    from sqlalchemy import select
+
+    from app.db.models import ChatMessage
+    from app.db.session import get_sessionmaker
+    from app.providers.image import set_image_provider
+    from app.providers.image.stub import StubImageProvider
+
+    seen: list[tuple[str | None, str | None]] = []
+
+    class Spy(StubImageProvider):
+        async def generate(self, request):
+            async with get_sessionmaker()() as session:
+                row = await session.scalar(
+                    select(ChatMessage)
+                    .where(ChatMessage.role == "assistant")
+                    .order_by(ChatMessage.created_at.desc())
+                )
+                meta = row.metadata_json if row is not None else {}
+                seen.append((meta.get("activity_phase"), meta.get("route")))
+            return await super().generate(request)
+
+    set_image_provider(Spy())
+    try:
+        reset_stub_calls()
+        created = await client.post(
+            "/api/chat/conversations",
+            json={
+                "content": "برای کلاس ششم یه پست بامزه درباره اعداد اعشاری درست کن.",
+                "language": "fa",
+                "action_hint": "education",
+            },
+            headers=auth_header(uuid.uuid4()),
+        )
+    finally:
+        set_image_provider(None)
+    assert created.status_code == 200, created.text
+    assert stub_call_count() == 0
+    assert seen
+    assert seen[0] == ("generating_image", "education")
+    assistant = _assistant(created.json())
+    assert assistant["metadata_json"]["status"] == "ready"
+    assert "activity_phase" not in assistant["metadata_json"]
+
+
+async def test_explicit_advertising_generating_image_at_provider(
+    client: AsyncClient,
+) -> None:
+    from sqlalchemy import select
+
+    from app.db.models import ChatMessage
+    from app.db.session import get_sessionmaker
+    from app.providers.image import set_image_provider
+    from app.providers.image.stub import StubImageProvider
+
+    seen: list[str | None] = []
+
+    class Spy(StubImageProvider):
+        async def generate(self, request):
+            async with get_sessionmaker()() as session:
+                row = await session.scalar(
+                    select(ChatMessage)
+                    .where(ChatMessage.role == "assistant")
+                    .order_by(ChatMessage.created_at.desc())
+                )
+                seen.append(
+                    None if row is None else row.metadata_json.get("activity_phase")
+                )
+            return await super().generate(request)
+
+    set_image_provider(Spy())
+    try:
+        created = await client.post(
+            "/api/chat/conversations",
+            files={
+                "payload": (
+                    None,
+                    '{"content":"یه تبلیغ از این بساز","language":"fa","action_hint":"advertising"}',
+                    "application/json",
+                ),
+                "attachment": ("shoe.png", _product_png(), "image/png"),
+            },
+            headers=auth_header(uuid.uuid4()),
+        )
+    finally:
+        set_image_provider(None)
+    assert created.status_code == 200, created.text
+    assert seen
+    assert seen[0] == "generating_image"
+    assistant = _assistant(created.json())
+    assert assistant["metadata_json"]["route"] == "advertising"
+    assert assistant["metadata_json"]["status"] == "ready"
+    assert "activity_phase" not in assistant["metadata_json"]
+
+
+async def test_general_image_generating_image_at_provider(client: AsyncClient) -> None:
+    from sqlalchemy import select
+
+    from app.db.models import ChatMessage
+    from app.db.session import get_sessionmaker
+    from app.providers.image import set_image_provider
+    from app.providers.image.stub import StubImageProvider
+
+    seen: list[str | None] = []
+
+    class Spy(StubImageProvider):
+        async def generate(self, request):
+            async with get_sessionmaker()() as session:
+                row = await session.scalar(
+                    select(ChatMessage)
+                    .where(ChatMessage.role == "assistant")
+                    .order_by(ChatMessage.created_at.desc())
+                )
+                seen.append(
+                    None if row is None else row.metadata_json.get("activity_phase")
+                )
+            return await super().generate(request)
+
+    set_image_provider(Spy())
+    try:
+        created = await client.post(
+            "/api/chat/conversations",
+            json={
+                "content": "یه تصویر از یک فنجان چای بساز",
+                "language": "fa",
+                "action_hint": "general_image",
+            },
+            headers=auth_header(uuid.uuid4()),
+        )
+    finally:
+        set_image_provider(None)
+    assert created.status_code == 200, created.text
+    assert seen[0] == "generating_image"
+    assistant = _assistant(created.json())
+    assert assistant["metadata_json"]["route"] == "general_image"
+    assert "activity_phase" not in assistant["metadata_json"]
+
+
+async def test_unhinted_education_runs_orchestrator_then_image_phase(
+    client: AsyncClient,
+) -> None:
+    from sqlalchemy import select
+
+    from app.db.models import ChatMessage
+    from app.db.session import get_sessionmaker
+    from app.providers.image import set_image_provider
+    from app.providers.image.stub import StubImageProvider
+
+    seen: list[tuple[str | None, str | None]] = []
+
+    class Spy(StubImageProvider):
+        async def generate(self, request):
+            async with get_sessionmaker()() as session:
+                row = await session.scalar(
+                    select(ChatMessage)
+                    .where(ChatMessage.role == "assistant")
+                    .order_by(ChatMessage.created_at.desc())
+                )
+                meta = row.metadata_json if row is not None else {}
+                seen.append((meta.get("activity_phase"), meta.get("route")))
+            return await super().generate(request)
+
+    set_image_provider(Spy())
+    try:
+        reset_stub_calls()
+        created = await client.post(
+            "/api/chat/conversations",
+            json={
+                "content": "برای کلاس ششم یه پست بامزه درباره اعداد اعشاری درست کن.",
+                "language": "fa",
+            },
+            headers=auth_header(uuid.uuid4()),
+        )
+    finally:
+        set_image_provider(None)
+    assert created.status_code == 200, created.text
+    assert stub_call_count() == 1
+    assert seen[0] == ("generating_image", "education")
+    assert _assistant(created.json())["metadata_json"]["route"] == "education"
+
+
+async def test_general_chat_has_no_activity_phase(client: AsyncClient) -> None:
+    created = await client.post(
+        "/api/chat/conversations",
+        json={"content": "سلام، چطوری؟", "language": "fa"},
+        headers=auth_header(uuid.uuid4()),
+    )
+    assert created.status_code == 200
+    assistant = _assistant(created.json())
+    assert assistant["metadata_json"]["route"] == "general_chat"
+    assert "activity_phase" not in assistant["metadata_json"]
+    assert created.json()["artifacts"] == []
+
+
+async def test_failed_skill_clears_activity_phase(
+    client: AsyncClient, monkeypatch
+) -> None:
+    async def boom(_session, _context):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(_SKILLS["education"], "execute", boom)
+    created = await client.post(
+        "/api/chat/conversations",
+        json={
+            "content": "یه پست آموزشی درباره کسر بساز",
+            "language": "fa",
+            "action_hint": "education",
+        },
+        headers=auth_header(uuid.uuid4()),
+    )
+    assistant = _assistant(created.json())
+    assert assistant["metadata_json"]["status"] == "failed"
+    assert "activity_phase" not in assistant["metadata_json"]
+
+
+async def test_activity_phase_failure_does_not_fail_generation(
+    client: AsyncClient, monkeypatch
+) -> None:
+    async def boom(*_args, **_kwargs):
+        raise RuntimeError("activity db down")
+
+    monkeypatch.setattr(
+        "app.services.orchestrator.skills.education.set_activity_phase", boom
+    )
+    monkeypatch.setattr(
+        "app.services.orchestrator.skills.general_image.set_activity_phase", boom
+    )
+    created = await client.post(
+        "/api/chat/conversations",
+        json={
+            "content": "یه پست آموزشی درباره کسر بساز",
+            "language": "fa",
+            "action_hint": "education",
+        },
+        headers=auth_header(uuid.uuid4()),
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["artifacts"][0]["status"] == "ready"
+
+
+async def test_set_activity_phase_merges_without_clobbering(
+    client: AsyncClient,
+) -> None:
+    from sqlalchemy import type_coerce, update
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    from app.db.models import ChatMessage
+    from app.db.session import get_sessionmaker
+    from app.services.orchestrator.activity import set_activity_phase
+
+    created = await client.post(
+        "/api/chat/conversations",
+        json={"content": "سلام", "language": "fa"},
+        headers=auth_header(uuid.uuid4()),
+    )
+    conversation_id = created.json()["id"]
+    async with get_sessionmaker()() as session:
+        assistant = ChatMessage(
+            conversation_id=uuid.UUID(conversation_id),
+            role="assistant",
+            content="",
+            language="fa",
+            metadata_json={
+                "status": "generating",
+                "route": "education",
+                "campaign_id": "keep-me",
+                "orchestrator_called": False,
+            },
+        )
+        session.add(assistant)
+        await session.commit()
+        assistant_id = assistant.id
+
+    async with get_sessionmaker()() as session:
+        await session.execute(
+            update(ChatMessage)
+            .where(ChatMessage.id == assistant_id)
+            .values(
+                metadata_json=ChatMessage.metadata_json.op("||")(
+                    type_coerce({"educational_post_id": "later"}, JSONB)
+                )
+            )
+        )
+        await session.commit()
+
+    await set_activity_phase(assistant_id, "generating_image")
+    async with get_sessionmaker()() as session:
+        row = await session.get(ChatMessage, assistant_id)
+        assert row is not None
+        assert row.metadata_json["campaign_id"] == "keep-me"
+        assert row.metadata_json["educational_post_id"] == "later"
+        assert row.metadata_json["orchestrator_called"] is False
+        assert row.metadata_json["activity_phase"] == "generating_image"
+        assert row.metadata_json["route"] == "education"

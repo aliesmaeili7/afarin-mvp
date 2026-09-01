@@ -270,7 +270,7 @@ export function createSeedConversations(): Conversation[] {
           "ساخت تصویر کامل نشد. دوباره امتحان کنم؟",
           "fa",
           failed,
-          { failed: true },
+          { failed: true, status: "failed", route: "general_image", retryable: true },
         ),
       ],
       artifacts: [

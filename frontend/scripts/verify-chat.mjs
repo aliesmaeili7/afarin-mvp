@@ -234,6 +234,16 @@ try {
       .waitFor({ timeout: 15000 })
       .then(() => true, () => false),
   );
+  await shot(page, "desktop-failed");
+  await page.getByRole("button", { name: "دوباره بساز" }).click();
+  check(
+    "retry restores activity",
+    await page.locator('[data-chat="activity"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await shot(page, "desktop-retry");
 
   await page.goto(`${APP}/chat/conv-long`, { waitUntil: "domcontentloaded" });
   await page.locator('[data-chat="user-message"]').first().waitFor({ timeout: 15000 });
@@ -260,18 +270,64 @@ try {
 
   await page.goto(`${APP}/chat`, { waitUntil: "domcontentloaded" });
   await page.locator('[data-chat="empty"]').waitFor({ timeout: 15000 });
-  await page.locator('[data-chat="composer"] textarea').fill("یه تصویر رنگی بساز");
+  await page.locator('[data-chat="composer"] textarea').fill("سلام، چطوری؟");
   await page.locator('[data-chat="send"]:not([disabled])').click();
   check(
-    "generation loading",
-    await page.locator('[data-chat="generation-placeholder"]').waitFor({ timeout: 5000 }).then(
+    "thinking activity",
+    await page.locator('[data-chat="activity"][data-chat-phase="thinking"]').waitFor({ timeout: 8000 }).then(
       () => true,
       () => false,
     ),
   );
-  await shot(page, "desktop-loading");
-  await page.locator('[data-chat="image-artifact"]').waitFor({ timeout: 15000 });
-  check("generated image after send", await visible(page, '[data-chat="image-artifact"]'));
+  await shot(page, "desktop-thinking");
+  await page.locator('[data-chat="assistant-message"]').first().waitFor({ timeout: 15000 });
+  check(
+    "thinking removed after answer",
+    !(await visible(page, '[data-chat-phase="thinking"]')),
+  );
+
+  await page.locator('[data-chat="new-chat"]').click();
+  await page.locator('[data-chat="empty"]').waitFor({ timeout: 8000 });
+  await page.locator('[data-chat="plus"]').click();
+  await page.locator('[data-chat-action="education"]').click();
+  await page.locator('[data-chat="composer"] textarea').fill("یه پست آموزشی بامزه بساز");
+  await page.locator('[data-chat="send"]:not([disabled])').click();
+  check(
+    "preparing education",
+    await page.locator('[data-chat-phase="preparing_education"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await shot(page, "desktop-preparing-education");
+  check(
+    "education generating image phase",
+    await page.locator('[data-chat-phase="generating_image"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await shot(page, "desktop-generating-image");
+  await page.locator('[data-chat="image-artifact"]').waitFor({ timeout: 20000 });
+  check("education image ready", await visible(page, '[data-chat="image-artifact"]'));
+
+  await page.locator('[data-chat="new-chat"]').click();
+  await page.locator('[data-chat="plus"]').click();
+  await page.locator('[data-chat-action="advertising"]').click();
+  await page.locator('[data-chat="composer"] textarea').fill("یه تبلیغ از این کفش بساز");
+  await page.locator('[data-chat="send"]:not([disabled])').click();
+  check(
+    "preparing advertising",
+    await page.locator('[data-chat-phase="preparing_advertising"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await shot(page, "desktop-preparing-advertising");
+  await page.locator('[data-chat="generation-placeholder"], [data-chat="image-artifact"]').first().waitFor({
+    timeout: 20000,
+  });
+  await page.locator('[data-chat="image-artifact"]').waitFor({ timeout: 20000 });
 
   await page.locator('[data-chat="plus"]').click();
   await page.locator('[data-chat-action="upload"]').click();
@@ -366,6 +422,43 @@ try {
   );
 
   await phone.goto(`${APP}/chat`, { waitUntil: "domcontentloaded" });
+  await phone.locator('[data-chat="empty"]').waitFor({ timeout: 15000 });
+  await phone.locator('[data-chat="composer"] textarea').fill("سلام");
+  await phone.locator('[data-chat="send"]:not([disabled])').click();
+  check(
+    "mobile thinking",
+    await phone.locator('[data-chat-phase="thinking"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await shot(phone, "mobile-thinking");
+  await phone.locator('[data-chat="assistant-message"]').first().waitFor({ timeout: 15000 });
+
+  await phone.goto(`${APP}/chat`, { waitUntil: "domcontentloaded" });
+  await phone.locator('[data-chat="plus"]').click();
+  await phone.locator('[data-chat-action="generate"]').click();
+  await phone.locator('[data-chat="composer"] textarea').fill("یه تصویر رنگی بساز");
+  await phone.locator('[data-chat="send"]:not([disabled])').click();
+  check(
+    "mobile generating",
+    await phone.locator('[data-chat="generation-placeholder"]').waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+  await shot(phone, "mobile-generating");
+  await phone.locator('[data-chat="image-artifact"]').waitFor({ timeout: 20000 });
+
+  await phone.goto(`${APP}/chat/conv-failed`, { waitUntil: "domcontentloaded" });
+  check(
+    "mobile failed",
+    await phone.locator('[data-chat="generation-failed"]').waitFor({ timeout: 15000 }).then(
+      () => true,
+      () => false,
+    ),
+  );
+
   await phone.locator('input[type="file"]').setInputFiles({
     name: "note.png",
     mimeType: "image/png",

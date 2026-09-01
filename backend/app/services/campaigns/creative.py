@@ -6,6 +6,7 @@ import io
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -66,6 +67,7 @@ async def generate_candidates(
     job: GenerationJob,
     *,
     source: str = "smart",
+    on_progress: Callable[[str], Awaitable[None]] | None = None,
 ) -> None:
     await budgets.assert_can_start_attempt(session, campaign)
     cleaned = await _require_clean_reference(session, campaign)
@@ -107,6 +109,12 @@ async def generate_candidates(
     async def on_stage(stage: str) -> None:
         set_job_stage(job, stage)
         await session.commit()
+        if on_progress is None:
+            return
+        try:
+            await on_progress(stage)
+        except Exception:
+            logger.exception("advertising on_progress %s failed", stage)
 
     out = await generate_recipe_set(
         context=context,

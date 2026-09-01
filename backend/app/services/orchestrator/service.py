@@ -24,6 +24,7 @@ from app.core.errors import conflict, not_found
 from app.db.models import ChatArtifact, ChatConversation, ChatMessage
 from app.db.session import get_sessionmaker
 from app.services.chat import service as chat_service
+from app.services.orchestrator.activity import preparing_phase_for
 from app.services.orchestrator.context import build_bounded_context
 from app.services.orchestrator.language import (
     ChatLanguage,
@@ -259,6 +260,7 @@ async def retry_failed_turn(
     meta["status"] = "generating"
     meta["failed"] = False
     meta["retryable"] = False
+    meta["activity_phase"] = preparing_phase_for(route)
     assistant.metadata_json = meta
     flag_modified(assistant, "metadata_json")
     assistant.content = ack_for(route, lang)
@@ -446,6 +448,7 @@ async def _persist_generating(
         metadata_json={
             "route": route,
             "status": "generating",
+            "activity_phase": preparing_phase_for(route),
             **extra,
         },
     )
@@ -480,6 +483,7 @@ async def _apply_success(
     meta["status"] = "ready"
     meta["failed"] = False
     meta["retryable"] = False
+    meta.pop("activity_phase", None)
     meta.update(result.metadata)
     assistant.metadata_json = meta
     flag_modified(assistant, "metadata_json")
@@ -537,6 +541,7 @@ async def _mark_failed(session: AsyncSession, task: TurnTask) -> None:
     meta["status"] = "failed"
     meta["failed"] = True
     meta["retryable"] = True
+    meta.pop("activity_phase", None)
     assistant.metadata_json = meta
     flag_modified(assistant, "metadata_json")
     assistant.content = ""

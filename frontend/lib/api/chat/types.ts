@@ -50,6 +50,9 @@ export interface ConversationMessage {
     explicit_skill_hint?: SkillHint;
     failed?: boolean;
     status?: string;
+    activity_phase?: string;
+    route?: string;
+    requested_image_count?: number;
     [key: string]: unknown;
   };
   created_at: string;

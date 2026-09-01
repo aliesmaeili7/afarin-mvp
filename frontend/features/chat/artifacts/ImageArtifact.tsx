@@ -13,15 +13,22 @@ import { useI18n } from "@/lib/i18n/PreferencesProvider";
 import { resolveStaticAssetUrl } from "@/lib/api";
 import { GenerationPlaceholder } from "./GenerationPlaceholder";
 import type { ConversationArtifact } from "@/lib/api/chat/types";
+import type { ChatActivityPhase } from "../chatActivity";
 import { ChatIconButton } from "../primitives/ChatIconButton";
 import { ChatPopover } from "../primitives/ChatPopover";
 
 export function ImageArtifact({
   artifact,
+  phase,
+  language,
+  imageCount,
   onRetry,
   onUseAsReference,
 }: {
   artifact: ConversationArtifact;
+  phase?: string | null;
+  language?: "fa" | "en" | null;
+  imageCount?: number;
   onRetry?: () => void;
   onUseAsReference?: () => void;
 }) {
@@ -50,8 +57,16 @@ export function ImageArtifact({
       <GenerationPlaceholder
         pending={{
           startedAt: Date.parse(artifact.created_at) || Date.now(),
-          language: "fa",
+          language: language === "en" ? "en" : "fa",
+          phase: (phase ?? "generating_image") as ChatActivityPhase,
+          aspectRatio: artifact.aspect_ratio ?? "1:1",
+          imageCount,
+          expectsImage: true,
         }}
+        phase={phase}
+        language={language}
+        aspectRatio={artifact.aspect_ratio}
+        imageCount={imageCount}
       />
     );
   }

@@ -11,10 +11,15 @@ import type {
   SendMessageInput,
 } from "@/lib/api/chat/types";
 import { useSessionStore } from "@/features/auth/sessionStore";
+import { preparingPhaseFor, type ChatActivityPhase } from "./chatActivity";
 
 export interface PendingGeneration {
   startedAt: number;
   language: "fa" | "en";
+  phase?: ChatActivityPhase;
+  aspectRatio?: "1:1" | "4:5";
+  expectsImage?: boolean;
+  imageCount?: number;
 }
 
 function conversationIsGenerating(conversation: Conversation | null): boolean {
@@ -111,6 +116,7 @@ export function useChatSession(conversationId: string | null) {
     let cancelled = false;
     const started = Date.now();
     const capMs = 180_000;
+    const id = conversationId;
 
     async function tick() {
       if (cancelled) return;
@@ -119,7 +125,7 @@ export function useChatSession(conversationId: string | null) {
         return;
       }
       try {
-        const next = await chatApi.getConversation(conversationId);
+        const next = await chatApi.getConversation(id);
         if (cancelled) return;
         setConversation(next);
         if (!conversationIsGenerating(next)) {
@@ -158,12 +164,34 @@ export function useChatSession(conversationId: string | null) {
     ) => {
       if (busy) return null;
       setBusy(true);
-      const expectsGeneration = Boolean(
+      const expectsImage = Boolean(
         input.generateImage || input.retryArtifactId || input.skillHint,
       );
-      if (expectsGeneration) {
-        setPending({ startedAt: Date.now(), language });
+      let phase = preparingPhaseFor(
+        input.skillHint ?? (input.generateImage ? "general_image" : null),
+      );
+      if (input.retryArtifactId && conversationRef.current) {
+        const current = conversationRef.current;
+        const artifact = current.artifacts.find(
+          (item) => item.id === input.retryArtifactId,
+        );
+        const source = current.messages.find(
+          (item) => item.id === artifact?.message_id,
+        );
+        const route =
+          typeof source?.metadata_json?.route === "string"
+            ? source.metadata_json.route
+            : null;
+        phase = preparingPhaseFor(route);
       }
+      const startedAt = Date.now();
+      setPending({
+        startedAt,
+        language,
+        phase: expectsImage ? phase : "thinking",
+        expectsImage,
+        aspectRatio: input.skillHint === "advertising" ? "4:5" : "1:1",
+      });
       const optimistic: ConversationMessage = {
         id: `pending-${Date.now()}`,
         conversation_id: conversation?.id ?? "draft",
@@ -183,7 +211,25 @@ export function useChatSession(conversationId: string | null) {
         const result = await start(conversation?.id ?? conversationId);
         const next = result.conversation;
         if (conversationIsGenerating(next)) {
-          setPending({ startedAt: Date.now(), language });
+          const assistant = [...next.messages]
+            .reverse()
+            .find((item) => item.role === "assistant");
+          const nextPhase =
+            typeof assistant?.metadata_json?.activity_phase === "string"
+              ? (assistant.metadata_json.activity_phase as ChatActivityPhase)
+              : phase;
+          const generating = next.artifacts.find(
+            (item) => item.status === "generating",
+          );
+          setPending({
+            startedAt,
+            language: assistant?.language === "en" ? "en" : language,
+            phase: nextPhase,
+            expectsImage: true,
+            aspectRatio: generating?.aspect_ratio ?? "1:1",
+            imageCount:
+              Number(assistant?.metadata_json?.requested_image_count) || 1,
+          });
         } else {
           setPending(null);
         }

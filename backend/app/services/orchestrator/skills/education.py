@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import EducationalPost
 from app.services.education import generate as education_generate
+from app.services.orchestrator.activity import set_activity_phase
 from app.services.orchestrator.skills.base import (
     ProducedImage,
     SkillContext,
@@ -29,7 +30,15 @@ class EducationSkill:
         )
         session.add(post)
         await session.flush()
-        await education_generate.run_generation(session, post)
+
+        async def on_image_start() -> None:
+            await set_activity_phase(
+                context.assistant_message.id, "generating_image"
+            )
+
+        await education_generate.run_generation(
+            session, post, on_image_start=on_image_start
+        )
         if post.status != "ready" or not post.image_storage_path:
             raise RuntimeError(post.error_message or "educational generation failed")
 

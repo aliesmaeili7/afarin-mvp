@@ -34,7 +34,7 @@ User-owned conversations, messages, artifacts, theme snapshots, and history.
 
 ### Phase C — Orchestrator + skills (this document)
 
-`sendMessage()` persists the user turn, then runs one Persian-native Orchestrator call (or skips it when an explicit `+` chip hint is set). Paid routes create a `generating` assistant + artifact, then run a skill on a **fresh DB session**. Live image generation uses FastAPI `BackgroundTasks`; stub providers run inline after commit. The frontend polls `getConversation` until `ready` or `failed`.
+Paid routes persist `activity_phase` on the generating assistant (`preparing_*` → `generating_image` → ads-only `finalizing`). Phase writes merge one JSONB key and are best-effort. The frontend polls `getConversation` and shows `ChatActivityIndicator`; unhinted text uses a client-only thinking state. No extra model calls.
 
 Explicit chips skip the Orchestrator LLM. Artifact language is still detected deterministically (e.g. «متن انگلیسی باشه») and is never copied from reply language.
 

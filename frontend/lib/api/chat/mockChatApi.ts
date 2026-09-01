@@ -1,4 +1,5 @@
 import { inferMessageLanguage } from "@/features/chat/chatDirection";
+import { preparingPhaseFor } from "@/features/chat/chatActivity";
 import { formatConversationShareText } from "@/features/chat/conversationShare";
 import { CHAT_THEMES, snapshotForThemeId } from "./catalog";
 import { createSeedConversations } from "./mockChatData";
@@ -21,6 +22,16 @@ let delayMs = 900;
 let seq = 100;
 let conversations = createSeedConversations();
 
+type MockJob = {
+  startedAt: number;
+  assistantId: string;
+  artifactId: string;
+  route: "advertising" | "education" | "general_image";
+  language: ChatLanguage;
+};
+
+const mockJobs = new Map<string, MockJob>();
+
 export function setChatMockDelay(ms: number): void {
   delayMs = ms;
 }
@@ -29,6 +40,7 @@ export function resetChatMock(): void {
   delayMs = 0;
   seq = 100;
   conversations = createSeedConversations();
+  mockJobs.clear();
 }
 
 export function restoreChatMockDelay(): void {
@@ -88,6 +100,57 @@ function titleFrom(content: string, language: ChatLanguage | null): string {
   const trimmed = content.trim().replace(/\s+/g, " ");
   if (!trimmed) return language === "en" ? "New chat" : "گفتگوی جدید";
   return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
+}
+
+function generationRoute(
+  input: SendMessageInput,
+): "advertising" | "education" | "general_image" {
+  if (input.skillHint === "advertising") return "advertising";
+  if (input.skillHint === "education") return "education";
+  if (input.skillHint === "general_image") return "general_image";
+  if (/تبلیغ|کفش|luxury|ad\b|shoe|editorial|instagram ad/i.test(input.content)) {
+    return "advertising";
+  }
+  if (/آموزش|کلاس|اعشار|کسر|پست/i.test(input.content)) return "education";
+  return "general_image";
+}
+
+function advanceMockJob(conversation: Conversation): void {
+  const job = mockJobs.get(conversation.id);
+  if (!job) return;
+  const assistant = conversation.messages.find((item) => item.id === job.assistantId);
+  const artifact = conversation.artifacts.find((item) => item.id === job.artifactId);
+  if (!assistant || !artifact) {
+    mockJobs.delete(conversation.id);
+    return;
+  }
+  const elapsed = Date.now() - job.startedAt;
+  const meta = {
+    ...(assistant.metadata_json ?? {}),
+    status: "generating" as const,
+    route: job.route,
+  };
+  if (elapsed < delayMs) {
+    assistant.metadata_json = {
+      ...meta,
+      activity_phase: preparingPhaseFor(job.route),
+    };
+    return;
+  }
+  if (elapsed < delayMs * 2) {
+    assistant.metadata_json = { ...meta, activity_phase: "generating_image" };
+    return;
+  }
+  if (job.route === "advertising" && elapsed < delayMs * 2.5) {
+    assistant.metadata_json = { ...meta, activity_phase: "finalizing" };
+    return;
+  }
+  const { activity_phase: _dropped, ...rest } = meta;
+  assistant.metadata_json = { ...rest, status: "ready" };
+  assistant.content = assistantCopy(job.language, true, "");
+  artifact.status = "ready";
+  artifact.storage_path = artifact.aspect_ratio === "4:5" ? PORTRAIT : SQUARE;
+  mockJobs.delete(conversation.id);
 }
 
 function wantsImage(input: SendMessageInput): boolean {
@@ -151,6 +214,57 @@ async function completeTurn(
   const language: ChatLanguage = input.content.trim()
     ? inferMessageLanguage(input.content)
     : conversation.language ?? "fa";
+
+  if (input.retryArtifactId) {
+    const artifact = conversation.artifacts.find(
+      (item) => item.id === input.retryArtifactId,
+    );
+    const assistant = conversation.messages.find(
+      (item) => item.id === artifact?.message_id,
+    );
+    if (artifact && assistant) {
+      const route = generationRoute({
+        content: "",
+        skillHint:
+          assistant.metadata_json?.route === "advertising" ||
+          assistant.metadata_json?.route === "education" ||
+          assistant.metadata_json?.route === "general_image"
+            ? assistant.metadata_json.route
+            : "general_image",
+      });
+      artifact.status = delayMs === 0 ? "ready" : "generating";
+      artifact.storage_path =
+        delayMs === 0
+          ? artifact.aspect_ratio === "4:5"
+            ? PORTRAIT
+            : SQUARE
+          : null;
+      assistant.metadata_json = {
+        ...(assistant.metadata_json ?? {}),
+        status: delayMs === 0 ? "ready" : "generating",
+        failed: false,
+        retryable: false,
+        route,
+        ...(delayMs === 0 ? {} : { activity_phase: preparingPhaseFor(route) }),
+      };
+      if (delayMs === 0) {
+        delete assistant.metadata_json.activity_phase;
+        assistant.content = assistantCopy(language, true, "");
+      } else {
+        assistant.content = "";
+        mockJobs.set(conversation.id, {
+          startedAt: Date.now(),
+          assistantId: assistant.id,
+          artifactId: artifact.id,
+          route,
+          language: assistant.language === "en" ? "en" : "fa",
+        });
+      }
+      touch(conversation, language);
+      return { conversation: clone(conversation) };
+    }
+  }
+
   const generate = wantsImage(input);
 
   if (input.content.trim() || input.attachment) {
@@ -175,26 +289,47 @@ async function completeTurn(
   }
 
   const assistantId = nextId("msg");
+  const route = generate ? generationRoute(input) : null;
   conversation.messages.push({
     id: assistantId,
     conversation_id: conversation.id,
     role: "assistant",
-    content: assistantCopy(language, generate, input.content),
+    content: assistantCopy(language, generate && delayMs === 0, input.content),
     language,
     created_at: now,
+    metadata_json: generate
+      ? {
+          route: route ?? "general_image",
+          status: delayMs === 0 ? "ready" : "generating",
+          ...(delayMs === 0
+            ? {}
+            : { activity_phase: preparingPhaseFor(route) }),
+        }
+      : { route: "general_chat", status: "ready" },
   });
 
   if (generate) {
+    const artifactId = nextId("art");
+    const aspect = pickAspect(input);
     conversation.artifacts.push({
-      id: nextId("art"),
+      id: artifactId,
       conversation_id: conversation.id,
       message_id: assistantId,
       artifact_type: "image",
-      storage_path: pickAspect(input) === "4:5" ? PORTRAIT : SQUARE,
-      aspect_ratio: pickAspect(input),
-      status: "ready",
+      storage_path: delayMs === 0 ? (aspect === "4:5" ? PORTRAIT : SQUARE) : null,
+      aspect_ratio: aspect,
+      status: delayMs === 0 ? "ready" : "generating",
       created_at: now,
     });
+    if (delayMs > 0 && route) {
+      mockJobs.set(conversation.id, {
+        startedAt: Date.now(),
+        assistantId,
+        artifactId,
+        route,
+        language,
+      });
+    }
   }
 
   touch(conversation, language);
@@ -243,7 +378,9 @@ export const mockChatApi: ChatApi = {
   },
 
   async getConversation(id) {
-    return clone(requireConversation(id));
+    const conversation = requireConversation(id);
+    advanceMockJob(conversation);
+    return clone(conversation);
   },
 
   async sendMessage(conversationId, input) {

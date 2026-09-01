@@ -3,6 +3,7 @@ import { chatApi } from "./index";
 import {
   resetChatMock,
   restoreChatMockDelay,
+  setChatMockDelay,
 } from "./mockChatApi";
 
 describe("mock ChatApi", () => {
@@ -170,5 +171,27 @@ describe("mock ChatApi", () => {
     const created = await chatApi.createConversation();
     const renamed = await chatApi.renameConversation(created.id, "   ");
     expect(renamed.title).toBe("گفتگوی جدید");
+  });
+
+  it("advances generating activity phases then becomes ready", async () => {
+    setChatMockDelay(40);
+    const created = await chatApi.createConversation();
+    const { conversation } = await chatApi.sendMessage(created.id, {
+      content: "یه پست آموزشی بساز",
+      skillHint: "education",
+    });
+    expect(conversation.artifacts[0]?.status).toBe("generating");
+    expect(conversation.messages.at(-1)?.metadata_json?.activity_phase).toBe(
+      "preparing_education",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const mid = await chatApi.getConversation(created.id);
+    expect(mid.messages.at(-1)?.metadata_json?.activity_phase).toBe(
+      "generating_image",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const done = await chatApi.getConversation(created.id);
+    expect(done.artifacts[0]?.status).toBe("ready");
+    expect(done.messages.at(-1)?.metadata_json?.activity_phase).toBeUndefined();
   });
 });

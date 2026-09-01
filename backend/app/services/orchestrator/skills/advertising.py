@@ -21,6 +21,7 @@ from app.db.models import (
 from app.services.campaigns.creative import generate_candidates
 from app.services.campaigns.crop import CropRect
 from app.services.campaigns.product_media import save_crop
+from app.services.orchestrator.activity import set_activity_phase
 from app.services.orchestrator.skills.base import (
     ProducedImage,
     SkillContext,
@@ -99,7 +100,19 @@ class AdvertisingSkill:
         session.add(job)
         await session.flush()
 
-        await generate_candidates(session, campaign, job, source="custom")
+        async def on_progress(stage: str) -> None:
+            if stage == "visual":
+                await set_activity_phase(
+                    context.assistant_message.id, "generating_image"
+                )
+            elif stage == "finalizing":
+                await set_activity_phase(
+                    context.assistant_message.id, "finalizing"
+                )
+
+        await generate_candidates(
+            session, campaign, job, source="custom", on_progress=on_progress
+        )
         await session.refresh(campaign)
 
         attempt_id = campaign.current_visual_attempt_id

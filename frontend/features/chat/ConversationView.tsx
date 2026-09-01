@@ -11,6 +11,7 @@ import type {
 import { AssistantMessage } from "./AssistantMessage";
 import { UserMessage } from "./UserMessage";
 import { GenerationPlaceholder } from "./artifacts/GenerationPlaceholder";
+import { ChatActivityIndicator } from "./artifacts/ChatActivityIndicator";
 import type { PendingGeneration } from "./useChatSession";
 
 const SHORTCUTS: { label: TranslationKey; insert: TranslationKey }[] = [
@@ -102,7 +103,14 @@ export function ConversationView({
               ) : null}
               {pending &&
               !conversation?.artifacts.some((item) => item.status === "generating") ? (
-                <GenerationPlaceholder pending={pending} />
+                pending.expectsImage ? (
+                  <GenerationPlaceholder pending={pending} />
+                ) : (
+                  <ChatActivityIndicator
+                    phase={pending.phase ?? "thinking"}
+                    language={pending.language}
+                  />
+                )
               ) : null}
             </>
           )}

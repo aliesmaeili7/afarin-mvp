@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -32,7 +33,12 @@ AGENT_JOB = "educational_agent"
 IMAGE_JOB = "educational_image"
 
 
-async def run_generation(session: AsyncSession, post: EducationalPost) -> None:
+async def run_generation(
+    session: AsyncSession,
+    post: EducationalPost,
+    *,
+    on_image_start: Callable[[], Awaitable[None]] | None = None,
+) -> None:
     """
     prompt -> agent -> validate -> one image. No overlay spec.
 
@@ -89,6 +95,11 @@ async def run_generation(session: AsyncSession, post: EducationalPost) -> None:
         },
     )
     provider_name = get_image_provider().name
+    if on_image_start is not None:
+        try:
+            await on_image_start()
+        except Exception:
+            logger.exception("education on_image_start failed")
     try:
         image = await core.generate_post_image(result.final_prompt)
     except Exception as error:
